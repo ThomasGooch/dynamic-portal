@@ -3,8 +3,10 @@ import { connection } from "next/server";
 import { resolveNav } from "@portal/registry";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal, isDevSession } from "@/lib/session";
+import { Toaster } from "@/components/Toaster";
 import "./globals.css";
 import "./shell.css";
+import "@/renderer/renderer.css";
 
 export const metadata = {
   title: "Dynamic Portal",
@@ -69,7 +71,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             )}
           </nav>
 
-          <main className="main">{children}</main>
+          <main className="main">
+            {/* Toasts live above the route so a satellite's `navigate` does not
+                unmount the message it just raised. */}
+            <Toaster>{children}</Toaster>
+          </main>
         </div>
       </body>
     </html>

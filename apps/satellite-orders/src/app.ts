@@ -218,13 +218,36 @@ export function createApp({
         return;
       }
 
-      // Success returns a patch rather than a whole screen: the hub replaces
-      // one node instead of re-rendering, which is what keeps actions cheap.
+      // Approve is only reachable from the detail screen, which has no
+      // `orders-table` to patch — so this navigates instead. An action does not
+      // learn which screen invoked it, so a satellite may only send a patch
+      // when every route to the action is on the screen the patch addresses.
+      // See `orders.refresh` for the other side of that rule.
       const response: ActionResponse = {
         protocol: CURRENT_PROTOCOL_VERSION,
         outcome: "ok",
         toast: { level: "success", message: `Order ${body.id} approved.` },
-        patch: [{ targetId: "orders-table", ui: ordersTable(repository.list(tenantId)) }],
+        navigate: { screenId: "orders.list" },
+      };
+      res.json(response);
+    },
+  );
+
+  app.post(
+    "/portal/actions/orders.refresh",
+    authenticate,
+    requireAccess(["orders.read"], forAction("orders.refresh")),
+    (req: AuthedRequest, res) => {
+      // A patch rather than a whole screen: the hub replaces one node instead
+      // of re-rendering the page, which is what keeps an action cheap. The
+      // button that fires this sits beside the table it addresses.
+      const response: ActionResponse = {
+        protocol: CURRENT_PROTOCOL_VERSION,
+        outcome: "ok",
+        toast: { level: "info", message: "Orders reloaded." },
+        patch: [
+          { targetId: "orders-table", ui: ordersTable(repository.list(req.principal!.tenantId)) },
+        ],
       };
       res.json(response);
     },

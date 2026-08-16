@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { authorize } from "@portal/identity";
-import { findSatellite } from "@portal/registry";
+import { findSatellite, visibleSatellites } from "@portal/registry";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
-import { ErrorCard, TreePreview } from "@/components/ScreenView";
+import { ErrorCard } from "@/components/ScreenView";
+import { ScreenRenderer } from "@/renderer/ScreenRenderer";
 
 /**
  * A satellite screen.
@@ -98,7 +99,17 @@ export default async function ScreenPage({
         satellite={satellite.displayName}
         crumbs={result.value.screen.breadcrumbs?.map((c) => c.label)}
       />
-      <TreePreview ui={result.value.ui} />
+      <ScreenRenderer
+        ui={result.value.ui}
+        satelliteId={satellite.id}
+        screenId={screenId}
+        params={params_}
+        // The satellites this principal may see. Passed down so a `Link` to a
+        // solution they cannot reach renders as inert text rather than as a
+        // live link to a 404 — the same list the nav was built from, so the
+        // two cannot disagree.
+        allowedSatelliteIds={visibleSatellites(portal.registry, principal).map((s) => s.id)}
+      />
     </>
   );
 }

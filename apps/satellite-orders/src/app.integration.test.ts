@@ -175,7 +175,10 @@ describe("tenant isolation enforced by the satellite itself", () => {
 });
 
 describe("action envelopes", () => {
-  it("returns a schema-valid success with a toast and a patch", async () => {
+  it("navigates rather than patching, because approve is only reachable from detail", async () => {
+    // An action does not learn which screen invoked it. `orders-table` lives on
+    // the list screen and approve is only reachable from the detail screen, so
+    // a patch addressing it would name a node the user is not looking at.
     const own = repository.list("acme").find((o) => o.status === "pending")!;
     const res = await post(
       "/portal/actions/orders.approve",
@@ -186,6 +189,15 @@ describe("action envelopes", () => {
     const body = ActionResponseSchema.parse(await res.json());
     expect(body.outcome).toBe("ok");
     expect(body.toast?.level).toBe("success");
+    expect(body.patch).toBeUndefined();
+    expect(body.navigate?.screenId).toBe("orders.list");
+  });
+
+  it("patches from an action whose button sits beside the node it addresses", async () => {
+    const res = await post("/portal/actions/orders.refresh", {}, signPrincipal(principal(), SECRET));
+    expect(res.status).toBe(200);
+    const body = ActionResponseSchema.parse(await res.json());
+    expect(body.outcome).toBe("ok");
     expect(body.patch?.[0]?.targetId).toBe("orders-table");
   });
 

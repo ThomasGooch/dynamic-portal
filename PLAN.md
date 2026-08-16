@@ -30,7 +30,7 @@ Architectures don't die of old technology. They die of coupling to things that c
 | PUP protocol | 5–10 yrs | Yes, N-2 support |
 | Public API contract | 3–5 yrs per major version | Yes — deliberately decoupled from the catalog |
 | MCP wire version | 3–5 yrs (MCP is ~2 yrs old; it will churn) | Yes — the gateway absorbs it |
-| Renderer (`json-render`) | 1–3 yrs | Yes — the adapter |
+| Renderer (hub-owned, ~34 components) | 3–5 yrs | Yes — the catalog is the contract, not the code |
 | UI framework (React) | 5–8 yrs | Yes, but expensively |
 | Model | 6–18 months | Trivially |
 
@@ -147,7 +147,7 @@ Three endpoints per satellite:
 |---|---|---|
 | Satellites | **Nested tree** | Readable, diffable, trivial to emit from any language |
 | Agent | **Flat element list** — `{root, elements: [{id, type, props, children}]}` | **Structured outputs reject recursive JSON Schemas.** A nested tree cannot be schema-constrained; a flat list can |
-| Renderer | **Flat keyed map** — `{root, elements: {id: {...}}}` | `json-render`'s native shape |
+| Renderer | **Flat keyed map** — `{root, elements: {id: {...}}}` | Addressable by id, which is what `patch.targetId` needs |
 
 The agent's list form is **ours, not `json-render`'s** — its native format keys elements by id, and a map with arbitrary keys cannot be strict-schema-constrained, because structured outputs require `additionalProperties: false` on every object and don't accept `additionalProperties` as a schema. The adapter indexes the list into the map.
 
@@ -292,18 +292,23 @@ A dedicated platform team makes this viable; it does not make it automatic. The 
 
 | Need | Use |
 |---|---|
-| JSON-tree renderer | **`@json-render/react`** + `@json-render/core` (Vercel Labs, Apache-2.0, ~16k stars) — Zod catalog, registry renderer, `emit` actions, source-agnostic specs; `@json-render/shadcn` ships 36 components; `createSpecStreamCompiler()` for progressive rendering |
+| JSON-tree renderer | **Ours** — `apps/hub/src/renderer`. See the reversal note below |
 | Hub framework | **Next.js App Router** — route handlers give us the BFF proxy with no separate service |
-| Components / tokens | **shadcn/ui + Tailwind** — owned in-hub, single place to apply branding |
+| Components / tokens | **Hand-written CSS + custom properties** — `globals.css` holds the tokens, `renderer.css` the rules. See the reversal note below |
 | Agent | **`@anthropic-ai/sdk`**, `claude-opus-5`, `betaZodTool` + `toolRunner` |
 | MCP | **`@modelcontextprotocol/sdk`** (client + server) + `@modelcontextprotocol/ext-apps` |
-| Table / forms / charts / fetching | TanStack Table · React Hook Form + Zod · Recharts · TanStack Query |
+| Charts | **Recharts** — the one UI dependency taken. Colours are CSS custom properties, so charts re-theme with everything else |
+| Table / forms / fetching | None. Server-rendered tables, uncontrolled form controls read on submit, fetching in server components |
 
-**Risk on `json-render`:** a labs project roughly seven months old. The repo carries no stability warning, but a `vercel-labs` org and a short history are the warning. Contained by design — the protocol is ours and the adapter is the only contact surface; the recursive renderer it replaces is ~200 lines.
+**Reversal — `json-render` and shadcn/Tailwind were both dropped when the renderer was actually built.** Both were reasonable on paper; neither survived contact.
+
+`@json-render/react` (0.20.0, Apache-2.0, three packages, peer React 19) is real and small, and its recursive renderer is the part we needed least — that is roughly 40 lines here. Its substance is a *client state model*: `useStateBinding`, `useBoundProp`, a state store, visibility and validation providers, binding expressions inside the spec. Adopting it usefully would mean putting an expression language into the wire contract, which then has to be understood by the strict agent schema, the public API, and every satellite in whatever language it is written. That is the opposite of the durability thesis: it would make the fastest-decaying dependency in the stack the shape of the most durable artifact. Using 10% of a pre-1.0 library on the render path to save 40 lines is not a trade worth making. The keyed-map adapter is still there, so this is reversible; `useUIStream`/`buildSpecFromParts` remain worth revisiting for progressive agent rendering in M2. (`createSpecStreamCompiler()`, named in an earlier draft of this plan, is not an export of 0.20.0.)
+
+shadcn/Tailwind went for a related reason. shadcn's 36 components are not our 34 — different names, different props — so they would have been re-skinned wholesale, and the utility classes would have put presentation back into component files. Two stylesheets of hand-written CSS keyed on `data-` attributes do the job with no build step and one obvious place to change a colour, which is exactly the claim the architecture makes.
 
 **Risk on `@modelcontextprotocol/ext-apps`:** real and published (v1.x, `registerAppTool` / `registerAppResource` from `@modelcontextprotocol/ext-apps/server`), but it has already shipped breaking changes across 0.x. Pin it; it only touches the third-party iframe path (M3).
 
-**Vendor exposure, honestly:** MCP is open and multi-vendor, which is why it's the right bet — and the gateway hedges it structurally regardless. The model is commodity-swappable (tool-calling is table stakes); a switch costs prompt tuning and an eval re-run, not architecture. React is the largest lock-in and the safest. `json-render` is the riskiest and the most contained.
+**Vendor exposure, honestly:** MCP is open and multi-vendor, which is why it's the right bet — and the gateway hedges it structurally regardless. The model is commodity-swappable (tool-calling is table stakes); a switch costs prompt tuning and an eval re-run, not architecture. React is the largest lock-in and the safest. Recharts is now the only other UI dependency, and it touches one component.
 
 ---
 
@@ -388,6 +393,10 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 - **We are forking MCP Apps on the first-party path.** A custom mime type is unsanctioned and native rendering contradicts a content-agnostic sandbox MUST. Accepted knowingly; cost is that portal-rendered satellite UI isn't portable to other MCP hosts, and a future spec-defined mime type may collide. Contained to the rendering path; satellites can serve an MCP-Apps HTML representation alongside.
 - **The strict `render_screen` schema will be large** — a discriminated union across 34 components with `additionalProperties: false` throughout. Structured outputs charge a one-time compilation cost per schema; load-test before committing. Fallback: prompt-plus-validate for composition, keeping the grounding check in our own validator — losing the API-level guarantee, not the guarantee.
 - **Schema validation is an integrity boundary, not a content-trust boundary.**
+- **An action does not learn which screen invoked it, so `patch` is only safe when every route to an action sits on the screen the patch addresses.** Found by building it: `orders.approve` is reachable only from the detail screen and was returning a patch for the list screen's table — a node the user was not looking at. The hub handles it (the patch is refused whole, the screen refetches, the reason goes to the console), but the satellite has to know the rule. The fix is a protocol addition — the invoking screen id travelling with the action — deferred rather than improvised mid-change.
+- **File uploads have no representation in the action envelope.** `FileUpload` renders and says so on the control; the chosen file is deliberately left out of the payload, because sending the filename alone would read as an upload that worked. Needs a protocol addition, not a renderer workaround.
+- **Charts need JavaScript; nothing else on a screen does.** Recharts measures its container before drawing, so the SVG appears after hydration rather than in the server's HTML. The container reserves its height, so there is no layout shift — but a chart is the one component that is blank with scripting off, and the only part of a screen that is not server-rendered.
+- **Dates and money render in a fixed locale and in UTC.** Anything reading the ambient locale or timezone produces one string on the server and another in the browser, which React reports as a hydration mismatch — and never does so on a developer's machine running in UTC. Showing a viewer's own timezone is a real feature and a later one; it needs the zone to travel with the render rather than be read independently at each end.
 - **Agent latency and cost** are an order of magnitude above the deterministic path. Deterministic by default; agent on explicit intent.
 - **Third-party MCP servers are a different trust tier** — sandboxed iframe, foreign chrome, no catalog access. Deliberately second-class.
 - **The platform team is a real, ongoing cost.** This design trades per-solution UI work for a permanent platform function. If that team is defunded in year three, the catalog stops evolving and satellites start requesting the iframe escape hatch — which is how this degrades back into the portal it replaced. That risk is organizational, not technical, and no architecture removes it.
@@ -400,7 +409,7 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 - [MCP Apps announcement](https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/)
 - [Shopify — Remote rendering: Shopify's take on extensible UI](https://shopify.engineering/remote-rendering-ui-extensibility)
 - [Stripe Apps — styling constraints](https://docs.stripe.com/stripe-apps/style) (design tokens, proprietary layout system, no arbitrary fonts) and [UI components](https://docs.stripe.com/stripe-apps/components)
-- [Vercel Labs — json-render](https://github.com/vercel-labs/json-render)
+- [Vercel Labs — json-render](https://github.com/vercel-labs/json-render) — evaluated and not adopted; see the reversal note
 - [Martin Fowler — Micro Frontends](https://martinfowler.com/articles/micro-frontends.html)
 - [Open-source MCP gateways, 2026](https://www.lunar.dev/post/the-best-open-source-mcp-gateways-in-2026)
 - RFC 8693 — OAuth 2.0 Token Exchange

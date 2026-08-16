@@ -192,7 +192,18 @@ export const COMPONENTS = {
     .object({ level: z.enum(["info", "success", "warning", "error"]), title: z.string().optional(), message: z.string() })
     .strict(),
   EmptyState: z
-    .object({ title: z.string(), message: z.string().optional(), action: ActionRef.optional() })
+    .object({
+      title: z.string(),
+      message: z.string().optional(),
+      action: ActionRef.optional(),
+      /**
+       * What the action's button should say. Optional because the catalog is
+       * additive-only and `action` shipped without it; a satellite that sets
+       * `action` should set this too, or the hub falls back to wording that
+       * describes nothing in particular.
+       */
+      actionLabel: z.string().optional(),
+    })
     .strict(),
   Timeline: z
     .object({

@@ -1,4 +1,3 @@
-import type { UiNode } from "@portal/protocol";
 import type { Failure } from "@portal/registry";
 
 /**
@@ -61,37 +60,4 @@ function explain(name: string, failure: Failure): { title: string; body: string 
         body: `It answered with status ${failure.status}.`,
       };
   }
-}
-
-/**
- * A structural preview of a validated screen.
- *
- * **Temporary.** The renderer bindings replace this entirely in the next change.
- * It exists so this PR can prove the pipeline end to end — registry, proxy,
- * protocol validation, catalog validation — without also carrying the renderer,
- * which is a substantial change of its own.
- */
-export function TreePreview({ ui }: { ui: UiNode }) {
-  return (
-    <section className="treePreview">
-      <h2>Validated screen &middot; pending renderer</h2>
-      <NodeList nodes={[ui]} />
-    </section>
-  );
-}
-
-function NodeList({ nodes }: { nodes: readonly UiNode[] }) {
-  return (
-    <ul>
-      {nodes.map((node, index) => (
-        <li key={node.id ?? `${node.type}-${index}`}>
-          <span className="nodeType">{node.type}</span>
-          {node.id !== undefined && <span className="nodeId"> #{node.id}</span>}
-          {node.children !== undefined && node.children.length > 0 && (
-            <NodeList nodes={node.children} />
-          )}
-        </li>
-      ))}
-    </ul>
-  );
 }

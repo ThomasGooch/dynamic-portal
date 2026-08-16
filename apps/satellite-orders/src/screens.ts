@@ -62,6 +62,12 @@ export function manifest(): Manifest {
         description: "Move a pending order to approved.",
         audience: ["internal"],
       },
+      {
+        id: "orders.refresh",
+        title: "Refresh orders",
+        description: "Re-read the order table without leaving the screen.",
+        audience: ["internal"],
+      },
     ],
     nav: [{ screenId: "orders.list", label: "Orders", section: "Operations", order: 10 }],
     healthPath: "/healthz",
@@ -112,7 +118,32 @@ export function listScreen(orders: Order[]): ScreenResponse {
             },
           ],
         },
-        { type: "Section", props: { title: "All orders" }, children: [ordersTable(orders)] },
+        {
+          type: "Section",
+          props: { title: "All orders" },
+          children: [
+            ordersTable(orders),
+            {
+              type: "Stack",
+              props: { direction: "row", gap: "sm", align: "end" },
+              children: [
+                {
+                  type: "Button",
+                  props: {
+                    label: "Refresh",
+                    variant: "secondary",
+                    size: "sm",
+                    // Patches only if the node they address is on the screen
+                    // the user is looking at, and an action does not know which
+                    // screen that is. This button and `orders-table` are on the
+                    // same screen, which is what makes the patch safe to send.
+                    action: { actionId: "orders.refresh" },
+                  },
+                },
+              ],
+            },
+          ],
+        },
       ],
     },
     meta: { ttlSeconds: 15 },
