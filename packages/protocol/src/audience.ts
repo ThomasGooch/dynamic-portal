@@ -21,4 +21,14 @@ export const INTERNAL_ONLY: readonly Audience[] = Object.freeze(["internal"] as 
 export const AudienceListSchema = z
   .array(AudienceSchema)
   .nonempty("audience must not be empty; declare [\"internal\"] explicitly")
-  .default(["internal"]);
+  // Derived from INTERNAL_ONLY rather than a second literal, so the constant and
+  // the default cannot drift apart. The thunk hands each parse its own array.
+  .default(() => [...INTERNAL_ONLY] as [Audience, ...Audience[]]);
+
+/** True when every audience in `subset` is also declared by `superset`. */
+export function isAudienceSubset(
+  subset: readonly Audience[],
+  superset: readonly Audience[],
+): boolean {
+  return subset.every((audience) => superset.includes(audience));
+}

@@ -68,8 +68,15 @@ describe("isSupportedProtocolVersion", () => {
     expect(isSupportedProtocolVersion(`${major + 1}.0`)).toBe(false);
   });
 
-  it("rejects a major beyond the window", () => {
+  it("rejects a major far ahead of this hub", () => {
     expect(isSupportedProtocolVersion(`${major + MAJOR_SUPPORT_WINDOW + 1}.0`)).toBe(false);
+  });
+
+  it("rejects a major that has aged out of the window", () => {
+    // Expressed through the policy function: while CURRENT_PROTOCOL_VERSION is
+    // still 1.x there is no *string* older than the window to feed the total
+    // function, so asserting on it here would only re-test the future edge.
+    expect(isMajorWithinSupportWindow(major - MAJOR_SUPPORT_WINDOW - 1, major)).toBe(false);
   });
 
   it("returns false rather than throwing on malformed input", () => {

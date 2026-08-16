@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ActionResponseSchema, ScreenResponseSchema } from "./envelopes.js";
-import { UiNodeSchema } from "./node.js";
+import { MAX_NODE_DEPTH, UiNodeSchema } from "./node.js";
 
 describe("UiNode", () => {
   // The protocol deliberately does NOT know the component catalog. It validates
@@ -40,9 +40,35 @@ describe("UiNode", () => {
     ).toThrow();
   });
 
-  it("nests to arbitrary depth", () => {
-    const deep = { type: "Stack", children: [{ type: "Stack", children: [{ type: "Text" }] }] };
-    expect(() => UiNodeSchema.parse(deep)).not.toThrow();
+  const nest = (levels: number): unknown => {
+    let node: unknown = { type: "Text" };
+    for (let i = 1; i < levels; i += 1) node = { type: "Stack", children: [node] };
+    return node;
+  };
+
+  it("nests as deep as any real screen needs", () => {
+    expect(() => UiNodeSchema.parse(nest(MAX_NODE_DEPTH))).not.toThrow();
+  });
+
+  it("rejects a tree deeper than the bound instead of overflowing the stack", () => {
+    // Zod recurses to validate a recursive schema, so an unbounded tree used to
+    // raise a RangeError — not a ZodError — around 1.5k levels, which a hub
+    // catching ZodError would turn into a 500.
+    const result = UiNodeSchema.safeParse(nest(5_000));
+    expect(result.success).toBe(false);
+    expect(result.success === false && result.error.issues[0]?.message).toMatch(/nests deeper/);
+  });
+
+  it("rejects a repeated node id — a patch could not tell the two apart", () => {
+    expect(() =>
+      UiNodeSchema.parse({
+        type: "Page",
+        children: [
+          { type: "Table", id: "orders-table" },
+          { type: "Table", id: "orders-table" },
+        ],
+      }),
+    ).toThrow(/duplicate node id/);
   });
 });
 
@@ -76,6 +102,21 @@ describe("ScreenResponse", () => {
   it("rejects a negative ttl", () => {
     expect(() =>
       ScreenResponseSchema.parse({ ...valid, meta: { ttlSeconds: -1 } }),
+    ).toThrow();
+  });
+
+  it("rejects a malformed protocol version", () => {
+    expect(() => ScreenResponseSchema.parse({ ...valid, protocol: "banana" })).toThrow();
+  });
+
+  it("rejects a breadcrumb whose screenId is empty rather than absent", () => {
+    // An empty string is a crumb that reads as navigable to a hub testing for
+    // presence, but links nowhere.
+    expect(() =>
+      ScreenResponseSchema.parse({
+        ...valid,
+        screen: { id: "orders.detail", title: "Order", breadcrumbs: [{ label: "Orders", screenId: "" }] },
+      }),
     ).toThrow();
   });
 });

@@ -11,7 +11,9 @@
 export {
   CURRENT_PROTOCOL_VERSION,
   MAJOR_SUPPORT_WINDOW,
+  PROTOCOL_VERSION_PATTERN,
   InvalidProtocolVersionError,
+  ProtocolVersionSchema,
   isMajorWithinSupportWindow,
   isSupportedProtocolVersion,
   parseProtocolVersion,
@@ -22,11 +24,13 @@ export {
   AudienceListSchema,
   AudienceSchema,
   INTERNAL_ONLY,
+  isAudienceSubset,
   type Audience,
 } from "./audience.js";
 
 export {
   FORBIDDEN_PROP_KEYS,
+  MAX_NODE_DEPTH,
   NodePropsSchema,
   ProvenanceSchema,
   UiNodeSchema,

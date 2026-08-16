@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UiNodeSchema } from "./node.js";
+import { ProtocolVersionSchema } from "./version.js";
 
 /**
  * The two response envelopes a satellite returns.
@@ -11,13 +12,23 @@ import { UiNodeSchema } from "./node.js";
 
 export const ScreenResponseSchema = z
   .object({
-    protocol: z.string().min(1),
+    protocol: ProtocolVersionSchema,
     screen: z
       .object({
         id: z.string().min(1),
         title: z.string().min(1),
         breadcrumbs: z
-          .array(z.object({ label: z.string().min(1), screenId: z.string().optional() }).strict())
+          .array(
+            z
+              .object({
+                label: z.string().min(1),
+                // `.min(1)` like every other id on the wire: an empty screenId
+                // is a crumb that looks navigable to a hub testing for
+                // presence, but links nowhere.
+                screenId: z.string().min(1).optional(),
+              })
+              .strict(),
+          )
           .optional(),
       })
       .strict(),
@@ -60,10 +71,11 @@ const ActionOutcomeSchema = z.enum(["ok", "error", "validation"]);
  */
 export const ActionResponseSchema = z
   .object({
-    protocol: z.string().min(1),
+    protocol: ProtocolVersionSchema,
     outcome: ActionOutcomeSchema,
     toast: ToastSchema.optional(),
-    fieldErrors: z.record(z.string().min(1)).optional(),
+    // The key is the field to attach the message to, so it has to name one.
+    fieldErrors: z.record(z.string().min(1), z.string().min(1)).optional(),
     patch: z.array(PatchSchema).optional(),
     navigate: NavigateSchema.optional(),
   })
