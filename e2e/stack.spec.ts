@@ -25,7 +25,6 @@ test.describe("satellite-orders, as deployed", () => {
     expect(res.ok()).toBe(true);
     // Parsing with the real schema means a drifting satellite fails the build,
     // not a code review.
-    expect(() => ManifestSchema.parse(res.json())).toBeDefined();
     const manifest = ManifestSchema.parse(await res.json());
     expect(manifest.satelliteId).toBe("orders");
     expect(manifest.audience).toEqual(["internal"]);

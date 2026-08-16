@@ -89,6 +89,7 @@ export function ordersTable(orders: Order[]): UiNode {
 
 export function listScreen(orders: Order[]): ScreenResponse {
   const pending = orders.filter((o) => o.status === "pending").length;
+  const blocked = orders.filter((o) => o.blockedByVehicleId).length;
   return {
     protocol: CURRENT_PROTOCOL_VERSION,
     screen: { id: "orders.list", title: "Orders" },
@@ -105,8 +106,8 @@ export function listScreen(orders: Order[]): ScreenResponse {
               type: "StatTile",
               props: {
                 label: "Blocked",
-                value: String(orders.filter((o) => o.blockedByVehicleId).length),
-                tone: pending > 0 ? "danger" : "muted",
+                value: String(blocked),
+                tone: blocked > 0 ? "danger" : "muted",
               },
             },
           ],

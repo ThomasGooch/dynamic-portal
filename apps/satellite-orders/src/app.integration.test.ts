@@ -94,6 +94,32 @@ describe("authentication", () => {
   it("serves the manifest unauthenticated — it carries no tenant data", async () => {
     expect((await get("/portal/manifest")).status).toBe(200);
   });
+
+  it("accepts a lowercase bearer scheme — RFC 7235 makes it case-insensitive", async () => {
+    const token = signPrincipal(principal(), SECRET);
+    const res = await fetch(`${baseUrl}/portal/screens/orders.list`, {
+      headers: { authorization: `bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("declared audience, enforced by the satellite", () => {
+  // The manifest says internal-only. Default-deny is worth nothing if the
+  // satellite parses the principal's audience and then ignores it: a validly
+  // signed external principal would read internal tenant data.
+  it("refuses a validly signed principal from an undeclared audience", async () => {
+    const external = signPrincipal(principal({ audience: "external" }), SECRET);
+    expect((await get("/portal/screens/orders.list", external)).status).toBe(403);
+  });
+
+  it("refuses an external principal's action even with the write scope", async () => {
+    const external = signPrincipal(principal({ audience: "external" }), SECRET);
+    const own = repository.list("acme")[0]!;
+    expect(
+      (await post("/portal/actions/orders.approve", { id: own.id }, external)).status,
+    ).toBe(403);
+  });
 });
 
 describe("tenant isolation enforced by the satellite itself", () => {
@@ -186,9 +212,9 @@ describe("action envelopes", () => {
 
 /** Depth-first search for the first node of a given component type. */
 function findNode(
-  node: { type: string; props?: Record<string, unknown>; children?: unknown[] },
+  node: { type: string; props?: Record<string, unknown> | undefined; children?: unknown[] | undefined },
   type: string,
-): { type: string; props?: Record<string, unknown> } | undefined {
+): { type: string; props?: Record<string, unknown> | undefined } | undefined {
   if (node.type === type) return node;
   for (const child of node.children ?? []) {
     const found = findNode(child as typeof node, type);

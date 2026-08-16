@@ -9,10 +9,17 @@ export interface AppOptions {
   principalSecret: string;
 }
 
-declare module "express-serve-static-core" {
-  interface Request {
-    principal?: Principal;
-  }
+/**
+ * A request that has been through `authenticate`.
+ *
+ * Deliberately a local interface rather than a `declare module` augmentation:
+ * `@types/express` re-exports its `Request` from `express-serve-static-core`,
+ * which pnpm's strict node_modules does not expose to this package, so the
+ * augmentation silently fails to compile. Because `principal` is optional, a
+ * handler typed on `AuthedRequest` is still assignable to `RequestHandler`.
+ */
+interface AuthedRequest extends Request {
+  principal?: Principal | undefined;
 }
 
 /**
@@ -28,9 +35,11 @@ export function createApp({ repository, principalSecret }: AppOptions): Express 
   app.disable("x-powered-by");
 
   /** Establishes the principal. The manifest is public; everything else is not. */
-  function authenticate(req: Request, res: Response, next: NextFunction): void {
+  function authenticate(req: AuthedRequest, res: Response, next: NextFunction): void {
     const header = req.header("authorization") ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+    // RFC 7235: the auth-scheme is case-insensitive, so `bearer <token>` is a
+    // legal request and must not be read as "no credentials at all".
+    const token = /^bearer /i.test(header) ? header.slice("Bearer ".length) : "";
     if (token === "") {
       res.status(401).json({ error: "missing bearer token" });
       return;
@@ -48,13 +57,27 @@ export function createApp({ repository, principalSecret }: AppOptions): Express 
   }
 
   function requireScope(scope: string) {
-    return (req: Request, res: Response, next: NextFunction): void => {
+    return (req: AuthedRequest, res: Response, next: NextFunction): void => {
       if (!req.principal?.scopes.includes(scope)) {
         res.status(403).json({ error: `missing scope ${scope}` });
         return;
       }
       next();
     };
+  }
+
+  /**
+   * Default-deny audience, enforced by the satellite rather than assumed of the
+   * hub. This satellite declares itself internal-only; a principal minted for a
+   * different audience must not reach tenant data even with a valid signature.
+   */
+  const declaredAudience = manifest().audience;
+  function requireAudience(req: AuthedRequest, res: Response, next: NextFunction): void {
+    if (!declaredAudience.includes(req.principal!.audience)) {
+      res.status(403).json({ error: "audience not permitted" });
+      return;
+    }
+    next();
   }
 
   app.get("/healthz", (_req, res) => {
@@ -66,7 +89,7 @@ export function createApp({ repository, principalSecret }: AppOptions): Express 
     res.json(manifest());
   });
 
-  app.get("/portal/screens/:screenId", authenticate, (req, res) => {
+  app.get("/portal/screens/:screenId", authenticate, requireAudience, (req: AuthedRequest, res) => {
     const tenantId = req.principal!.tenantId;
 
     switch (req.params.screenId) {
@@ -95,8 +118,9 @@ export function createApp({ repository, principalSecret }: AppOptions): Express 
   app.post(
     "/portal/actions/orders.approve",
     authenticate,
+    requireAudience,
     requireScope("orders.write"),
-    (req, res) => {
+    (req: AuthedRequest, res) => {
       const tenantId = req.principal!.tenantId;
       const body = (req.body ?? {}) as { id?: unknown };
 
@@ -141,6 +165,22 @@ export function createApp({ repository, principalSecret }: AppOptions): Express 
 
   app.post("/portal/actions/:actionId", authenticate, (_req, res) => {
     res.status(404).json({ error: "unknown action" });
+  });
+
+  // Express's default handler renders the stack trace into the response body
+  // whenever NODE_ENV is not "production" — which is exactly how the compose
+  // stack runs it. Answer in JSON and keep the detail on the server side.
+  app.use((error: unknown, _req: Request, res: Response, next: NextFunction): void => {
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+    const status =
+      typeof error === "object" && error !== null && typeof (error as { status?: unknown }).status === "number"
+        ? (error as { status: number }).status
+        : 500;
+    if (status >= 500) console.error(error);
+    res.status(status).json({ error: status >= 500 ? "internal error" : "bad request" });
   });
 
   return app;

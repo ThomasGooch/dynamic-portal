@@ -44,12 +44,12 @@ services:
         APP_PATH: apps/satellite-orders
     environment:
       <<: *satellite-env
-      # Points stack-level tests at the running container rather than an
-      # in-process server. Absent locally, which is why the integration suite
-      # boots its own server when this is unset.
-      PORTAL_STACK_BASE_URL: http://satellite-orders:4001
     depends_on:
       satellite-orders:
         condition: service_healthy
-    command: ["pnpm", "run", "test:unit"]
+    # Both in-process tiers, not just unit: running only `test:unit` in the image
+    # would exercise exactly the tier that needs no container, and would leave
+    # the integration tier — the one that proves a satellite scopes its own
+    # tenants — untested in the environment the services actually run in.
+    command: ["sh", "-c", "pnpm run test:unit && pnpm run test:integration"]
     profiles: ["test"]
