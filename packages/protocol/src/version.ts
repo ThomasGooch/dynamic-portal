@@ -11,6 +11,8 @@
  *     it, giving satellite teams a migration window measured in quarters.
  */
 
+import { z } from "zod";
+
 export const CURRENT_PROTOCOL_VERSION = "1.0";
 
 /** How many majors before the current one remain supported (the "N-2" rule). */
@@ -21,7 +23,8 @@ export interface ProtocolVersion {
   readonly minor: number;
 }
 
-const VERSION_PATTERN = /^(\d+)\.(\d+)$/;
+/** The wire shape of a protocol version. Exported so schemas can reuse it. */
+export const PROTOCOL_VERSION_PATTERN = /^(\d+)\.(\d+)$/;
 
 export class InvalidProtocolVersionError extends Error {
   constructor(readonly value: string) {
@@ -31,10 +34,31 @@ export class InvalidProtocolVersionError extends Error {
 }
 
 export function parseProtocolVersion(value: string): ProtocolVersion {
-  const match = VERSION_PATTERN.exec(value);
+  const match = PROTOCOL_VERSION_PATTERN.exec(value);
   if (!match) throw new InvalidProtocolVersionError(value);
   return { major: Number(match[1]), minor: Number(match[2]) };
 }
+
+/**
+ * Parsed once at module load. Doing it per call would both repeat the work and
+ * put a throwing expression inside a function documented as total — a typo in
+ * the constant would surface as a runtime throw from `isSupportedProtocolVersion`
+ * instead of failing the moment the module is imported.
+ */
+const CURRENT_MAJOR = parseProtocolVersion(CURRENT_PROTOCOL_VERSION).major;
+
+/**
+ * The `protocol` field of every envelope and manifest.
+ *
+ * Well-formedness only: whether a *valid* version is still inside the support
+ * window is policy the caller applies with `isSupportedProtocolVersion`, so a
+ * hub can answer "upgrade your satellite" rather than "your JSON is malformed".
+ * Without this, `z.string().min(1)` accepted `"banana"` and the mistake only
+ * surfaced far downstream.
+ */
+export const ProtocolVersionSchema = z
+  .string()
+  .regex(PROTOCOL_VERSION_PATTERN, 'protocol must be "MAJOR.MINOR", e.g. "1.0"');
 
 /** Pure policy: is `major` inside the support window around `currentMajor`? */
 export function isMajorWithinSupportWindow(major: number, currentMajor: number): boolean {
@@ -53,6 +77,5 @@ export function isSupportedProtocolVersion(value: string): boolean {
   } catch {
     return false;
   }
-  const { major: currentMajor } = parseProtocolVersion(CURRENT_PROTOCOL_VERSION);
-  return isMajorWithinSupportWindow(parsed.major, currentMajor);
+  return isMajorWithinSupportWindow(parsed.major, CURRENT_MAJOR);
 }

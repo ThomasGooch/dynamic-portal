@@ -52,6 +52,38 @@ describe("Manifest", () => {
         ManifestSchema.parse({ ...validManifest, audience: [] }),
       ).toThrow();
     });
+
+    it("refuses a screen reaching wider than the satellite that declares it", () => {
+      // Otherwise a projection filtering on the screen's own audience — the
+      // natural reading — publishes a screen from an internal-only satellite.
+      expect(() =>
+        ManifestSchema.parse({
+          ...validManifest,
+          audience: ["internal"],
+          screens: [{ id: "orders.list", title: "Orders", audience: ["external"] }],
+        }),
+      ).toThrow(/audience the satellite does not/);
+    });
+
+    it("refuses an action reaching wider than the satellite that declares it", () => {
+      expect(() =>
+        ManifestSchema.parse({
+          ...validManifest,
+          audience: ["internal"],
+          actions: [{ id: "orders.approve", audience: ["external"] }],
+        }),
+      ).toThrow(/audience the satellite does not/);
+    });
+
+    it("allows an external screen once the satellite declares external", () => {
+      expect(() =>
+        ManifestSchema.parse({
+          ...validManifest,
+          audience: ["internal", "external"],
+          screens: [{ id: "orders.list", title: "Orders", audience: ["external"] }],
+        }),
+      ).not.toThrow();
+    });
   });
 
   describe("contract integrity", () => {
@@ -87,6 +119,43 @@ describe("Manifest", () => {
         }),
       ).toThrow();
     });
+
+    it("rejects duplicate screen param names", () => {
+      // Two params with one name means the hub renders two inputs and the last
+      // value silently wins.
+      expect(() =>
+        ManifestSchema.parse({
+          ...validManifest,
+          screens: [
+            { id: "orders.list", title: "Orders", params: [{ name: "id" }, { name: "id" }] },
+          ],
+        }),
+      ).toThrow(/duplicate param name/);
+    });
+
+    it("rejects a malformed protocol version", () => {
+      for (const bad of ["banana", "1", "1.2.3", "v1.0"]) {
+        expect(() => ManifestSchema.parse({ ...validManifest, protocol: bad })).toThrow();
+      }
+    });
+
+    it("rejects a nav entry pointing at a screen that does not exist", () => {
+      expect(() =>
+        ManifestSchema.parse({
+          ...validManifest,
+          nav: [{ screenId: "orders.lst", label: "Orders" }],
+        }),
+      ).toThrow(/unknown screen/);
+    });
+
+    it("accepts a nav entry pointing at a declared screen", () => {
+      expect(() =>
+        ManifestSchema.parse({
+          ...validManifest,
+          nav: [{ screenId: "orders.list", label: "Orders" }],
+        }),
+      ).not.toThrow();
+    });
   });
 
   describe("optional capability declarations", () => {
@@ -106,6 +175,25 @@ describe("Manifest", () => {
       expect(() =>
         ManifestSchema.parse({ ...validManifest, mcpUrl: "not a url" }),
       ).toThrow();
+    });
+
+    it("rejects an mcpUrl that parses but is not fetchable http(s)", () => {
+      // `new URL()` accepts all of these, so `z.string().url()` alone let a
+      // satellite hand the hub a scheme it should never dereference.
+      for (const bad of ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd"]) {
+        expect(() => ManifestSchema.parse({ ...validManifest, mcpUrl: bad })).toThrow();
+      }
+    });
+
+    it("rejects a healthPath that escapes the satellite's own origin", () => {
+      // "//evil.example" is protocol-relative: `new URL(path, satelliteBase)`
+      // resolves it to a different host, and the hub polls it.
+      for (const bad of ["//evil.example", "/\\evil.example"]) {
+        expect(() => ManifestSchema.parse({ ...validManifest, healthPath: bad })).toThrow();
+      }
+      expect(() =>
+        ManifestSchema.parse({ ...validManifest, healthPath: "/healthz" }),
+      ).not.toThrow();
     });
   });
 });
