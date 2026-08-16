@@ -38,6 +38,9 @@ importers:
       '@portal/catalog':
         specifier: workspace:*
         version: link:../../packages/catalog
+      '@portal/identity':
+        specifier: workspace:*
+        version: link:../../packages/identity
       '@portal/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -56,6 +59,15 @@ importers:
         version: 4.23.12
 
   packages/catalog:
+    dependencies:
+      '@portal/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+
+  packages/identity:
     dependencies:
       '@portal/protocol':
         specifier: workspace:*

@@ -3,16 +3,23 @@ import { z } from "zod";
 import { AudienceSchema } from "@portal/protocol";
 
 /**
- * The satellite verifies the identity it is handed. It does not trust the hub.
+ * Who is asking, and on whose behalf.
  *
- * This is the architecture's central security claim: authorization lives in the
- * satellite, so a hub bug is an availability incident rather than a cross-tenant
- * disclosure. That is only true if the satellite actually checks the signature —
- * hence this module rather than a header the caller could simply assert.
+ * The hub authenticates and propagates this; every satellite verifies it
+ * independently. The redundancy is the point: if authorization lived only in
+ * the hub, one hub bug would be a cross-tenant disclosure across every
+ * solution at once. With verification in the satellites, a hub bug is an
+ * availability incident.
  *
- * The prototype uses a shared HMAC secret. Production swaps this for verifying
- * an RFC 8693 exchanged token against the issuer's JWKS; the call sites and the
- * `Principal` shape do not change.
+ * The wire format is shared with the Python satellite —
+ * base64url(JSON) "." base64url(HMAC-SHA256) — and a cross-language test in
+ * both languages pins it. Verification runs over the payload *as received* and
+ * never re-serialises: JSON key order differs between languages, so re-encoding
+ * before comparing would break every cross-language token.
+ *
+ * The prototype uses a shared HMAC secret. Production verifies an RFC 8693
+ * exchanged token against the issuer's JWKS; `Principal` and every call site
+ * stay as they are.
  */
 
 export const PrincipalSchema = z
@@ -34,7 +41,11 @@ export class InvalidPrincipalError extends Error {
 }
 
 function sign(payload: string, secret: string): string {
-  return createHmac("sha256", secret).update(payload).digest("base64url");
+  // utf-8 throughout. The payload segment is attacker-controlled and arrives
+  // decoded from a header, so an `ascii` encode would throw on any byte above
+  // 0x7F — and a throw that is not an InvalidPrincipalError escapes the auth
+  // layer as a 500 rather than a 401. The Python satellite had exactly that bug.
+  return createHmac("sha256", secret).update(payload, "utf8").digest("base64url");
 }
 
 export function signPrincipal(principal: Principal, secret: string): string {
@@ -51,7 +62,8 @@ export function verifyPrincipal(token: string, secret: string): Principal {
 
   const expected = Buffer.from(sign(payload, secret), "utf8");
   const actual = Buffer.from(signature, "utf8");
-  // Length check first: timingSafeEqual throws on a length mismatch.
+  // Length first: timingSafeEqual throws on a length mismatch, which would be
+  // an exception rather than a rejection.
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
     throw new InvalidPrincipalError("signature mismatch");
   }
@@ -63,6 +75,9 @@ export function verifyPrincipal(token: string, secret: string): Principal {
     throw new InvalidPrincipalError("payload is not JSON");
   }
 
+  // `.strict()` matters: the Python implementation is strict too, and a token
+  // that authenticates against one satellite while another refuses it is one
+  // identity with two answers.
   const parsed = PrincipalSchema.safeParse(decoded);
   if (!parsed.success) throw new InvalidPrincipalError("payload is not a principal");
   return parsed.data;

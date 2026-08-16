@@ -1,0 +1,32 @@
+/**
+ * Principal, tenancy, audience and the audit record.
+ *
+ * `PLAN.md` calls this the part you cannot refactor later, and puts it in M1
+ * for that reason. Everything else in the workspace is replaceable behind a
+ * seam; the identity and audit model is not.
+ */
+
+export {
+  InvalidPrincipalError,
+  PrincipalSchema,
+  signPrincipal,
+  verifyPrincipal,
+  type Principal,
+} from "./principal.js";
+
+export {
+  authorize,
+  type AuthorizationResult,
+  type AuthorizationTarget,
+} from "./authorize.js";
+
+export {
+  AuditEventSchema,
+  actionInvoke,
+  agentCompose,
+  canonicalDigest,
+  screenRead,
+  toolCall,
+  type AuditEvent,
+  type AuditOutcome,
+} from "./audit.js";
