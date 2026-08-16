@@ -31,9 +31,11 @@ export class SessionUnavailableError extends Error {
 }
 
 export function currentPrincipal(): Principal {
-  if (process.env["NODE_ENV"] === "production" && process.env["PORTAL_ALLOW_DEV_SESSION"] !== "1") {
-    throw new SessionUnavailableError();
-  }
+  // Allow-list, not a deny-list: `!== "development"` rather than
+  // `=== "production"`. A staging deploy run with NODE_ENV unset or set to
+  // anything else is exactly the case a deny-list misses, and missing it means
+  // silently authenticating every visitor as one fixed tenant.
+  if (!isDevSession()) throw new SessionUnavailableError();
 
   const tenantId = process.env["PORTAL_DEV_TENANT"];
   const audience = process.env["PORTAL_DEV_AUDIENCE"];
@@ -47,5 +49,5 @@ export function currentPrincipal(): Principal {
 
 /** True when the portal is running on the stub, so the shell can say so. */
 export function isDevSession(): boolean {
-  return process.env["NODE_ENV"] !== "production" || process.env["PORTAL_ALLOW_DEV_SESSION"] === "1";
+  return process.env["NODE_ENV"] === "development" || process.env["PORTAL_ALLOW_DEV_SESSION"] === "1";
 }

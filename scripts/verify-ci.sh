@@ -26,6 +26,11 @@ pnpm typecheck
 step "hub: build (typecheck)"
 pnpm --filter @portal/hub typecheck
 
+# `tsc` cannot see server/client boundary violations, a bad next.config, or a
+# page that fails to prerender — all of which bit during development.
+step "hub: build (next build)"
+PORTAL_PRINCIPAL_SECRET=verify-build-placeholder pnpm --filter @portal/hub build
+
 step "node: test - unit"
 pnpm test:unit
 

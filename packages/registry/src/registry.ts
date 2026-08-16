@@ -103,11 +103,15 @@ export function loadRegistry(
   source: string,
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Registry {
+  // Substitution happens before parsing, so a value may be any YAML scalar
+  // rather than only a quoted string. Deliberately outside the try below: an
+  // UnresolvedVariableError is not a YAML problem, and relabelling it as one
+  // sends an operator looking for a syntax error that is not there.
+  const expanded = expandEnv(source, env);
+
   let raw: unknown;
   try {
-    // Substitution happens before parsing, so a value may be any YAML scalar
-    // rather than only a quoted string.
-    raw = parseYaml(expandEnv(source, env));
+    raw = parseYaml(expanded);
   } catch (error) {
     throw new RegistryError(`registry is not valid YAML: ${(error as Error).message}`);
   }

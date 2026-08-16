@@ -27,6 +27,12 @@ export default async function ScreenPage({
   const principal = currentPrincipal();
   const portal = getPortal();
 
+  // A screen id is one segment. Without this, `/orders/orders.list/anything`
+  // silently renders `orders.list` and the trailing segments vanish — a
+  // mistyped or truncated deep link answering 200 with a page that is not the
+  // one the URL names.
+  if (screen !== undefined && screen.length > 1) notFound();
+
   const satellite = findSatellite(portal.registry, satelliteId);
   // 404 rather than 403 when a principal may not see a satellite: a 403 would
   // confirm it exists, which is the same disclosure the satellites avoid on
@@ -53,10 +59,20 @@ export default async function ScreenPage({
     );
   }
 
-  const screenId = screen?.[0] ?? manifest.value.screens[0]?.id;
+  // The default screen is the first one *this principal may see*, not simply
+  // the first declared. On a satellite widened to external, a first-declared
+  // internal-only screen would otherwise greet every external visitor with a
+  // refusal card instead of the first screen they can actually open.
+  const reachable = manifest.value.screens.filter(
+    (s) => authorize(principal, { audience: s.audience, rbacScopes: [] }).allowed,
+  );
+
+  const screenId = screen?.[0] ?? reachable[0]?.id;
   if (screenId === undefined) notFound();
 
-  const declared = manifest.value.screens.find((s) => s.id === screenId);
+  const declared = reachable.find((s) => s.id === screenId);
+  // A screen the principal may not see 404s rather than 403s, for the same
+  // reason an unauthorised satellite does: a 403 confirms it exists.
   if (declared === undefined) notFound();
 
   const params_: Record<string, string> = {};
