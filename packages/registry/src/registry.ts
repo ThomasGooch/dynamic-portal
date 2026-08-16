@@ -1,6 +1,6 @@
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
-import { AudienceListSchema, type Audience } from "@portal/protocol";
+import { AudienceListSchema, isAudienceSubset, type Audience } from "@portal/protocol";
 import { authorize, type Principal } from "@portal/identity";
 
 /**
@@ -65,9 +65,28 @@ export const SatelliteSchema = z
     rbacScopes: z.array(z.string().min(1)).default([]),
     /** A satellite that omits this must not be able to hang the hub. */
     timeoutMs: z.number().int().positive().default(3000),
-    tools: z.record(ToolPolicySchema).default({}),
+    // Keyed by IdSchema, not bare strings: a tool id is projected into an MCP
+    // tool name, so `"  weird key !!"` must be rejected here rather than
+    // discovered by whatever consumes the projection.
+    tools: z.record(IdSchema, ToolPolicySchema).default({}),
   })
-  .strict();
+  .strict()
+  .superRefine((satellite, ctx) => {
+    // Default-deny has to hold downwards, exactly as ManifestSchema enforces it
+    // for screens and actions. Without this, an internal-only satellite could
+    // still mark a tool ["external"], and a projection that filters on the
+    // tool's own audience — the natural reading — would publish it outside the
+    // org.
+    for (const [toolId, tool] of Object.entries(satellite.tools)) {
+      if (!isAudienceSubset(tool.audience, satellite.audience)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tools", toolId, "audience"],
+          message: `tool "${toolId}" is exposed to an audience its satellite is not`,
+        });
+      }
+    }
+  });
 
 export type Satellite = z.infer<typeof SatelliteSchema>;
 export type Registry = readonly Satellite[];
@@ -164,7 +183,7 @@ export function resolveNav(registry: Registry, principal: Principal): NavSection
   return [...bySection.entries()]
     .map(([section, items]) => ({
       section,
-      items: [...items].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label)),
+      items: items.sort((a, b) => a.order - b.order || a.label.localeCompare(b.label)),
     }))
     .sort((a, b) => a.section.localeCompare(b.section));
 }

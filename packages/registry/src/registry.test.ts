@@ -74,6 +74,27 @@ describe("loadRegistry", () => {
     ).toThrow();
   });
 
+  it("rejects a tool exposed to an audience its satellite is not", () => {
+    // Default-deny holds downwards, as it does in the manifest: otherwise an
+    // internal-only satellite could mark a tool ["external"], and a projection
+    // filtering on the tool's own audience would publish it outside the org.
+    expect(() =>
+      loadRegistry(
+        "- id: a\n  displayName: A\n  baseUrl: http://a.example\n  owner: t\n  audience: [internal]\n  tools:\n    a.approve:\n      audience: [external]\n",
+      ),
+    ).toThrow(/audience/i);
+  });
+
+  it("rejects a tool id that is not an id", () => {
+    // Tool ids are projected into MCP tool names, so they are held to the same
+    // shape as every other id rather than accepted as arbitrary strings.
+    expect(() =>
+      loadRegistry(
+        '- id: a\n  displayName: A\n  baseUrl: http://a.example\n  owner: t\n  tools:\n    "  Not An Id!":\n      rbacScopes: []\n',
+      ),
+    ).toThrow();
+  });
+
   it("rejects an empty registry rather than starting with no satellites", () => {
     expect(() => loadRegistry("[]")).toThrow();
   });

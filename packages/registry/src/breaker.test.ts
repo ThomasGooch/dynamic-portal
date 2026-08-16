@@ -92,4 +92,51 @@ describe("CircuitBreaker", () => {
   it("reports zero retry time while closed", () => {
     expect(new CircuitBreaker({ now: at(0) }).retryAfterMs()).toBe(0);
   });
+
+  it("does not let stragglers push the cooldown out", () => {
+    // The requests that were already in flight when the circuit tripped fail
+    // one after another. Restarting the cooldown on each of them would delay
+    // recovery by the length of the in-flight tail rather than by the cooldown
+    // the operator configured.
+    let clock = 0;
+    const breaker = new CircuitBreaker({ failureThreshold: 2, cooldownMs: 1000, now: () => clock });
+    breaker.recordFailure();
+    breaker.recordFailure();
+    expect(breaker.state).toBe("open");
+
+    clock = 500;
+    breaker.recordFailure();
+    expect(breaker.retryAfterMs()).toBe(500);
+
+    clock = 1000;
+    expect(breaker.allowsRequest()).toBe(true);
+  });
+
+  it("expires a probe whose outcome is never reported", () => {
+    // A caller that throws before recording — or abandons the request — would
+    // otherwise leave the breaker half-open forever, refusing every request for
+    // the life of the process. Nothing else can move it: half-open has no
+    // timer of its own.
+    let clock = 0;
+    const breaker = new CircuitBreaker({ failureThreshold: 1, cooldownMs: 1000, now: () => clock });
+    breaker.recordFailure();
+    clock = 1000;
+    expect(breaker.allowsRequest()).toBe(true);
+    expect(breaker.state).toBe("half-open");
+
+    clock = 2000;
+    expect(breaker.allowsRequest()).toBe(true);
+  });
+
+  it("reports a wait while a probe is outstanding rather than zero", () => {
+    // Half-open refuses everyone but the probe, so a zero here becomes
+    // `Retry-After: 0` and the herd half-open exists to prevent.
+    let clock = 0;
+    const breaker = new CircuitBreaker({ failureThreshold: 1, cooldownMs: 1000, now: () => clock });
+    breaker.recordFailure();
+    clock = 1000;
+    breaker.allowsRequest();
+    expect(breaker.allowsRequest()).toBe(false);
+    expect(breaker.retryAfterMs()).toBeGreaterThan(0);
+  });
 });

@@ -14,6 +14,7 @@ export {
   loadRegistry,
   resolveNav,
   visibleSatellites,
+  type Audience,
   type NavItem,
   type NavSection,
   type Registry,

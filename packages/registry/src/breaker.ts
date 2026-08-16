@@ -30,6 +30,8 @@ export class CircuitBreaker {
   #state: BreakerState = "closed";
   /** True once half-open has handed out its single probe. */
   #probeInFlight = false;
+  /** When that probe was handed out, so an unreported one can expire. */
+  #probeStartedAt = 0;
 
   constructor(options: CircuitBreakerOptions = {}) {
     this.#failureThreshold = options.failureThreshold ?? 5;
@@ -52,13 +54,22 @@ export class CircuitBreaker {
       if (this.#now() - this.#openedAt < this.#cooldownMs) return false;
       this.#state = "half-open";
       this.#probeInFlight = true;
+      this.#probeStartedAt = this.#now();
       return true;
     }
 
     // Half-open lets exactly one request through. The point is a single probe,
     // not a thundering herd at a satellite that has only just recovered.
-    if (this.#probeInFlight) return false;
+    //
+    // The probe expires after a cooldown, because a caller that throws before
+    // recording an outcome — or abandons the request — would otherwise leave
+    // `probeInFlight` set forever, wedging the breaker half-open and refusing
+    // every request for the rest of the process's life.
+    if (this.#probeInFlight && this.#now() - this.#probeStartedAt < this.#cooldownMs) {
+      return false;
+    }
     this.#probeInFlight = true;
+    this.#probeStartedAt = this.#now();
     return true;
   }
 
@@ -69,6 +80,12 @@ export class CircuitBreaker {
   }
 
   recordFailure(): void {
+    // A failure reported while the circuit is already open belongs to a request
+    // that was in flight when it tripped. Counting it would push `openedAt`
+    // forward on every straggler, delaying half-open by the length of the
+    // in-flight tail rather than by the cooldown that was configured.
+    if (this.#state === "open") return;
+
     this.#probeInFlight = false;
 
     // A failed probe returns to open and waits the full cooldown again, rather
@@ -86,9 +103,17 @@ export class CircuitBreaker {
     }
   }
 
-  /** Milliseconds until the next request would be allowed; 0 when closed. */
+  /** Milliseconds until the next request would be allowed; 0 when one is allowed now. */
   retryAfterMs(): number {
-    if (this.#state !== "open") return 0;
-    return Math.max(0, this.#cooldownMs - (this.#now() - this.#openedAt));
+    if (this.#state === "open") {
+      return Math.max(0, this.#cooldownMs - (this.#now() - this.#openedAt));
+    }
+    // Half-open with a probe outstanding refuses requests too. Reporting 0 there
+    // tells the caller — and, via Retry-After, the browser — to try again
+    // immediately, which is precisely the herd half-open exists to prevent.
+    if (this.#state === "half-open" && this.#probeInFlight) {
+      return Math.max(0, this.#cooldownMs - (this.#now() - this.#probeStartedAt));
+    }
+    return 0;
   }
 }
