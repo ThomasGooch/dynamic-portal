@@ -26,6 +26,16 @@
 
   --accent: #2b4f7d;
 
+  /* Chart series, in the order a satellite declares them. Six is a deliberate
+     ceiling: a chart needing a seventh distinguishable colour is a chart no
+     reader can follow, and the honest fix is a different chart. */
+  --chart-1: #2b5f9e;
+  --chart-2: #1f7a4d;
+  --chart-3: #9a6212;
+  --chart-4: #7a3d8f;
+  --chart-5: #a3282a;
+  --chart-6: #2f7f86;
+
   --radius: 8px;
   --gap-xs: 4px;
   --gap-sm: 8px;
@@ -55,6 +65,13 @@
     --tone-danger: #e2807f;
 
     --accent: #7fa7d8;
+
+    --chart-1: #7aa9e0;
+    --chart-2: #63c795;
+    --chart-3: #d8a250;
+    --chart-4: #c093d6;
+    --chart-5: #e2807f;
+    --chart-6: #6fc6cd;
   }
 }
 

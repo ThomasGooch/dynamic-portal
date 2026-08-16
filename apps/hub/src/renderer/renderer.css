@@ -1,0 +1,672 @@
+/*
+ * Every satellite's look, in one file.
+ *
+ * This is the payoff the whole architecture is arranged around. A satellite
+ * says `tone: "danger"` or `gap: "lg"`; this file decides what those mean. No
+ * satellite ships a byte of CSS, none can, and changing a rule here changes
+ * every solution in the portal at once without redeploying any of them.
+ *
+ * Selectors are attribute-based on purpose. A component sets `data-tone` and
+ * the styling follows from the token table in `globals.css` — so adding a tone
+ * is a token plus a rule, not a change in a component.
+ */
+
+.r-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+}
+
+/* ---- headings and text ------------------------------------------------- */
+
+.r-title,
+.r-heading {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+h2.r-title, h2.r-heading { font-size: 20px; }
+h3.r-title, h3.r-heading { font-size: 17px; }
+h4.r-title, h4.r-heading { font-size: 15px; }
+h5.r-title, h5.r-heading, h6.r-title, h6.r-heading { font-size: 14px; }
+
+.r-text {
+  margin: 0;
+}
+
+.r-text[data-size="sm"] { font-size: 13px; }
+.r-text[data-size="lg"] { font-size: 17px; }
+.r-text[data-emphasis] { font-weight: 600; }
+
+.r-muted,
+.r-text[data-tone="muted"] {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.r-text[data-tone="info"] { color: var(--tone-info); }
+.r-text[data-tone="success"] { color: var(--tone-success); }
+.r-text[data-tone="warning"] { color: var(--tone-warning); }
+.r-text[data-tone="danger"] { color: var(--tone-danger); }
+
+/* ---- layout ------------------------------------------------------------ */
+
+.r-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.r-summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 17px;
+  margin-bottom: var(--gap-sm);
+}
+
+.r-stack {
+  display: flex;
+}
+
+.r-stack[data-direction="column"] { flex-direction: column; }
+.r-stack[data-direction="row"] { flex-direction: row; }
+.r-stack[data-wrap] { flex-wrap: wrap; }
+
+.r-stack[data-align="start"] { align-items: flex-start; }
+.r-stack[data-align="center"] { align-items: center; }
+.r-stack[data-align="end"] { align-items: flex-end; }
+.r-stack[data-align="stretch"] { align-items: stretch; }
+
+.r-grid {
+  display: grid;
+}
+
+.r-stack[data-gap="none"], .r-grid[data-gap="none"] { gap: 0; }
+.r-stack[data-gap="xs"], .r-grid[data-gap="xs"] { gap: var(--gap-xs); }
+.r-stack[data-gap="sm"], .r-grid[data-gap="sm"] { gap: var(--gap-sm); }
+.r-stack[data-gap="md"], .r-grid[data-gap="md"] { gap: var(--gap-md); }
+.r-stack[data-gap="lg"], .r-grid[data-gap="lg"] { gap: var(--gap-lg); }
+
+/* A grid whose declared column count would squeeze past readability becomes a
+   single column, rather than being clipped. The satellite said how many
+   columns it wants; the hub still owns whether that fits. */
+@media (max-width: 720px) {
+  .r-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+.r-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: var(--gap-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.r-card[data-tone="info"] { border-left-color: var(--tone-info); }
+.r-card[data-tone="success"] { border-left-color: var(--tone-success); }
+.r-card[data-tone="warning"] { border-left-color: var(--tone-warning); }
+.r-card[data-tone="danger"] { border-left-color: var(--tone-danger); }
+.r-card[data-tone="muted"] { border-left-color: var(--border); }
+
+.r-divider {
+  border: 0;
+  border-top: 1px solid var(--border);
+  width: 100%;
+}
+
+.r-divider[data-spacing="none"] { margin: 0; }
+.r-divider[data-spacing="xs"] { margin: var(--gap-xs) 0; }
+.r-divider[data-spacing="sm"] { margin: var(--gap-sm) 0; }
+.r-divider[data-spacing="md"] { margin: var(--gap-md) 0; }
+.r-divider[data-spacing="lg"] { margin: var(--gap-lg) 0; }
+
+/* ---- tabs -------------------------------------------------------------- */
+
+.r-tablist {
+  display: flex;
+  gap: var(--gap-xs);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--gap-md);
+  overflow-x: auto;
+}
+
+.r-tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: var(--gap-sm) var(--gap-md);
+  font: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.r-tab[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- modal ------------------------------------------------------------- */
+
+.r-modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 45%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gap-md);
+  z-index: 20;
+}
+
+.r-modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: var(--gap-lg);
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.r-modal[data-size="sm"] { max-width: 420px; }
+.r-modal[data-size="md"] { max-width: 640px; }
+.r-modal[data-size="lg"] { max-width: 900px; }
+
+.r-modalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+}
+
+.r-iconButton {
+  appearance: none;
+  background: none;
+  border: 0;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 var(--gap-xs);
+}
+
+/* ---- badges, stats, key-values ---------------------------------------- */
+
+.r-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.r-badge[data-tone="info"] { background: color-mix(in srgb, var(--tone-info) 16%, transparent); color: var(--tone-info); }
+.r-badge[data-tone="success"] { background: color-mix(in srgb, var(--tone-success) 16%, transparent); color: var(--tone-success); }
+.r-badge[data-tone="warning"] { background: color-mix(in srgb, var(--tone-warning) 18%, transparent); color: var(--tone-warning); }
+.r-badge[data-tone="danger"] { background: color-mix(in srgb, var(--tone-danger) 16%, transparent); color: var(--tone-danger); }
+
+.r-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--gap-md);
+}
+
+.r-statLabel {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.r-statValue {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.r-stat[data-tone="info"] .r-statValue { color: var(--tone-info); }
+.r-stat[data-tone="success"] .r-statValue { color: var(--tone-success); }
+.r-stat[data-tone="warning"] .r-statValue { color: var(--tone-warning); }
+.r-stat[data-tone="danger"] .r-statValue { color: var(--tone-danger); }
+
+.r-statCaption {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.r-kv {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: var(--gap-xs) var(--gap-md);
+}
+
+.r-kvRow {
+  display: contents;
+}
+
+.r-kv dt {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.r-kv dd {
+  margin: 0;
+}
+
+/* ---- provenance -------------------------------------------------------- */
+
+/* Rendered wherever a value carries `source`. Agent-composed facts must read as
+   derived, not authoritative — see PLAN.md's grounding rule. */
+.r-source {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px dotted var(--border-strong);
+  text-decoration: none;
+  cursor: help;
+  align-self: flex-start;
+}
+
+/* ---- alerts, empty states, timeline ------------------------------------ */
+
+.r-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--gap-sm) var(--gap-md);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--tone-info);
+  background: var(--surface-sunken);
+}
+
+.r-alert[data-level="success"] { border-left-color: var(--tone-success); }
+.r-alert[data-level="warning"] { border-left-color: var(--tone-warning); }
+.r-alert[data-level="error"] { border-left-color: var(--tone-danger); }
+
+.r-empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: var(--gap-lg);
+  text-align: center;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.r-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--gap-md);
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.r-timeline li {
+  position: relative;
+}
+
+.r-timeline li::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--gap-md) * -1 - 5px);
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.r-timeline li[data-tone="info"]::before { background: var(--tone-info); }
+.r-timeline li[data-tone="success"]::before { background: var(--tone-success); }
+.r-timeline li[data-tone="warning"]::before { background: var(--tone-warning); }
+.r-timeline li[data-tone="danger"]::before { background: var(--tone-danger); }
+
+.r-timelineWhen {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ---- table ------------------------------------------------------------- */
+
+.r-tableWrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  /* The wrapper scrolls, not the page: a wide table must never make the whole
+     shell scroll sideways. */
+  overflow-x: auto;
+}
+
+.r-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.r-table th,
+.r-table td {
+  padding: var(--gap-sm) var(--gap-md);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.r-table th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  font-weight: 600;
+}
+
+.r-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.r-table [data-align="center"] { text-align: center; }
+.r-table [data-align="end"] { text-align: right; }
+
+.r-table code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.r-tableFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--surface-sunken);
+}
+
+.r-tableFoot:empty {
+  display: none;
+}
+
+.r-pager {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+  margin-left: auto;
+  font-size: 13px;
+}
+
+.r-pagerStatus {
+  color: var(--text-muted);
+}
+
+.r-pagerDisabled {
+  color: var(--border-strong);
+}
+
+/* ---- chart ------------------------------------------------------------- */
+
+.r-chart {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--gap-md);
+}
+
+.r-chart figcaption {
+  margin-top: var(--gap-sm);
+}
+
+/* ---- forms ------------------------------------------------------------- */
+
+.r-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.r-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.r-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.r-required {
+  color: var(--tone-danger);
+  text-decoration: none;
+  margin-left: 2px;
+}
+
+.r-input {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  width: 100%;
+  max-width: 480px;
+}
+
+.r-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.r-field[data-invalid] .r-input {
+  border-color: var(--tone-danger);
+}
+
+.r-help {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.r-warn {
+  color: var(--tone-warning);
+}
+
+.r-fieldError {
+  font-size: 12px;
+  color: var(--tone-danger);
+  font-weight: 600;
+}
+
+.r-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.r-radios {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.r-radio,
+.r-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  cursor: pointer;
+}
+
+.r-dateRange {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.r-formActions {
+  display: flex;
+  gap: var(--gap-sm);
+  justify-content: flex-end;
+}
+
+/* ---- buttons, links, menus -------------------------------------------- */
+
+.r-button {
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  padding: 8px 14px;
+  cursor: pointer;
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+.r-button[data-size="sm"] { padding: 4px 10px; font-size: 13px; }
+.r-button[data-size="lg"] { padding: 11px 20px; font-size: 16px; }
+
+.r-button[data-variant="primary"] {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+
+.r-button[data-variant="secondary"] {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.r-button[data-variant="danger"] {
+  background: var(--tone-danger);
+  color: var(--text-inverse);
+}
+
+.r-button[data-variant="ghost"] {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.r-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.r-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.r-link[data-inert] {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+
+.r-externalMark {
+  font-size: 11px;
+  margin-left: 2px;
+}
+
+.r-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.r-menuList {
+  position: absolute;
+  z-index: 10;
+  margin: var(--gap-xs) 0 0;
+  padding: var(--gap-xs);
+  list-style: none;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+
+.r-menuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  padding: 6px 10px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.r-menuItem:hover:not(:disabled) {
+  background: var(--surface-sunken);
+}
+
+.r-menuItem[data-inert],
+.r-menuItem:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* ---- toast ------------------------------------------------------------- */
+
+.r-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  padding: var(--gap-sm) var(--gap-md);
+  border-radius: var(--radius);
+  margin-bottom: var(--gap-md);
+  border-left: 3px solid var(--tone-info);
+  background: var(--surface-sunken);
+}
+
+.r-toast[data-level="success"] { border-left-color: var(--tone-success); }
+.r-toast[data-level="warning"] { border-left-color: var(--tone-warning); }
+.r-toast[data-level="error"] { border-left-color: var(--tone-danger); }
+
+/* ---- the component the hub will not draw ------------------------------- */
+
+/*
+ * Deliberately conspicuous. A screen quietly missing a section becomes a
+ * support ticket about missing data; a screen with a labelled gap becomes a bug
+ * report naming the component.
+ */
+.r-unrenderable {
+  border: 1px dashed var(--tone-warning);
+  border-radius: var(--radius);
+  padding: var(--gap-sm) var(--gap-md);
+  color: var(--tone-warning);
+  font-size: 13px;
+  background: color-mix(in srgb, var(--tone-warning) 8%, transparent);
+}
