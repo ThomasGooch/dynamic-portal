@@ -34,6 +34,40 @@ const NOT_FOUND: ActionApiResult = {
   message: "That action is not available.",
 };
 
+/**
+ * Reads the body, giving up as soon as it passes the limit.
+ *
+ * `request.text()` would buffer the whole thing first and only then let the
+ * caller object, which pays exactly the cost the limit exists to avoid — and a
+ * `content-length` check alone does not save it, because a chunked request has
+ * no such header and a dishonest one can simply understate it.
+ *
+ * Counted in bytes off the wire, not in characters: `String.length` is UTF-16
+ * code units, so a payload of non-ASCII text weighs up to twice what it would
+ * be credited with.
+ */
+async function readBounded(request: Request, limit: number): Promise<string | null> {
+  if (request.body === null) return "";
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      // Stops the sender rather than reading to the end and discarding it.
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+
+  return new TextDecoder("utf-8").decode(Buffer.concat(chunks));
+}
+
 function json(result: ActionApiResult, status: number): Response {
   return new Response(JSON.stringify(result), {
     status,
@@ -74,13 +108,20 @@ export async function POST(
     return json(NOT_FOUND, 404);
   }
 
-  const raw = await request.text();
-  if (raw.length > MAX_PAYLOAD_BYTES) {
-    return json(
-      { ok: false, reason: "too-large", message: "That submission is too large to send." },
-      413,
-    );
+  const tooLarge: ActionApiResult = {
+    ok: false,
+    reason: "too-large",
+    message: "That submission is too large to send.",
+  };
+
+  // Refused from the header when there is one, which costs nothing.
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_PAYLOAD_BYTES) {
+    return json(tooLarge, 413);
   }
+
+  const raw = await readBounded(request, MAX_PAYLOAD_BYTES);
+  if (raw === null) return json(tooLarge, 413);
 
   let payload: unknown;
   try {

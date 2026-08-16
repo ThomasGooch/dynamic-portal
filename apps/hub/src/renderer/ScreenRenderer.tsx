@@ -42,21 +42,37 @@ export function ScreenRenderer(props: ScreenRendererProps) {
   // `router.refresh()`, a navigation — replaces it rather than leaving the user
   // looking at patched-over stale data indefinitely.
   const [tree, setTree] = useState({ source: props.ui, ui: props.ui });
-  if (tree.source !== props.ui) setTree({ source: props.ui, ui: props.ui });
 
   const { show: setToast } = useToaster();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState<ActionRequest | undefined>(undefined);
 
+  if (tree.source !== props.ui) {
+    setTree({ source: props.ui, ui: props.ui });
+    // The screen changed underneath this component, which stays mounted across
+    // a navigation within the portal. Anything keyed to the *previous* screen
+    // has to go with it: an error keyed by field `id` would otherwise reappear
+    // beside a field of the same name on the screen that replaced it, and a
+    // confirmation dialog left open would still be holding the old screen's
+    // action.
+    setFieldErrors((previous) => (Object.keys(previous).length === 0 ? previous : {}));
+    setConfirming(undefined);
+  }
+
   function applyEnvelope(envelope: ActionResponse): void {
     if (envelope.toast !== undefined) setToast(envelope.toast);
     if (envelope.fieldErrors !== undefined) setFieldErrors({ ...envelope.fieldErrors });
+
+    // An envelope may carry more than one of these; each is handled, and only
+    // the fallback refetch is skipped once something more specific has run.
+    let handled = false;
 
     if (envelope.patch !== undefined && envelope.patch.length > 0) {
       const patched = applyPatches(tree.ui, envelope.patch);
       if (patched.ok) {
         setTree({ source: tree.source, ui: patched.ui });
+        handled = true;
       } else {
         // The action succeeded; only the in-place update did not. Refetching
         // gets the truth, so the satellite's own message stands and the user is
@@ -64,9 +80,13 @@ export function ScreenRenderer(props: ScreenRendererProps) {
         // reason, because an unappliable patch usually means the satellite sent
         // one for a screen the user is not on.
         console.warn(`[portal] patch not applied: ${patched.reason}`);
-        router.refresh();
+        if (envelope.navigate === undefined) {
+          router.refresh();
+          return;
+        }
+        // A navigate is about to fetch a whole screen anyway, so it supersedes
+        // the refetch rather than racing it.
       }
-      return;
     }
 
     if (envelope.navigate !== undefined) {
@@ -78,6 +98,16 @@ export function ScreenRenderer(props: ScreenRendererProps) {
       });
       if (link.kind === "internal") router.push(link.href);
       else setToast({ level: "error", message: "This solution asked to open a screen you cannot reach." });
+      return;
+    }
+
+    if (handled) return;
+
+    // A failure the satellite described in no other way. Without this the user
+    // clicks, the button re-enables, and nothing on the screen says the action
+    // did not work.
+    if (envelope.outcome === "error" && envelope.toast === undefined) {
+      setToast({ level: "error", message: "That action did not complete." });
       return;
     }
 

@@ -170,25 +170,36 @@ export const NumberField: Renderer<"NumberField"> = ({ props }) => (
   </Field>
 );
 
-export const Select: Renderer<"Select"> = ({ props }) => (
-  <Field meta={props}>
-    <select
-      {...useAria(props)}
-      className="r-input"
-      name={props.name}
-      defaultValue={props.value ?? ""}
-      disabled={props.disabled === true}
-      required={props.required === true}
-    >
-      {props.value === undefined && <option value="">Choose…</option>}
-      {props.options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled === true}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  </Field>
-);
+export const Select: Renderer<"Select"> = ({ props }) => {
+  // A `value` naming no option is not a selection. The browser would silently
+  // fall back to the first option, so the satellite's own default would be
+  // submitted as whatever happened to be listed first — the placeholder is the
+  // honest rendering of "nothing is chosen".
+  const selected =
+    props.value !== undefined && props.options.some((option) => option.value === props.value)
+      ? props.value
+      : undefined;
+
+  return (
+    <Field meta={props}>
+      <select
+        {...useAria(props)}
+        className="r-input"
+        name={props.name}
+        defaultValue={selected ?? ""}
+        disabled={props.disabled === true}
+        required={props.required === true}
+      >
+        {selected === undefined && <option value="">Choose…</option>}
+        {props.options.map((option) => (
+          <option key={option.value} value={option.value} disabled={option.disabled === true}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+};
 
 export const MultiSelect: Renderer<"MultiSelect"> = ({ props }) => (
   <Field meta={props}>

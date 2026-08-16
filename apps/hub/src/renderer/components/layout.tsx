@@ -118,7 +118,15 @@ export const Tabs: Renderer<"Tabs"> = ({ props, children }) => {
   // an empty panel with every tab looking unselected.
   const initial =
     declared !== undefined && props.tabs.some((tab) => tab.id === declared) ? declared : first;
-  const [active, setActive] = useState(initial);
+
+  // Which tab is showing is the user's, not the satellite's — until the
+  // satellite changes its mind. A patch that re-renders this node with a
+  // different `activeId` lands on a component React keeps mounted, so without
+  // this the new selection is silently ignored and the user is left on the old
+  // tab. Keyed on the *declared* value, so a user's own click still sticks.
+  const [selection, setSelection] = useState({ declared, active: initial });
+  if (selection.declared !== declared) setSelection({ declared, active: initial });
+  const active = selection.declared === declared ? selection.active : initial;
 
   if (first === undefined) return null;
 
@@ -135,7 +143,7 @@ export const Tabs: Renderer<"Tabs"> = ({ props, children }) => {
             role="tab"
             className="r-tab"
             aria-selected={tab.id === active}
-            onClick={() => setActive(tab.id)}
+            onClick={() => setSelection({ declared, active: tab.id })}
           >
             {tab.label}
           </button>
@@ -151,7 +159,19 @@ export const Tabs: Renderer<"Tabs"> = ({ props, children }) => {
 };
 
 export const Modal: Renderer<"Modal"> = ({ props, children }) => {
-  const [open, setOpen] = useState(props.open === true);
+  const declared = props.open === true;
+  // Dismissal is the user's, `open` is the satellite's, and React keeps this
+  // component mounted across a patch — so the satellite re-opens a dismissed
+  // dialog by *transitioning* `open`, not by re-asserting it. A patch that
+  // sends `open: true` to a modal the user has already closed changes nothing,
+  // because nothing distinguishes it from the render that put it there.
+  // Resetting on every patch instead would spuriously re-open a modal that sits
+  // outside the subtree the patch replaced; telling those apart needs per-node
+  // patch provenance, which is a design decision rather than a fix.
+  const [state, setState] = useState({ declared, open: declared });
+  if (state.declared !== declared) setState({ declared, open: declared });
+  const open = state.declared === declared ? state.open : declared;
+
   if (!open) return null;
 
   return (
@@ -159,7 +179,12 @@ export const Modal: Renderer<"Modal"> = ({ props, children }) => {
       <div className="r-modal" role="dialog" aria-modal="true" aria-label={props.title} data-size={props.size ?? "md"}>
         <div className="r-modalHead">
           <Title text={props.title} />
-          <button type="button" className="r-iconButton" onClick={() => setOpen(false)} aria-label="Close">
+          <button
+            type="button"
+            className="r-iconButton"
+            onClick={() => setState({ declared, open: false })}
+            aria-label="Close"
+          >
             ×
           </button>
         </div>

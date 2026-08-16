@@ -14,6 +14,17 @@ import { expect, test, type Page } from "@playwright/test";
 
 const run = promisify(execFile);
 
+/**
+ * Health endpoint for a satellite.
+ *
+ * The `PORTAL_*_URL` variables hold a *base* url — that is how
+ * `docker-compose.yml` sets them and how `stack.spec.ts` reads them — so the
+ * path is appended here rather than baked into the fallback. Using the variable
+ * as a whole url polls `/`, which the satellites do not serve, and the wait
+ * then times out on a container that is perfectly healthy.
+ */
+const healthUrl = (base: string): string => `${base.replace(/\/+$/, "")}/healthz`;
+
 /** Waits for a container to report healthy again after being interfered with. */
 async function waitForHealthy(url: string, attempts = 60): Promise<void> {
   for (let i = 0; i < attempts; i += 1) {
@@ -118,7 +129,7 @@ test.describe("the action envelope", () => {
   // rather than the test being written to tolerate whatever it inherited.
   test.beforeAll(async () => {
     await compose("restart", "satellite-orders");
-    await waitForHealthy(process.env["PORTAL_ORDERS_URL"] ?? "http://127.0.0.1:4001/healthz");
+    await waitForHealthy(healthUrl(process.env["PORTAL_ORDERS_URL"] ?? "http://127.0.0.1:4001"));
   });
 
   test("patch replaces one node without navigating or reloading", async ({ page }) => {
@@ -213,7 +224,7 @@ test.describe("blast radius", () => {
 
   test.afterAll(async () => {
     await compose("start", "satellite-fleet");
-    await waitForHealthy(process.env["PORTAL_FLEET_URL"] ?? "http://127.0.0.1:4002/healthz");
+    await waitForHealthy(healthUrl(process.env["PORTAL_FLEET_URL"] ?? "http://127.0.0.1:4002"));
   });
 
   test("a dead satellite degrades to a card while the others keep working", async ({ page }) => {
