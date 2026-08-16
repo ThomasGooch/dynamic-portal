@@ -29,7 +29,13 @@ WORKDIR /repo
 # (slow) install layer.
 FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+# Every workspace package needs its manifest here, not just the ones the app
+# imports directly. `pnpm install --frozen-lockfile` does not error on a missing
+# one — it creates a dangling symlink and never materialises that package's
+# node_modules, so the failure surfaces later as an unresolvable dependency
+# under pnpm's isolated layout. Adding a package means adding a line here.
 COPY packages/protocol/package.json  packages/protocol/package.json
+COPY packages/identity/package.json  packages/identity/package.json
 COPY packages/catalog/package.json   packages/catalog/package.json
 COPY apps/satellite-orders/package.json apps/satellite-orders/package.json
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \

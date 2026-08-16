@@ -6,7 +6,7 @@ import {
   ScreenResponseSchema,
 } from "@portal/protocol";
 import { createApp } from "./app.js";
-import { signPrincipal, type Principal } from "./principal.js";
+import { signPrincipal, type Principal } from "@portal/identity";
 import { OrderRepository, seedOrders } from "./repository.js";
 
 const SECRET = "integration-secret";

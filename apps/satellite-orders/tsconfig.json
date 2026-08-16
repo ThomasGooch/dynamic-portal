@@ -16,6 +16,9 @@
     },
     {
       "path": "../../packages/catalog"
+    },
+    {
+      "path": "../../packages/identity"
     }
   ]
 }

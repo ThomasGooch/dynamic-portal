@@ -1,6 +1,11 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { CURRENT_PROTOCOL_VERSION, type ActionResponse } from "@portal/protocol";
-import { InvalidPrincipalError, verifyPrincipal, type Principal } from "./principal.js";
+import {
+  InvalidPrincipalError,
+  authorize,
+  verifyPrincipal,
+  type Principal,
+} from "@portal/identity";
 import type { OrderRepository } from "./repository.js";
 import { detailScreen, listScreen, manifest, ordersTable } from "./screens.js";
 
@@ -56,28 +61,26 @@ export function createApp({ repository, principalSecret }: AppOptions): Express 
     }
   }
 
-  function requireScope(scope: string) {
+  /**
+   * Default-deny audience and scope, enforced by the satellite rather than
+   * assumed of the hub. This satellite declares itself internal-only; a
+   * principal minted for a different audience must not reach tenant data even
+   * with a valid signature.
+   *
+   * The *decision* comes from `@portal/identity` so both satellites answer
+   * identically; the *enforcement* stays here, because that is what keeps a hub
+   * bug from becoming a cross-tenant disclosure.
+   */
+  const declaredAudience = manifest().audience;
+  function requireAccess(rbacScopes: readonly string[]) {
     return (req: AuthedRequest, res: Response, next: NextFunction): void => {
-      if (!req.principal?.scopes.includes(scope)) {
-        res.status(403).json({ error: `missing scope ${scope}` });
+      const result = authorize(req.principal!, { audience: declaredAudience, rbacScopes });
+      if (!result.allowed) {
+        res.status(result.status).json({ error: result.reason });
         return;
       }
       next();
     };
-  }
-
-  /**
-   * Default-deny audience, enforced by the satellite rather than assumed of the
-   * hub. This satellite declares itself internal-only; a principal minted for a
-   * different audience must not reach tenant data even with a valid signature.
-   */
-  const declaredAudience = manifest().audience;
-  function requireAudience(req: AuthedRequest, res: Response, next: NextFunction): void {
-    if (!declaredAudience.includes(req.principal!.audience)) {
-      res.status(403).json({ error: "audience not permitted" });
-      return;
-    }
-    next();
   }
 
   app.get("/healthz", (_req, res) => {
@@ -89,7 +92,7 @@ export function createApp({ repository, principalSecret }: AppOptions): Express 
     res.json(manifest());
   });
 
-  app.get("/portal/screens/:screenId", authenticate, requireAudience, (req: AuthedRequest, res) => {
+  app.get("/portal/screens/:screenId", authenticate, requireAccess(["orders.read"]), (req: AuthedRequest, res) => {
     const tenantId = req.principal!.tenantId;
 
     switch (req.params.screenId) {
@@ -118,8 +121,7 @@ export function createApp({ repository, principalSecret }: AppOptions): Express 
   app.post(
     "/portal/actions/orders.approve",
     authenticate,
-    requireAudience,
-    requireScope("orders.write"),
+    requireAccess(["orders.write"]),
     (req: AuthedRequest, res) => {
       const tenantId = req.principal!.tenantId;
       const body = (req.body ?? {}) as { id?: unknown };
