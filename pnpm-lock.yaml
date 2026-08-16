@@ -11,6 +11,9 @@ importers:
       '@playwright/test':
         specifier: ^1.49.0
         version: 1.62.1
+      '@portal/catalog':
+        specifier: workspace:*
+        version: link:packages/catalog
       '@portal/protocol':
         specifier: workspace:*
         version: link:packages/protocol
@@ -32,6 +35,9 @@ importers:
 
   apps/satellite-orders:
     dependencies:
+      '@portal/catalog':
+        specifier: workspace:*
+        version: link:../../packages/catalog
       '@portal/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -48,6 +54,15 @@ importers:
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
+
+  packages/catalog:
+    dependencies:
+      '@portal/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
 
   packages/protocol:
     dependencies:

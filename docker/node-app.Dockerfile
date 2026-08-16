@@ -30,6 +30,7 @@ WORKDIR /repo
 FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/protocol/package.json  packages/protocol/package.json
+COPY packages/catalog/package.json   packages/catalog/package.json
 COPY apps/satellite-orders/package.json apps/satellite-orders/package.json
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile

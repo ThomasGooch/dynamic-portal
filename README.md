@@ -79,6 +79,12 @@ Dockerfile is exactly the gap the e2e tier closes.
 `pnpm stack:test` runs the suite inside the same image the services run in, so a
 green local run and a green containerised run mean the same thing.
 
+**Before opening a PR, run `pnpm verify:ci`.** It executes the CI workflow's
+steps verbatim and in order. The distinction matters: CI installs with
+`--frozen-lockfile` / `--frozen`, which *fail* on lockfile drift, while a plain
+`pnpm install` / `uv sync` quietly re-resolves and passes — which is the
+realistic way a PR goes red after a green local run.
+
 ## Contributing
 
 `main` is protected by a repository ruleset. Direct pushes, force-pushes and
