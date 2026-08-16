@@ -7,6 +7,8 @@
  * and they must answer it identically.
  */
 
+export { UnresolvedVariableError, expandEnv } from "./expand";
+
 export {
   RegistryError,
   SatelliteSchema,
@@ -19,17 +21,17 @@ export {
   type NavSection,
   type Registry,
   type Satellite,
-} from "./registry.js";
+} from "./registry";
 
 export {
   CircuitBreaker,
   type BreakerState,
   type CircuitBreakerOptions,
-} from "./breaker.js";
+} from "./breaker";
 
 export {
   SatelliteClient,
   type Failure,
   type Result,
   type SatelliteClientOptions,
-} from "./client.js";
+} from "./client";

@@ -42,6 +42,20 @@ jobs:
       - name: Build
         run: pnpm typecheck
 
+      # The hub is noEmit and non-composite, so it cannot be a project
+      # reference and the step above never visits it.
+      - name: Build — hub (typecheck)
+        run: pnpm --filter @portal/hub typecheck
+
+      # And a real build, because `tsc` cannot see the class of failure that
+      # actually bit during development: server/client boundary violations, a
+      # bad next.config, or a page that fails to prerender. A typecheck-only
+      # gate is the same hole one line up claims to close.
+      - name: Build — hub (next build)
+        env:
+          PORTAL_PRINCIPAL_SECRET: ci-build-placeholder
+        run: pnpm --filter @portal/hub build
+
       - name: Test — unit
         run: pnpm test:unit
 

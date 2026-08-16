@@ -58,6 +58,42 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # The hub. Waits for both satellites to be healthy — not because it cannot
+  # start without them (an unwell satellite degrades to a scoped card, and there
+  # is an e2e test for exactly that), but so `pnpm up` reaches a state where the
+  # whole stack is demonstrably working rather than half of it.
+  hub:
+    build:
+      context: .
+      dockerfile: docker/hub.Dockerfile
+    environment:
+      <<: *satellite-env
+      NODE_ENV: production
+      # The dev session stub refuses to run under NODE_ENV=production unless
+      # this is set. Explicit here so the compose stack is obviously not a
+      # production deployment.
+      PORTAL_ALLOW_DEV_SESSION: "1"
+      PORT: "3000"
+      # Inside the network the satellites answer to their service names, not to
+      # localhost. The registry file defaults to localhost for a laptop and is
+      # overridden here — one reviewed file, two environments.
+      PORTAL_ORDERS_URL: http://satellite-orders:4001
+      PORTAL_FLEET_URL: http://satellite-fleet:4002
+    ports:
+      - "3000:3000"
+    depends_on:
+      satellite-orders:
+        condition: service_healthy
+      satellite-fleet:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
   # Runs the workspace suite in the same image the services run in, so a green
   # local run and a green containerised run mean the same thing.
   test:

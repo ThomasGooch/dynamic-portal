@@ -4,7 +4,7 @@ import {
   type ScreenResponse,
   type UiNode,
 } from "@portal/protocol";
-import type { Order } from "./repository.js";
+import type { Order } from "./repository";
 
 /**
  * The satellite's declaration and its screens.

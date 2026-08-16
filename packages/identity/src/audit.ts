@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { AudienceSchema } from "@portal/protocol";
-import type { Principal } from "./principal.js";
+import type { Principal } from "./principal";
 
 /**
  * The audit record — a schema, not a log format.

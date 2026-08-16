@@ -20,6 +20,17 @@ pnpm install --frozen-lockfile
 step "node: build (typecheck)"
 pnpm typecheck
 
+# The hub is noEmit and non-composite, so it cannot be a project reference and
+# `tsc --build` above never visits it. Exactly the hole that let six compile
+# errors sit in satellite-orders while CI stayed green.
+step "hub: build (typecheck)"
+pnpm --filter @portal/hub typecheck
+
+# `tsc` cannot see server/client boundary violations, a bad next.config, or a
+# page that fails to prerender — all of which bit during development.
+step "hub: build (next build)"
+PORTAL_PRINCIPAL_SECRET=verify-build-placeholder pnpm --filter @portal/hub build
+
 step "node: test - unit"
 pnpm test:unit
 

@@ -1,5 +1,5 @@
 import type { UiNode } from "@portal/protocol";
-import { CATALOG_VERSION, propsSchemaFor } from "./components.js";
+import { CATALOG_VERSION, propsSchemaFor } from "./components";
 
 /**
  * Deep validation of the shape satellites emit.

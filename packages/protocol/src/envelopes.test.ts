@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ActionResponseSchema, ScreenResponseSchema } from "./envelopes.js";
-import { MAX_NODE_DEPTH, UiNodeSchema } from "./node.js";
+import { ActionResponseSchema, ScreenResponseSchema } from "./envelopes";
+import { MAX_NODE_DEPTH, UiNodeSchema } from "./node";
 
 describe("UiNode", () => {
   // The protocol deliberately does NOT know the component catalog. It validates

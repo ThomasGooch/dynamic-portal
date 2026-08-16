@@ -12,13 +12,13 @@ export {
   signPrincipal,
   verifyPrincipal,
   type Principal,
-} from "./principal.js";
+} from "./principal";
 
 export {
   authorize,
   type AuthorizationResult,
   type AuthorizationTarget,
-} from "./authorize.js";
+} from "./authorize";
 
 export {
   AuditEventSchema,
@@ -29,4 +29,4 @@ export {
   toolCall,
   type AuditEvent,
   type AuditOutcome,
-} from "./audit.js";
+} from "./audit";

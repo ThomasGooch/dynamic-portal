@@ -3,13 +3,16 @@
 # Config-as-code on purpose: the set of solutions changes on a deploy cadence,
 # not a request cadence, so a reviewable, diffable, revertible file beats a table.
 #
+# Hostnames are parameterised so one reviewed file serves every environment:
+# the default is the laptop, and compose overrides it with service names.
+#
 # `audience` defaults to [internal]. Leaving it off is how a satellite stays
 # invisible to external clients — never add `external` to make something work.
 
 - id: orders
   displayName: Order Management
   description: Track, review and approve customer orders.
-  baseUrl: http://localhost:4001
+  baseUrl: ${PORTAL_ORDERS_URL:-http://localhost:4001}
   owner: fulfillment-team
   nav:
     section: Operations
@@ -26,7 +29,7 @@
 - id: fleet
   displayName: Fleet Operations
   description: Vehicle status, utilisation and maintenance.
-  baseUrl: http://localhost:4002
+  baseUrl: ${PORTAL_FLEET_URL:-http://localhost:4002}
   owner: logistics-team
   nav:
     section: Operations

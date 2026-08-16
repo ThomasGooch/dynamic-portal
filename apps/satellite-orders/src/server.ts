@@ -1,5 +1,5 @@
-import { createApp } from "./app.js";
-import { OrderRepository, seedOrders } from "./repository.js";
+import { createApp } from "./app";
+import { OrderRepository, seedOrders } from "./repository";
 
 const port = Number(process.env["PORT"] ?? 4001);
 const principalSecret = process.env["PORTAL_PRINCIPAL_SECRET"];

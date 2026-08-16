@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OrderRepository, seedOrders } from "./repository.js";
+import { OrderRepository, seedOrders } from "./repository";
 
 const repo = () => new OrderRepository(seedOrders());
 

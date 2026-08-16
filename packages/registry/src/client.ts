@@ -11,8 +11,8 @@ import {
 } from "@portal/protocol";
 import { validateNested } from "@portal/catalog";
 import { signPrincipal, type Principal } from "@portal/identity";
-import { CircuitBreaker } from "./breaker.js";
-import type { Satellite } from "./registry.js";
+import { CircuitBreaker } from "./breaker";
+import type { Satellite } from "./registry";
 
 /**
  * The hub's side of the conversation with one satellite.

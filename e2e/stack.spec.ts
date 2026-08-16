@@ -166,3 +166,46 @@ function findRows(node: { type: string; props?: Record<string, unknown>; childre
   }
   return [];
 }
+
+const HUB = process.env["PORTAL_HUB_URL"] ?? "http://127.0.0.1:3000";
+
+test.describe("the hub, as deployed", () => {
+  test("lists every satellite the principal may see", async ({ request }) => {
+    const html = await (await request.get(`${HUB}/`)).text();
+    expect(html).toContain("Order Management");
+    expect(html).toContain("Fleet Operations");
+  });
+
+  test("renders a screen from the TypeScript satellite", async ({ request }) => {
+    const html = await (await request.get(`${HUB}/orders`)).text();
+    expect(html).toContain("orders-table");
+  });
+
+  test("renders a screen from the Python satellite", async ({ request }) => {
+    // The same shell, the same vocabulary, a different language behind it —
+    // which is the whole claim of the architecture in one assertion.
+    const html = await (await request.get(`${HUB}/fleet`)).text();
+    expect(html).toContain("fleet-table");
+  });
+
+  test("deep links carry parameters through to the satellite", async ({ request }) => {
+    // Plain URLs with real history. PLAN.md verification #2, and the thing
+    // iframes and micro-frontends make awkward.
+    const res = await request.get(`${HUB}/orders/orders.detail?id=ord-1001`);
+    expect(res.status()).toBe(200);
+    expect(await res.text()).toContain("KeyValueList");
+  });
+
+  test("404s an unknown satellite rather than 403ing it", async ({ request }) => {
+    // A 403 would confirm the satellite exists — the same disclosure the
+    // satellites avoid on another tenant's records.
+    expect((await request.get(`${HUB}/no-such-satellite`)).status()).toBe(404);
+  });
+
+  test("never serves a page that could have been prerendered", async ({ request }) => {
+    // A statically prerendered page would bake one tenant's rows into HTML and
+    // hand them to everyone. Next reports its rendering decision in this header.
+    const res = await request.get(`${HUB}/orders`);
+    expect(res.headers()["x-nextjs-prerender"]).toBeUndefined();
+  });
+});

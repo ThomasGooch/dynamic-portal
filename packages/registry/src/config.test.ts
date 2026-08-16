@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Principal } from "@portal/identity";
-import { loadRegistry, resolveNav, visibleSatellites } from "./registry.js";
+import { loadRegistry, resolveNav, visibleSatellites } from "./registry";
 
 /**
  * The registry schema is only useful if it accepts the registry we actually

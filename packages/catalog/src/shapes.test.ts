@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { UiNode } from "@portal/protocol";
-import { validateNested } from "./nested.js";
-import { FlatSpecSchema } from "./flat.js";
+import { validateNested } from "./nested";
+import { FlatSpecSchema } from "./flat";
 import {
   GENERATED_ID_PREFIX,
   ReservedNodeIdError,
@@ -9,7 +9,7 @@ import {
   keyedToNested,
   nestedToFlat,
   nestedToKeyed,
-} from "./adapters.js";
+} from "./adapters";
 
 const screen: UiNode = {
   type: "Page",

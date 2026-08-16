@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { nestedToKeyed, validateNested } from "@portal/catalog";
-import { detailScreen, listScreen, manifest, ordersTable } from "./screens.js";
-import { seedOrders, type Order } from "./repository.js";
+import { detailScreen, listScreen, manifest, ordersTable } from "./screens";
+import { seedOrders, type Order } from "./repository";
 
 const orders: Order[] = seedOrders().filter((o) => o.tenantId === "acme");
 

@@ -5,7 +5,7 @@ import {
   isMajorWithinSupportWindow,
   isSupportedProtocolVersion,
   parseProtocolVersion,
-} from "./version.js";
+} from "./version";
 
 describe("protocol version", () => {
   it("exposes a current version as MAJOR.MINOR", () => {

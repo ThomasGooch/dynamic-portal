@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Principal } from "@portal/identity";
-import { loadRegistry, resolveNav, visibleSatellites } from "./registry.js";
+import { loadRegistry, resolveNav, visibleSatellites } from "./registry";
 
 const YAML = `
 - id: orders

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { UiNodeSchema } from "./node.js";
-import { ProtocolVersionSchema } from "./version.js";
+import { UiNodeSchema } from "./node";
+import { ProtocolVersionSchema } from "./version";
 
 /**
  * The two response envelopes a satellite returns.

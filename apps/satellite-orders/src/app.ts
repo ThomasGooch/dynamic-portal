@@ -11,8 +11,8 @@ import {
   type Principal,
 } from "@portal/identity";
 import type { Manifest } from "@portal/protocol";
-import type { OrderRepository } from "./repository.js";
-import { detailScreen, listScreen, manifest, ordersTable } from "./screens.js";
+import type { OrderRepository } from "./repository";
+import { detailScreen, listScreen, manifest, ordersTable } from "./screens";
 
 export interface AppOptions {
   repository: OrderRepository;

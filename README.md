@@ -48,8 +48,13 @@ Running services:
 
 | Service | Language | Port | MCP server | Health |
 |---|---|---|---|---|
+| `hub` | TypeScript / Next.js | 3000 | planned | `GET /` |
 | `satellite-orders` | TypeScript | 4001 | planned | `GET /healthz` |
 | `satellite-fleet` | Python | 4002 | **none, deliberately** | `GET /healthz` |
+
+Open <http://localhost:3000>. The nav is built from `config/satellites.yaml`
+for the current principal, so a satellite you cannot reach is absent from the
+response rather than hidden in the browser.
 
 Two languages is not decoration. The protocol is a wire format, not a shared
 library, and `satellite-fleet` shares no code with `@portal/protocol` — the e2e
@@ -103,6 +108,27 @@ once a second account with write access exists. Rather than weaken CI to work
 around it (bypass actors skip *every* rule in a ruleset, including the status
 check), the approval requirement is left off and the review is enforced by
 process. Add it back when there is someone to do the approving.
+
+## Configuration
+
+`config/satellites.yaml` supports `${VAR}` and `${VAR:-default}`, the same
+subset docker-compose uses. Hostnames are parameterised so one reviewed file
+serves every environment — the default is a laptop, and compose overrides it
+with service names. An unset variable with no default is a startup error rather
+than a silent empty value.
+
+| Variable | Purpose |
+|---|---|
+| `PORTAL_PRINCIPAL_SECRET` | Shared HMAC secret for principal tokens. Required; the hub and satellites refuse to start without it. |
+| `PORTAL_REGISTRY_PATH` | Where to read the registry. Defaults to `config/satellites.yaml`. |
+| `PORTAL_ORDERS_URL` / `PORTAL_FLEET_URL` | Satellite base URLs. |
+| `PORTAL_DEV_TENANT` / `PORTAL_DEV_AUDIENCE` | Switch the development session's tenant or audience, for exercising isolation by hand. |
+| `PORTAL_ALLOW_DEV_SESSION` | Lets the development session stub run under `NODE_ENV=production`. Set only by the compose stack. |
+
+The session is a **development stub** and refuses to run under
+`NODE_ENV=production` without that last flag. Production replaces it with OIDC
+and RFC 8693 token exchange; nothing downstream changes, because everything
+already takes a `Principal` and every satellite verifies the signature itself.
 
 ## Conventions
 

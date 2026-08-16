@@ -1,0 +1,82 @@
+/*
+ * The hub owns every pixel.
+ *
+ * These tokens are the whole bargain made concrete: a satellite says
+ * `tone: "danger"` and this file decides what danger looks like. Change a value
+ * here and every satellite's screens change with it, without any satellite
+ * being redeployed or even told.
+ */
+
+:root {
+  --bg: #fbfaf8;
+  --surface: #ffffff;
+  --surface-sunken: #f4f2ee;
+  --border: #e2ded7;
+  --border-strong: #cfc9bf;
+
+  --text: #1c1a17;
+  --text-muted: #6b655c;
+  --text-inverse: #ffffff;
+
+  --tone-neutral: #4a463f;
+  --tone-info: #2b5f9e;
+  --tone-success: #1f7a4d;
+  --tone-warning: #9a6212;
+  --tone-danger: #a3282a;
+
+  --accent: #2b4f7d;
+
+  --radius: 8px;
+  --gap-xs: 4px;
+  --gap-sm: 8px;
+  --gap-md: 16px;
+  --gap-lg: 24px;
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --nav-width: 248px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16150f;
+    --surface: #1e1d17;
+    --surface-sunken: #26241d;
+    --border: #33302a;
+    --border-strong: #45413a;
+
+    --text: #f0ede6;
+    --text-muted: #a39d92;
+
+    --tone-info: #7aa9e0;
+    --tone-success: #63c795;
+    --tone-warning: #d8a250;
+    --tone-danger: #e2807f;
+
+    --accent: #7fa7d8;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
