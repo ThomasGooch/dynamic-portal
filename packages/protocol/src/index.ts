@@ -18,7 +18,7 @@ export {
   isSupportedProtocolVersion,
   parseProtocolVersion,
   type ProtocolVersion,
-} from "./version.js";
+} from "./version";
 
 export {
   AudienceListSchema,
@@ -26,7 +26,7 @@ export {
   INTERNAL_ONLY,
   isAudienceSubset,
   type Audience,
-} from "./audience.js";
+} from "./audience";
 
 export {
   FORBIDDEN_PROP_KEYS,
@@ -35,7 +35,7 @@ export {
   ProvenanceSchema,
   UiNodeSchema,
   type UiNode,
-} from "./node.js";
+} from "./node";
 
 export {
   ActionDescriptorSchema,
@@ -47,7 +47,7 @@ export {
   type Manifest,
   type NavEntry,
   type ScreenDescriptor,
-} from "./manifest.js";
+} from "./manifest";
 
 export {
   ActionResponseSchema,
@@ -59,4 +59,4 @@ export {
   type ActionResponse,
   type ScreenResponse,
   type Toast,
-} from "./envelopes.js";
+} from "./envelopes";

@@ -1,4 +1,5 @@
 import { parse as parseYaml } from "yaml";
+import { expandEnv } from "./expand";
 import { z } from "zod";
 import { AudienceListSchema, isAudienceSubset, type Audience } from "@portal/protocol";
 import { authorize, type Principal } from "@portal/identity";
@@ -98,10 +99,15 @@ export class RegistryError extends Error {
   }
 }
 
-export function loadRegistry(source: string): Registry {
+export function loadRegistry(
+  source: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Registry {
   let raw: unknown;
   try {
-    raw = parseYaml(source);
+    // Substitution happens before parsing, so a value may be any YAML scalar
+    // rather than only a quoted string.
+    raw = parseYaml(expandEnv(source, env));
   } catch (error) {
     throw new RegistryError(`registry is not valid YAML: ${(error as Error).message}`);
   }

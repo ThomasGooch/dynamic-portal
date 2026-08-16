@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { authorize } from "./authorize.js";
-import type { Principal } from "./principal.js";
+import { authorize } from "./authorize";
+import type { Principal } from "./principal";
 
 const alice: Principal = {
   sub: "alice@acme.example",

@@ -5,9 +5,9 @@ import {
   ManifestSchema,
   ScreenResponseSchema,
 } from "@portal/protocol";
-import { createApp } from "./app.js";
+import { createApp } from "./app";
 import { signPrincipal, type Principal } from "@portal/identity";
-import { OrderRepository, seedOrders } from "./repository.js";
+import { OrderRepository, seedOrders } from "./repository";
 
 const SECRET = "integration-secret";
 

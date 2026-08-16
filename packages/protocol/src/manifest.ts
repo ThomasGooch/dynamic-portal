@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { AudienceListSchema, isAudienceSubset, type Audience } from "./audience.js";
-import { ProtocolVersionSchema } from "./version.js";
+import { AudienceListSchema, isAudienceSubset, type Audience } from "./audience";
+import { ProtocolVersionSchema } from "./version";
 
 /**
  * What a satellite declares about itself. This is the durable asset: the

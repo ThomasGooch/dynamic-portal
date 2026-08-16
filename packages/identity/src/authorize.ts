@@ -1,5 +1,5 @@
 import type { Audience } from "@portal/protocol";
-import type { Principal } from "./principal.js";
+import type { Principal } from "./principal";
 
 /**
  * The one place the allow/deny decision is expressed.

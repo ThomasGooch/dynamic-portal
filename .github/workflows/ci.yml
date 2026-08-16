@@ -42,6 +42,11 @@ jobs:
       - name: Build
         run: pnpm typecheck
 
+      # The hub is noEmit and non-composite, so it cannot be a project
+      # reference and the step above never visits it.
+      - name: Build — hub
+        run: pnpm --filter @portal/hub typecheck
+
       - name: Test — unit
         run: pnpm test:unit
 

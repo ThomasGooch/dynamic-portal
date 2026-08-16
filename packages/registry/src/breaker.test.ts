@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CircuitBreaker } from "./breaker.js";
+import { CircuitBreaker } from "./breaker";
 
 /**
  * Time is injected rather than mocked globally. A breaker whose tests depend on

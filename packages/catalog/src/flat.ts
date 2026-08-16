@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { COMPONENT_NAMES, propsSchemaFor } from "./components.js";
+import { COMPONENT_NAMES, propsSchemaFor } from "./components";
 
 /**
  * The flat shape — what the agent emits.

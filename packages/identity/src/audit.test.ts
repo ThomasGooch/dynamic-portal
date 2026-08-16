@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { AuditEventSchema, canonicalDigest, screenRead, toolCall } from "./audit.js";
-import type { Principal } from "./principal.js";
+import { AuditEventSchema, canonicalDigest, screenRead, toolCall } from "./audit";
+import type { Principal } from "./principal";
 
 const alice: Principal = {
   sub: "alice@acme.example",

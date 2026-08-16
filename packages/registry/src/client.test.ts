@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { CURRENT_PROTOCOL_VERSION } from "@portal/protocol";
 import type { Principal } from "@portal/identity";
-import { CircuitBreaker } from "./breaker.js";
-import { SatelliteClient } from "./client.js";
-import { loadRegistry } from "./registry.js";
+import { CircuitBreaker } from "./breaker";
+import { SatelliteClient } from "./client";
+import { loadRegistry } from "./registry";
 
 const satellite = loadRegistry(
   "- id: orders\n  displayName: Orders\n  baseUrl: http://sat.test\n  owner: t\n  timeoutMs: 50\n",

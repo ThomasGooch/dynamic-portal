@@ -4,7 +4,7 @@ import {
   signPrincipal,
   verifyPrincipal,
   type Principal,
-} from "./principal.js";
+} from "./principal";
 
 const SECRET = "test-secret";
 const alice: Principal = {

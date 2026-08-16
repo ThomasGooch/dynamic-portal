@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ManifestSchema } from "./manifest.js";
+import { ManifestSchema } from "./manifest";
 
 const validManifest = {
   protocol: "1.0",

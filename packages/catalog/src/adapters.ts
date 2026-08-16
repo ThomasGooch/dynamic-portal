@@ -1,5 +1,5 @@
 import type { UiNode } from "@portal/protocol";
-import type { FlatElement, FlatSpec } from "./flat.js";
+import type { FlatElement, FlatSpec } from "./flat";
 
 /**
  * Conversions between the three shapes.

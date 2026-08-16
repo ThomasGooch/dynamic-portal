@@ -5,7 +5,7 @@ import {
   CATALOG_VERSION,
   isComponentName,
   propsSchemaFor,
-} from "./components.js";
+} from "./components";
 
 describe("the catalog", () => {
   it("declares 34 components", () => {

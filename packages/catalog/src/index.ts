@@ -17,15 +17,15 @@ export {
   isComponentName,
   propsSchemaFor,
   type ComponentName,
-} from "./components.js";
+} from "./components";
 
 export {
   validateNested,
   type CatalogIssue,
   type CatalogResult,
-} from "./nested.js";
+} from "./nested";
 
-export { FlatSpecSchema, type FlatElement, type FlatSpec } from "./flat.js";
+export { FlatSpecSchema, type FlatElement, type FlatSpec } from "./flat";
 
 export {
   GENERATED_ID_PREFIX,
@@ -36,4 +36,4 @@ export {
   nestedToKeyed,
   type KeyedElement,
   type KeyedSpec,
-} from "./adapters.js";
+} from "./adapters";

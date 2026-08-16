@@ -1,0 +1,77 @@
+import type { ReactNode } from "react";
+import { connection } from "next/server";
+import { resolveNav } from "@portal/registry";
+import { getPortal } from "@/lib/portal";
+import { currentPrincipal, isDevSession } from "@/lib/session";
+import "./globals.css";
+import "./shell.css";
+
+export const metadata = {
+  title: "Dynamic Portal",
+  description: "One place for every solution.",
+};
+
+/**
+ * The shell, rendered per request and never prerendered.
+ *
+ * Nav is resolved server-side from the registry for *this* principal, so a
+ * satellite they cannot reach never reaches the browser — not hidden with CSS,
+ * not filtered on the client, simply absent from the response.
+ *
+ * `await connection()` is how Next 16 expresses this: the `dynamic` route
+ * segment option was removed in v16, so the old `export const dynamic =
+ * "force-dynamic"` is silently no longer a thing. Prerendering stops at this
+ * line.
+ *
+ * It matters here because these pages depend on the session and on live
+ * satellite data. A prerendered page would bake one tenant's rows into HTML and
+ * serve them to everyone — the exact failure the tenancy model exists to
+ * prevent.
+ */
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  await connection();
+  const principal = currentPrincipal();
+  const nav = resolveNav(getPortal().registry, principal);
+
+  return (
+    <html lang="en">
+      <body>
+        <div className="shell">
+          <nav className="nav">
+            <div className="brand">
+              Dynamic Portal
+              <small>{principal.tenantId}</small>
+            </div>
+
+            {nav.length === 0 ? (
+              <p className="navEmpty">No solutions are available to you.</p>
+            ) : (
+              nav.map((section) => (
+                <div className="navSection" key={section.section}>
+                  <h2>{section.section}</h2>
+                  <ul>
+                    {section.items.map((item) => (
+                      <li key={item.satelliteId}>
+                        <a href={`/${item.satelliteId}`}>{item.label}</a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            )}
+
+            {isDevSession() && (
+              <div className="sessionBanner">
+                <strong>Development session</strong>
+                Signed in as {principal.sub} ({principal.audience}). Replace with
+                OIDC before deploying.
+              </div>
+            )}
+          </nav>
+
+          <main className="main">{children}</main>
+        </div>
+      </body>
+    </html>
+  );
+}

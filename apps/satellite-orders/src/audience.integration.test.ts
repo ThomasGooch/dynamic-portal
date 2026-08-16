@@ -2,9 +2,9 @@ import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { signPrincipal, type Principal } from "@portal/identity";
 import type { Manifest } from "@portal/protocol";
-import { createApp } from "./app.js";
-import { OrderRepository, seedOrders } from "./repository.js";
-import { manifest } from "./screens.js";
+import { createApp } from "./app";
+import { OrderRepository, seedOrders } from "./repository";
+import { manifest } from "./screens";
 
 /**
  * Per-resource audience, tested against a satellite that has widened.
