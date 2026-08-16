@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { ManifestSchema, ScreenResponseSchema } from "@portal/protocol";
+import { CATALOG_VERSION, validateNested } from "@portal/catalog";
 
 /**
  * Stack-level checks against the containers started by `pnpm up`.
@@ -64,6 +65,28 @@ for (const sat of SATELLITES) {
       expect(res.ok()).toBe(true);
       const screen = ScreenResponseSchema.parse(await res.json());
       expect(screen.ui.type).toBe("Page");
+    });
+
+    test("every node it emits is in the catalog vocabulary", async ({ request }) => {
+      // The protocol only checks that a node is structurally a node. This is
+      // the check that it is a *legal component with legal props* — and for
+      // the Python satellite it is the only place that happens, since it
+      // cannot import the TypeScript catalog. A satellite inventing a
+      // component, or misspelling a tone, fails here rather than rendering as
+      // an error placeholder in front of a user.
+      const screen = ScreenResponseSchema.parse(
+        await (
+          await request.get(`${sat.base}/portal/screens/${sat.screen}`, { headers: bearer() })
+        ).json(),
+      );
+      const result = validateNested(screen.ui);
+      if (!result.ok) {
+        throw new Error(
+          `${sat.name} emits nodes outside catalog v${CATALOG_VERSION}:\n` +
+            result.issues.map((i) => `  ${i.path}: ${i.message}`).join("\n"),
+        );
+      }
+      expect(result.ok).toBe(true);
     });
 
     test("refuses tenant data without a principal", async ({ request }) => {

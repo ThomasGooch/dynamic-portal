@@ -1,7 +1,14 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/protocol" },
-    { "path": "./apps/satellite-orders" }
+    {
+      "path": "./packages/protocol"
+    },
+    {
+      "path": "./packages/catalog"
+    },
+    {
+      "path": "./apps/satellite-orders"
+    }
   ]
 }

@@ -21,10 +21,12 @@
     "down": "docker compose down -v",
     "logs": "docker compose logs -f",
     "stack:test": "docker compose build test && docker compose run --rm test",
-    "test:py": "cd apps/satellite-fleet && uv run pytest"
+    "test:py": "cd apps/satellite-fleet && uv run pytest",
+    "verify:ci": "bash scripts/verify-ci.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
+    "@portal/catalog": "workspace:*",
     "@portal/protocol": "workspace:*",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^4.1.10",
