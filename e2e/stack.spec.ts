@@ -1,6 +1,14 @@
 import { createHmac } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { ManifestSchema, ScreenResponseSchema } from "@portal/protocol";
+import {
+  ManifestSchema,
+  ScreenResponseSchema,
+  isSupportedProtocolVersion,
+  parseProtocolVersion,
+} from "@portal/protocol";
+import type { Principal } from "@portal/identity";
+import { loadRegistry } from "@portal/registry";
+import { buildSurface } from "@portal/mcp-gateway";
 import { CATALOG_VERSION, validateNested } from "@portal/catalog";
 
 /**
@@ -111,14 +119,29 @@ for (const sat of SATELLITES) {
 }
 
 test.describe("cross-satellite protocol agreement", () => {
-  test("both satellites speak the same protocol version", async ({ request }) => {
+  test("both satellites speak a version the hub supports, not the same one", async ({
+    request,
+  }) => {
+    // This asserted the two versions were *identical* until 1.1 landed, and
+    // then failed on a change the compatibility rule explicitly permits — a
+    // minor bump that adds optional fields and asks no satellite to redeploy.
+    // Requiring uniformity here would have made every future minor a
+    // coordinated release of every satellite, which is the coupling the
+    // protocol's N-2 rule exists to prevent.
+    //
+    // The stack now genuinely runs mixed: orders on 1.1, fleet still on 1.0.
+    // That is the supported state, so it is the state the tests describe.
     const versions = await Promise.all(
       SATELLITES.map(async (s) =>
         ManifestSchema.parse(await (await request.get(`${s.base}/portal/manifest`)).json())
           .protocol,
       ),
     );
-    expect(new Set(versions).size).toBe(1);
+
+    for (const version of versions) {
+      expect(isSupportedProtocolVersion(version), `${version} is unsupported`).toBe(true);
+    }
+    expect(new Set(versions.map((v) => parseProtocolVersion(v).major)).size).toBe(1);
   });
 
   test("at least one satellite ships no MCP server, so the shim stays exercised", async ({
@@ -207,5 +230,72 @@ test.describe("the hub, as deployed", () => {
     // hand them to everyone. Next reports its rendering decision in this header.
     const res = await request.get(`${HUB}/orders`);
     expect(res.headers()["x-nextjs-prerender"]).toBeUndefined();
+  });
+});
+
+test.describe("the agent-facing projection of the same declarations", () => {
+  // The polyglot claim, on the agent path. `satellite-fleet` is Python, ships
+  // no MCP server, and shares no code with any of these packages — so the tools
+  // an agent would see there come entirely from the shim reading a manifest
+  // written in another language. If this passes, "most satellites, not all" is
+  // a tested statement rather than an intention.
+  const agent: Principal = {
+    sub: "agent@acme.example",
+    tenantId: "acme",
+    audience: "internal",
+    scopes: ["orders.read", "orders.write", "fleet.read"],
+  };
+
+  const entry = async (id: string, base: string, extra = "") => {
+    const satellite = loadRegistry(
+      `- id: ${id}\n  displayName: ${id}\n  baseUrl: ${base}\n  owner: team\n  rbacScopes: [${id}.read]\n${extra}`,
+      {},
+    )[0];
+    if (satellite === undefined) throw new Error(`no ${id}`);
+    const manifest = ManifestSchema.parse(await (await fetch(`${base}/portal/manifest`)).json());
+    return { satellite, manifest };
+  };
+
+  test("turns the Python satellite's screens into tools with no MCP server involved", async () => {
+    const surface = buildSurface([await entry("fleet", FLEET)], agent);
+    expect(surface.tools.map((tool) => tool.name).sort()).toEqual([
+      "fleet__fleet_dashboard",
+      "fleet__fleet_detail",
+    ]);
+    expect(surface.skipped).toEqual([]);
+  });
+
+  test("carries a declared screen param into the tool's input schema", async () => {
+    const surface = buildSurface([await entry("fleet", FLEET)], agent);
+    expect(surface.byName.get("fleet__fleet_detail")?.inputSchema).toEqual({
+      type: "object",
+      properties: { id: { type: "string", description: "Vehicle id" } },
+      required: ["id"],
+      additionalProperties: false,
+    });
+  });
+
+  test("keeps two satellites' tools in separate namespaces", async () => {
+    const surface = buildSurface(
+      [
+        await entry(
+          "orders",
+          ORDERS,
+          "  tools:\n    orders.approve:\n      agentVisible: true\n      requiresConfirmation: true\n      rbacScopes: [orders.write]\n",
+        ),
+        await entry("fleet", FLEET),
+      ],
+      agent,
+    );
+    const names = surface.tools.map((tool) => tool.name);
+    expect(names.filter((name) => name.startsWith("orders__")).length).toBeGreaterThan(0);
+    expect(names.filter((name) => name.startsWith("fleet__")).length).toBeGreaterThan(0);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  test("offers no write at all on a satellite that declares none", async () => {
+    // Fleet is read-only. Nothing in the shim invents a mutation for it.
+    const surface = buildSurface([await entry("fleet", FLEET)], agent);
+    expect(surface.tools.every((tool) => tool.kind === "read")).toBe(true);
   });
 });

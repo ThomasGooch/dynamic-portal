@@ -71,11 +71,56 @@ export const ScreenDescriptorSchema = z
   })
   .strict();
 
+/**
+ * One input an action takes.
+ *
+ * Screens have declared their params since 1.0; actions have not, because the
+ * hub only ever posted whatever a form happened to collect. That was enough
+ * while a human filled the form in. An agent cannot fill in a shape nobody
+ * described, so an action stays uncallable by the gateway until it says what it
+ * takes — which is the honest failure, and better than letting a model guess
+ * field names at a write endpoint.
+ *
+ * `type` is required here and absent from `ScreenParamSchema` for a real
+ * reason: a screen param arrives in a query string and is therefore always a
+ * string, while an action payload is JSON, where `{"quantity": 2}` and
+ * `{"quantity": "2"}` are different values and the satellite receives whichever
+ * the caller guessed.
+ */
+export const ActionParamSchema = z
+  .object({
+    name: z.string().min(1),
+    type: z.enum(["string", "number", "boolean"]),
+    required: z.boolean().default(false),
+    description: z.string().optional(),
+    /** Enumerated choices, so an agent picks from a list rather than inventing one. */
+    enum: z.array(z.string().min(1)).nonempty().optional(),
+  })
+  .strict()
+  .superRefine((param, ctx) => {
+    // The choices are strings. Attached to a number they would describe a
+    // parameter that no value can satisfy, which reads as a callable action
+    // and is not one.
+    if (param.enum !== undefined && param.type !== "string") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["enum"],
+        message: `enumerated choices are only meaningful on a string parameter, not ${param.type}`,
+      });
+    }
+  });
+
 export const ActionDescriptorSchema = z
   .object({
     id: IdSchema,
     title: z.string().min(1).optional(),
     description: z.string().optional(),
+    params: z
+      .array(ActionParamSchema)
+      // The same silent data loss screens already guard against: one key, two
+      // declarations, and a caller cannot tell which the satellite reads.
+      .superRefine(rejectDuplicates<{ name: string }>("param name", (p) => p.name))
+      .optional(),
     audience: AudienceListSchema,
   })
   .strict();
@@ -168,4 +213,5 @@ export const ManifestSchema = z
 export type Manifest = z.infer<typeof ManifestSchema>;
 export type ScreenDescriptor = z.infer<typeof ScreenDescriptorSchema>;
 export type ActionDescriptor = z.infer<typeof ActionDescriptorSchema>;
+export type ActionParam = z.infer<typeof ActionParamSchema>;
 export type NavEntry = z.infer<typeof NavEntrySchema>;

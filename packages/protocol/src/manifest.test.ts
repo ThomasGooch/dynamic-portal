@@ -197,3 +197,83 @@ describe("Manifest", () => {
     });
   });
 });
+
+describe("action parameters", () => {
+  // Screens declare their params and always have; actions did not, because the
+  // hub only ever posted whatever a form collected. An agent cannot fill in a
+  // shape nobody described, so a write is not agent-callable until the action
+  // says what it takes.
+  const withParams = (params: unknown) =>
+    ManifestSchema.parse({
+      ...validManifest,
+      actions: [{ id: "orders.approve", title: "Approve", params }],
+    }).actions[0]?.params;
+
+  it("accepts a typed parameter list", () => {
+    expect(
+      withParams([
+        { name: "id", type: "string", required: true, description: "Order id" },
+        { name: "quantity", type: "number" },
+      ]),
+    ).toEqual([
+      { name: "id", type: "string", required: true, description: "Order id" },
+      { name: "quantity", type: "number", required: false },
+    ]);
+  });
+
+  it("defaults required to false, as screen params do", () => {
+    expect(withParams([{ name: "note", type: "string" }])?.[0]?.required).toBe(false);
+  });
+
+  it("stays optional, because an action that takes nothing declares nothing", () => {
+    expect(ManifestSchema.parse(validManifest).actions[0]?.params).toBeUndefined();
+  });
+
+  it("requires a type, unlike a screen param", () => {
+    // A screen param arrives in a query string and is therefore always a
+    // string. An action payload is JSON, so `{"quantity": 2}` and
+    // `{"quantity": "2"}` are different values and the satellite gets whichever
+    // the caller guessed.
+    expect(() =>
+      ManifestSchema.parse({
+        ...validManifest,
+        actions: [{ id: "orders.approve", params: [{ name: "id" }] }],
+      }),
+    ).toThrow();
+  });
+
+  it("rejects a type outside the JSON scalars", () => {
+    expect(() => withParams([{ name: "id", type: "date" }])).toThrow();
+  });
+
+  it("rejects a repeated parameter name", () => {
+    // The same silent data loss screens already guard against: one key, two
+    // declarations, and the caller cannot tell which one the satellite reads.
+    expect(() =>
+      withParams([
+        { name: "id", type: "string" },
+        { name: "id", type: "number" },
+      ]),
+    ).toThrow(/param name/i);
+  });
+
+  it("accepts enumerated choices so an agent picks rather than guesses", () => {
+    expect(
+      withParams([{ name: "status", type: "string", enum: ["approved", "rejected"] }])?.[0]?.enum,
+    ).toEqual(["approved", "rejected"]);
+  });
+
+  it("rejects an empty choice list, which would describe an uncallable action", () => {
+    expect(() => withParams([{ name: "status", type: "string", enum: [] }])).toThrow();
+  });
+
+  it("rejects choices on a parameter that is not a string", () => {
+    // The choices are strings; attaching them to a number would describe a
+    // parameter no value can satisfy.
+    expect(() => withParams([{ name: "n", type: "number", enum: ["1"] }])).toThrow(/string/i);
+  });
+
+  it("rejects an unknown key rather than ignoring it", () => {
+    expect(() => withParams([{ name: "id", type: "string", pattern: "^x" }])).toThrow();
+  });
+});

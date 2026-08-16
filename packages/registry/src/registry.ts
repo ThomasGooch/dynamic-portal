@@ -43,10 +43,20 @@ const NavSchema = z
   })
   .strict();
 
+/**
+ * What the registry says about one tool.
+ *
+ * `agentVisible` and `requiresConfirmation` are deliberately *optional* rather
+ * than defaulted here, because the safe default differs by what the tool does
+ * and only the gateway knows that: a read is visible and unconfirmed, a write
+ * is neither. Defaulting them in the schema would mean a tool listed for any
+ * reason at all — to add a scope, say — silently arrived pre-approved for the
+ * agent with its confirmation cleared.
+ */
 const ToolPolicySchema = z
   .object({
-    requiresConfirmation: z.boolean().default(false),
-    agentVisible: z.boolean().default(true),
+    requiresConfirmation: z.boolean().optional(),
+    agentVisible: z.boolean().optional(),
     rbacScopes: z.array(z.string().min(1)).default([]),
     audience: AudienceListSchema,
   })

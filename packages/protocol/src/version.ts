@@ -13,7 +13,12 @@
 
 import { z } from "zod";
 
-export const CURRENT_PROTOCOL_VERSION = "1.0";
+/**
+ * 1.1 added optional `params` to an action descriptor, so the MCP gateway can
+ * describe a write to an agent. Additive within the major: a satellite still
+ * declaring 1.0 validates unchanged and is fully supported.
+ */
+export const CURRENT_PROTOCOL_VERSION = "1.1";
 
 /** How many majors before the current one remain supported (the "N-2" rule). */
 export const MAJOR_SUPPORT_WINDOW = 2;

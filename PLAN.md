@@ -66,7 +66,7 @@ A new projection in 2029 is one addition inside the hub — not 20 integration p
 
 | Satellite has | Gets generated | Fidelity |
 |---|---|---|
-| PUP only | MCP tools (screens→read, actions→write) | Good — semantic components carry structure |
+| PUP only | MCP tools (screens→read, actions→write) | Good — semantic components carry structure. A read returns the screen's *data* (table rows, stat values, chart series), not its UI tree: sending the tree would spend most of a model's context on layout it cannot use, and only declared columns survive, so presentation fields the satellite sent for the renderer never reach the model |
 | MCP only | PUP screens (tools→generated CRUD/search UI) | Adequate — enough to onboard without UI work |
 | Both | Nothing generated; both hand-authored | Best |
 
@@ -218,7 +218,7 @@ Model: **`claude-opus-5`** via `@anthropic-ai/sdk` (ZDR-eligible — see the reg
 
 **Provenance is always rendered.** Satellite-authored screens read as authoritative; agent-composed ones are visibly derived, with click-through from any number to the tool call behind it; third-party content is marked foreign.
 
-**Governed writes.** The registry declares per tool: `agentVisible`, `requiresConfirmation`, `rbacScopes`, `audience`. An agent-proposed mutation renders as a hub-styled confirmation card built from the existing `ActionResponse` envelope — approve, execute, audit. No new machinery.
+**Governed writes.** The registry declares per tool: `agentVisible`, `requiresConfirmation`, `rbacScopes`, `audience`. **The default differs by what the tool does, and this is the one place the zero-hub-deploy promise deliberately does not apply.** A screen becomes a read tool that is agent-visible without a registry entry — it is already bounded by audience and scopes, the satellite re-checks both, and demanding an entry per screen would mean adding a screen needed a hub deploy after all. An action becomes a write tool that is invisible until the registry names it, because exposing a mutation to a model is a decision a human makes in a reviewed file, not one inherited from a satellite team adding an endpoint. Neither flag is defaulted in the registry schema: defaulting them there would mean a tool listed for some unrelated reason — to add a scope, say — arrived pre-approved with its confirmation cleared. An agent-proposed mutation renders as a hub-styled confirmation card built from the existing `ActionResponse` envelope — approve, execute, audit. No new machinery.
 
 **The promotion loop.** A user asks a question → the agent composes a screen → the user pins it → it becomes a registered view → popular views graduate into a satellite's real PUP screens. This is not only a discovery feature: it is the pressure valve that stops generative UI from becoming permanent infrastructure. Without it, five years of pinned agent views become an expensive, nondeterministic, hard-to-audit shadow portal.
 
@@ -350,7 +350,7 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 7. `satellite-orders` (Node) and `satellite-fleet` (Python), both enforcing their own tenant scoping.
 
 **M2 — Agent + MCP gateway**
-8. `packages/mcp-gateway` — client pool, namespacing, RBAC/audience filter, redaction policy, audit, PUP→MCP shim.
+8. `packages/mcp-gateway` — namespacing, RBAC/audience filter, PUP→MCP shim, tool invocation and audit *(done)*; MCP client pool for satellites that ship a server *(next — no satellite ships one yet, and the shim is what makes that survivable)*.
 9. `packages/agent` — tool surface, `render_screen` with strict catalog schema, grounding validator, provenance.
 10. Confirmation flow for `requiresConfirmation` tools; per-tenant kill switch.
 11. Agent-composed home screen.
@@ -393,6 +393,9 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 - **We are forking MCP Apps on the first-party path.** A custom mime type is unsanctioned and native rendering contradicts a content-agnostic sandbox MUST. Accepted knowingly; cost is that portal-rendered satellite UI isn't portable to other MCP hosts, and a future spec-defined mime type may collide. Contained to the rendering path; satellites can serve an MCP-Apps HTML representation alongside.
 - **The strict `render_screen` schema will be large** — a discriminated union across 34 components with `additionalProperties: false` throughout. Structured outputs charge a one-time compilation cost per schema; load-test before committing. Fallback: prompt-plus-validate for composition, keeping the grounding check in our own validator — losing the API-level guarantee, not the guarantee.
 - **Schema validation is an integrity boundary, not a content-trust boundary.**
+- **An action must declare its parameters or no agent can call it.** Screens have declared theirs since 1.0; actions had not, because the hub only ever posted whatever a form collected — enough while a human filled the form in. Protocol 1.1 adds optional typed `params` to an action descriptor, and the gateway skips any action that omits them. That is the honest failure: the alternative is a model guessing field names at a write endpoint.
+- **Portal ids and MCP tool names are different grammars, and the projection between them is lossy.** Ids are dotted; tool names are `[a-zA-Z0-9_-]` and bounded at 64. `a.b` and `a_b` are distinct ids and one tool name — as are the *satellite* ids `a.b` and `a_b`, which collide across an entire namespace. Every colliding tool is dropped rather than one being kept arbitrarily, and collision detection runs before entitlement filtering so a name cannot resolve to different tools for different principals.
+- **A read tool caps the rows it returns and says that it did.** Silently truncating is the worst option available: the model answers "3 orders" for a page of 3,000 and sounds certain.
 - **An action does not learn which screen invoked it, so `patch` is only safe when every route to an action sits on the screen the patch addresses.** Found by building it: `orders.approve` is reachable only from the detail screen and was returning a patch for the list screen's table — a node the user was not looking at. The hub handles it (the patch is refused whole, the screen refetches, the reason goes to the console), but the satellite has to know the rule. The fix is a protocol addition — the invoking screen id travelling with the action — deferred rather than improvised mid-change.
 - **A satellite re-opens a dismissed `Modal` by transitioning `open`, not by re-asserting it.** React keeps the component mounted across a patch, so `open: true` arriving at a modal the user already closed is indistinguishable from the render that opened it in the first place. Resetting on every patch instead would spuriously re-open a modal sitting outside the replaced subtree. Telling those apart needs per-node patch provenance.
 - **File uploads have no representation in the action envelope.** `FileUpload` renders and says so on the control; the chosen file is deliberately left out of the payload, because sending the filename alone would read as an upload that worked. Needs a protocol addition, not a renderer workaround.
