@@ -27,12 +27,57 @@ describe("canonicalDigest", () => {
     expect(canonicalDigest({ id: "1" })).not.toBe(canonicalDigest({ id: "2" }));
   });
 
-  it("distinguishes a missing key from an undefined one", () => {
-    expect(canonicalDigest({ a: 1 })).not.toBe(canonicalDigest({ a: 1, b: null }));
+  it("distinguishes a missing key, an undefined one and a null one", () => {
+    // Three different requests. A digest that collapses any pair of them
+    // reports two distinct questions as the same question.
+    const digests = [
+      canonicalDigest({ a: 1 }),
+      canonicalDigest({ a: 1, b: undefined }),
+      canonicalDigest({ a: 1, b: null }),
+    ];
+    expect(new Set(digests).size).toBe(3);
+  });
+
+  it("distinguishes two dates, which enumerate to no own properties", () => {
+    const early = canonicalDigest({ from: new Date("2020-01-01T00:00:00.000Z") });
+    const late = canonicalDigest({ from: new Date("2024-06-06T00:00:00.000Z") });
+    expect(early).not.toBe(late);
+    expect(early).not.toBe(canonicalDigest({ from: {} }));
+  });
+
+  it("digests a bigint rather than throwing on it", () => {
+    expect(canonicalDigest({ total: 10n })).toMatch(/^[a-f0-9]{64}$/);
+    expect(canonicalDigest({ total: 10n })).not.toBe(canonicalDigest({ total: 11n }));
   });
 
   it("does not preserve array order-insensitivity — order is meaning", () => {
     expect(canonicalDigest([1, 2])).not.toBe(canonicalDigest([2, 1]));
+  });
+
+  // Parameters come from a request body, so their depth is the caller's choice.
+  // A recursive walk would overflow the stack here — after the request had
+  // already been authorized and served.
+  it("digests a deeply nested value without overflowing the stack", () => {
+    const deep: Record<string, unknown> = {};
+    let cursor = deep;
+    for (let i = 0; i < 20_000; i += 1) {
+      const next: Record<string, unknown> = {};
+      cursor["a"] = next;
+      cursor = next;
+    }
+    cursor["leaf"] = 1;
+    expect(canonicalDigest(deep)).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("refuses a circular structure rather than looping", () => {
+    const cyclic: Record<string, unknown> = { a: 1 };
+    cyclic["self"] = cyclic;
+    expect(() => canonicalDigest(cyclic)).toThrow(TypeError);
+  });
+
+  it("digests a value referenced twice without calling it circular", () => {
+    const shared = { a: 1 };
+    expect(canonicalDigest({ x: shared, y: shared })).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it("never contains the input", () => {

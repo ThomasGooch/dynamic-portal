@@ -1,17 +1,30 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import { CURRENT_PROTOCOL_VERSION, type ActionResponse } from "@portal/protocol";
+import {
+  CURRENT_PROTOCOL_VERSION,
+  type ActionResponse,
+  type Audience,
+} from "@portal/protocol";
 import {
   InvalidPrincipalError,
   authorize,
   verifyPrincipal,
   type Principal,
 } from "@portal/identity";
+import type { Manifest } from "@portal/protocol";
 import type { OrderRepository } from "./repository.js";
 import { detailScreen, listScreen, manifest, ordersTable } from "./screens.js";
 
 export interface AppOptions {
   repository: OrderRepository;
   principalSecret: string;
+  /**
+   * Overridable so tests can exercise a *widened* satellite. While the
+   * satellite and its screens both declare `["internal"]`, a satellite-level
+   * audience check is indistinguishable from a per-screen one — the difference
+   * only appears once the satellite is exposed externally. Injecting the
+   * declaration follows the same reasoning as injecting the repository.
+   */
+  manifest?: Manifest;
 }
 
 /**
@@ -34,7 +47,11 @@ interface AuthedRequest extends Request {
  * an ephemeral port and inject a fresh repository — the reason the integration
  * suite can run without a docker-compose dependency.
  */
-export function createApp({ repository, principalSecret }: AppOptions): Express {
+export function createApp({
+  repository,
+  principalSecret,
+  manifest: declaredManifest,
+}: AppOptions): Express {
   const app = express();
   app.use(express.json());
   app.disable("x-powered-by");
@@ -71,10 +88,42 @@ export function createApp({ repository, principalSecret }: AppOptions): Express 
    * identically; the *enforcement* stays here, because that is what keeps a hub
    * bug from becoming a cross-tenant disclosure.
    */
-  const declaredAudience = manifest().audience;
-  function requireAccess(rbacScopes: readonly string[]) {
+  const declared = declaredManifest ?? manifest();
+
+  /**
+   * The audience actually in force for a resource.
+   *
+   * The protocol permits a screen or action to declare a *narrower* audience
+   * than its satellite — `ManifestSchema` validates subset, not equality. So
+   * checking only the satellite's audience is correct exactly while the two are
+   * identical, and becomes a disclosure the moment this satellite widens to
+   * `["internal", "external"]`: every internal-only screen would become
+   * externally reachable despite its own declaration saying otherwise.
+   *
+   * With external clients in scope that widening is a matter of when, so the
+   * narrower declaration is honoured now rather than after it matters.
+   *
+   * An undeclared id falls back to the satellite's audience; the handler answers
+   * 404 for it regardless, and 404 rather than 403 is what keeps an unknown id
+   * indistinguishable from a forbidden one.
+   */
+  const screenAudience = new Map(declared.screens.map((s) => [s.id, s.audience]));
+  const actionAudience = new Map(declared.actions.map((a) => [a.id, a.audience]));
+
+  function requireAccess(
+    rbacScopes: readonly string[],
+    resolveAudience: (req: AuthedRequest) => readonly Audience[],
+  ) {
     return (req: AuthedRequest, res: Response, next: NextFunction): void => {
-      const result = authorize(req.principal!, { audience: declaredAudience, rbacScopes });
+      // Default-deny rather than assert. A `req.principal!` here turns a route
+      // mounted without `authenticate` into a TypeError — an unauthenticated
+      // request answered with a 500 instead of a 401.
+      const principal = req.principal;
+      if (principal === undefined) {
+        res.status(401).json({ error: "missing bearer token" });
+        return;
+      }
+      const result = authorize(principal, { audience: resolveAudience(req), rbacScopes });
       if (!result.allowed) {
         res.status(result.status).json({ error: result.reason });
         return;
@@ -83,45 +132,61 @@ export function createApp({ repository, principalSecret }: AppOptions): Express 
     };
   }
 
+  const forScreen = (req: AuthedRequest): readonly Audience[] => {
+    // Express types a path param as `string | string[]`; a repeated segment
+    // would arrive as an array and must not be coerced into a lookup key.
+    const screenId = req.params["screenId"];
+    if (typeof screenId !== "string") return declared.audience;
+    return screenAudience.get(screenId) ?? declared.audience;
+  };
+
+  const forAction = (actionId: string) => (): readonly Audience[] =>
+    actionAudience.get(actionId) ?? declared.audience;
+
   app.get("/healthz", (_req, res) => {
     res.json({ status: "ok", protocol: CURRENT_PROTOCOL_VERSION });
   });
 
   // The manifest describes capabilities, not data, so it needs no principal.
   app.get("/portal/manifest", (_req, res) => {
-    res.json(manifest());
+    res.json(declared);
   });
 
-  app.get("/portal/screens/:screenId", authenticate, requireAccess(["orders.read"]), (req: AuthedRequest, res) => {
-    const tenantId = req.principal!.tenantId;
+  app.get(
+    "/portal/screens/:screenId",
+    authenticate,
+    requireAccess(["orders.read"], forScreen),
+    (req: AuthedRequest, res) => {
+      const tenantId = req.principal!.tenantId;
 
-    switch (req.params.screenId) {
-      case "orders.list":
-        res.json(listScreen(repository.list(tenantId)));
-        return;
+      switch (req.params.screenId) {
+        case "orders.list":
+          res.json(listScreen(repository.list(tenantId)));
+          return;
 
-      case "orders.detail": {
-        const id = typeof req.query["id"] === "string" ? req.query["id"] : "";
-        const order = repository.get(tenantId, id);
-        // 404 rather than 403 on purpose: a 403 would confirm that an order
-        // belonging to another tenant exists, which is itself a disclosure.
-        if (!order) {
-          res.status(404).json({ error: "order not found" });
+        case "orders.detail": {
+          const id = typeof req.query["id"] === "string" ? req.query["id"] : "";
+          const order = repository.get(tenantId, id);
+          // 404 rather than 403 on purpose: a 403 would confirm that an order
+          // belonging to another tenant exists, which is itself a disclosure.
+          if (!order) {
+            res.status(404).json({ error: "order not found" });
+            return;
+          }
+          res.json(detailScreen(order));
           return;
         }
-        res.json(detailScreen(order));
-        return;
-      }
 
-      default:
-        res.status(404).json({ error: "unknown screen" });
-    }
-  });
+        default:
+          res.status(404).json({ error: "unknown screen" });
+      }
+    },
+  );
 
   app.post(
     "/portal/actions/orders.approve",
     authenticate,
-    requireAccess(["orders.write"]),
+    requireAccess(["orders.write"], forAction("orders.approve")),
     (req: AuthedRequest, res) => {
       const tenantId = req.principal!.tenantId;
       const body = (req.body ?? {}) as { id?: unknown };

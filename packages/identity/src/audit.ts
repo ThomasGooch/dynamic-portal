@@ -16,6 +16,12 @@ import type { Principal } from "./principal.js";
  * **Parameters are digested, never stored.** They carry regulated data. The
  * digest proves *what was asked* — the same request always yields the same
  * value — without the record itself becoming a copy of the data it describes.
+ * Note the limit of that claim: an unkeyed SHA-256 over a low-entropy parameter
+ * (an order id, a national insurance number) is recoverable by anyone holding
+ * the log and a candidate list. The digest is not a confidentiality control; it
+ * keeps the record from being a *copy*. Before this log is exported anywhere
+ * the parameters themselves may not go, `canonicalDigest` needs a per-tenant
+ * HMAC key rather than a bare hash.
  *
  * **`subjects` exists because a digest cannot answer "which records".** A
  * digest is one-way, so it cannot be read back to enumerate what was touched.
@@ -123,13 +129,93 @@ export function canonicalDigest(value: unknown): string {
   return createHash("sha256").update(canonicalize(value), "utf8").digest("hex");
 }
 
-function canonicalize(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
-  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-    a < b ? -1 : a > b ? 1 : 0,
-  );
-  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalize(v)}`).join(",")}}`;
+/** A step in the walk: a value still to expand, or literal text to emit. */
+type CanonicalTask =
+  | { readonly expand: unknown }
+  | { readonly emit: string; readonly leave?: object | undefined };
+
+/**
+ * Iterative, deliberately.
+ *
+ * The values digested here are request parameters and tool arguments, so their
+ * nesting depth is chosen by the caller. A recursive walk overflows the stack
+ * on a deep object — a `RangeError` thrown out of the audit path, on a request
+ * that had already been authorized and served.
+ */
+function canonicalize(root: unknown): string {
+  const out: string[] = [];
+  const stack: CanonicalTask[] = [{ expand: root }];
+  // Containers currently open on the path from the root, so a cycle is a
+  // rejection rather than an unbounded loop.
+  const open = new Set<object>();
+
+  while (stack.length > 0) {
+    const task = stack.pop()!;
+
+    if ("emit" in task) {
+      if (task.leave !== undefined) open.delete(task.leave);
+      out.push(task.emit);
+      continue;
+    }
+
+    const value = task.expand;
+
+    // `undefined` is distinct from `null` and from an absent key. Collapsing
+    // them would let two different requests share a digest, which is the one
+    // property the record depends on.
+    if (value === undefined) {
+      out.push("undefined");
+      continue;
+    }
+    if (typeof value === "bigint") {
+      // `JSON.stringify` throws on a bigint; a digest must not be the thing
+      // that fails the request.
+      out.push(`${value}n`);
+      continue;
+    }
+    if (value === null || typeof value !== "object") {
+      // `JSON.stringify` yields undefined for functions and symbols.
+      out.push(JSON.stringify(value) ?? "undefined");
+      continue;
+    }
+
+    // Dates and other `toJSON` carriers enumerate to zero own properties, so
+    // without this every Date would digest identically to every other Date —
+    // and to `{}`.
+    const toJson = (value as { toJSON?: unknown }).toJSON;
+    if (typeof toJson === "function") {
+      stack.push({ expand: (toJson as (key?: string) => unknown).call(value) });
+      continue;
+    }
+
+    if (open.has(value)) throw new TypeError("cannot digest a circular structure");
+    open.add(value);
+
+    if (Array.isArray(value)) {
+      out.push("[");
+      // Pushed back to front, because the stack pops in reverse.
+      stack.push({ emit: "]", leave: value });
+      for (let i = value.length - 1; i >= 0; i -= 1) {
+        stack.push({ expand: value[i] });
+        if (i > 0) stack.push({ emit: "," });
+      }
+      continue;
+    }
+
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
+    out.push("{");
+    stack.push({ emit: "}", leave: value });
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const [key, entryValue] = entries[i]!;
+      stack.push({ expand: entryValue });
+      stack.push({ emit: `${JSON.stringify(key)}:` });
+      if (i > 0) stack.push({ emit: "," });
+    }
+  }
+
+  return out.join("");
 }
 
 const actor = (principal: Principal): z.infer<typeof ActorSchema> => ({
@@ -210,8 +296,14 @@ export function toolCall(
   };
 }
 
+/**
+ * `subjects` is excluded from the input rather than ignored: an `agent.compose`
+ * record has no field to carry it, so accepting one would silently drop the
+ * identifiers a caller had decided were safe to retain. The subjects belong on
+ * the `tool.call` records this event cites.
+ */
 export function agentCompose(
-  input: BaseInput & { screenId: string; toolCallIds: readonly string[] },
+  input: Omit<BaseInput, "subjects"> & { screenId: string; toolCallIds: readonly string[] },
 ): AuditEvent {
   return {
     id: input.id,
