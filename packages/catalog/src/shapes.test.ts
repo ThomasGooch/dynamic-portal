@@ -184,4 +184,47 @@ describe("adapters", () => {
   it("a flat spec produced from a valid tree validates", () => {
     expect(() => FlatSpecSchema.parse(nestedToFlat(screen))).not.toThrow();
   });
+
+  it("emits a reused node object once, not twice under one id", () => {
+    // An author reusing a constant for two slots is ordinary JavaScript. Giving
+    // the shared object an id per visit puts two elements with the same id in
+    // the list, which FlatSpecSchema then rejects — the adapter would be
+    // producing specs its own validator calls malformed.
+    const shared: UiNode = { type: "Divider" };
+    const flat = nestedToFlat({ type: "Page", children: [shared, shared] });
+    expect(new Set(flat.elements.map((e) => e.id)).size).toBe(flat.elements.length);
+    expect(() => FlatSpecSchema.parse(flat)).not.toThrow();
+  });
+
+  it("converts a tree far deeper than the stack, in both directions", () => {
+    // The flat shape deliberately permits depth the nested schema cannot, so a
+    // recursive adapter would overflow on a spec this package calls valid.
+    let node: UiNode = { type: "Text", props: { text: "leaf" } };
+    for (let i = 0; i < 20_000; i += 1) node = { type: "Stack", children: [node] };
+
+    const keyed = nestedToKeyed(node);
+    let depth = 0;
+    for (let cursor = keyedToNested(keyed); cursor.children?.[0]; cursor = cursor.children[0]) {
+      depth += 1;
+    }
+    expect(depth).toBe(20_000);
+  });
+
+  it("keeps an element whose id collides with an Object.prototype key", () => {
+    // Ids come from satellites and agents. `elements["__proto__"] = …` on an
+    // object literal invokes the prototype setter, so the element disappears
+    // from Object.keys and the renderer draws nothing for it.
+    const keyed = flatToKeyed({
+      root: "__proto__",
+      elements: [{ id: "__proto__", type: "Page", children: [] }],
+    });
+    expect(Object.keys(keyed.elements)).toEqual(["__proto__"]);
+    expect(keyedToNested(keyed).type).toBe("Page");
+  });
+
+  it("rejects an id that only resolves through the prototype chain", () => {
+    expect(() =>
+      keyedToNested({ root: "constructor", elements: {} }),
+    ).toThrow(/not found/);
+  });
 });

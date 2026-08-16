@@ -69,6 +69,24 @@ const Column = z
 /** Ties a rendered value back to the tool call that produced it. */
 const Source = z.object({ toolCallId: z.string() }).strict();
 
+/**
+ * Absolute http(s) only.
+ *
+ * `z.string().url()` is `new URL()` under the hood, so it accepts
+ * `javascript:` and `data:` — a satellite could hand the hub a `Link` that
+ * executes script when clicked. Scheme is checked explicitly instead. Expressed
+ * as a refinement rather than a string format so the emitted JSON schema stays
+ * within what structured outputs accept.
+ */
+const isHttpUrl = (value: string): boolean => {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const field = <T extends z.ZodRawShape>(shape: T) =>
   z
     .object({
@@ -232,7 +250,10 @@ export const COMPONENTS = {
       satelliteId: z.string().optional(),
       params: z.record(z.string()).optional(),
       /** Only ever an absolute http(s) URL, and rendered as leaving the portal. */
-      href: z.string().url().optional(),
+      href: z
+        .string()
+        .refine(isHttpUrl, "href must be an absolute http(s) URL")
+        .optional(),
     })
     .strict(),
   MenuButton: z

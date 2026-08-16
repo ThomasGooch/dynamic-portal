@@ -1,5 +1,5 @@
 import type { UiNode } from "@portal/protocol";
-import { propsSchemaFor } from "./components.js";
+import { CATALOG_VERSION, propsSchemaFor } from "./components.js";
 
 /**
  * Deep validation of the shape satellites emit.
@@ -35,7 +35,7 @@ export function validateNested(root: UiNode): CatalogResult {
     if (schema === undefined) {
       issues.push({
         path: where,
-        message: `Unknown component "${node.type}". It is not in catalog v1.`,
+        message: `Unknown component "${node.type}". It is not in catalog v${CATALOG_VERSION}.`,
       });
       continue;
     }
