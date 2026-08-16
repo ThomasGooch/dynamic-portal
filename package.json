@@ -14,13 +14,14 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
-    "test:all": "pnpm test:unit && pnpm test:integration && pnpm test:e2e",
+    "test:all": "pnpm test:unit && pnpm test:integration && pnpm test:py && pnpm test:e2e",
     "test:coverage": "vitest run --project unit --coverage",
     "typecheck": "tsc --build --force",
     "up": "docker compose up --build -d",
     "down": "docker compose down -v",
     "logs": "docker compose logs -f",
-    "stack:test": "docker compose build test && docker compose run --rm test"
+    "stack:test": "docker compose build test && docker compose run --rm test",
+    "test:py": "cd apps/satellite-fleet && uv run pytest"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

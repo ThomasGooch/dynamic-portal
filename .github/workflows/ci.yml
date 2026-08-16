@@ -48,6 +48,35 @@ jobs:
       - name: Test — integration
         run: pnpm test:integration
 
+  python:
+    name: build + test (python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/satellite-fleet
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --frozen fails rather than silently re-resolving, so CI cannot drift
+      # from the committed uv.lock — the same guarantee --frozen-lockfile gives
+      # on the pnpm side.
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Test — unit
+        run: uv run pytest -m "not integration"
+
+      - name: Test — integration
+        run: uv run pytest -m integration
+
 # The e2e tier is deliberately not run here: it needs the Docker stack up, and
 # this workflow is scoped to build + test. Adding it later is `pnpm up` followed
-# by `pnpm test:e2e`, with a `pnpm down` in an always() step.
+# by `pnpm test:e2e`, with a `pnpm down` in an always() step. It is also the
+# only tier that checks the Python satellite against the TypeScript schemas,
+# so that cross-language guarantee is currently local-only.

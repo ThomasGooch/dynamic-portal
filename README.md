@@ -46,9 +46,16 @@ pnpm down        # stop and remove volumes
 
 Running services:
 
-| Service | Port | Health |
-|---|---|---|
-| `satellite-orders` | 4001 | `GET /healthz` |
+| Service | Language | Port | MCP server | Health |
+|---|---|---|---|---|
+| `satellite-orders` | TypeScript | 4001 | planned | `GET /healthz` |
+| `satellite-fleet` | Python | 4002 | **none, deliberately** | `GET /healthz` |
+
+Two languages is not decoration. The protocol is a wire format, not a shared
+library, and `satellite-fleet` shares no code with `@portal/protocol` — the e2e
+tier parses its responses with the TypeScript schemas, which is where that stops
+being a claim. `satellite-fleet` also ships no MCP server on purpose: it is the
+case that proves the hub's PUP-to-MCP shim has something to do.
 
 ## Testing
 
@@ -59,7 +66,10 @@ code they cover; the tier is chosen by filename, not directory.
 |---|---|---|---|
 | **unit** | `pnpm test` | `src/**/*.test.ts` | Pure logic. No sockets, no clock. |
 | **integration** | `pnpm test:integration` | `src/**/*.integration.test.ts` | A real server on a real port, in-process. No browser. |
+| **python** | `pnpm test:py` | `apps/satellite-fleet/tests/` | Both tiers for the Python satellite (`-m integration` splits them). |
 | **e2e** | `pnpm test:e2e` | `e2e/**/*.spec.ts` | The running stack, over published ports. Requires `pnpm up`. |
+
+`pnpm test:all` runs every tier in order.
 
 The tiers earn their keep by failing differently. Integration tests verify the
 code; e2e verifies the code *as deployed* — image, entrypoint, environment,
