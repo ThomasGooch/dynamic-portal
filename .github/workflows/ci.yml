@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A superseded run on the same branch is wasted compute; cancel it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Must precede setup-node so its pnpm cache can resolve the store path.
+      # No version pin here: the action reads `packageManager` from package.json,
+      # which keeps CI and local on the same pnpm by construction.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # `build` for this workspace is tsc in project-reference mode. It is a real
+      # gate: the strict settings (exactOptionalPropertyTypes,
+      # noUncheckedIndexedAccess) catch things the tests do not.
+      - name: Build
+        run: pnpm typecheck
+
+      - name: Test — unit
+        run: pnpm test:unit
+
+      - name: Test — integration
+        run: pnpm test:integration
+
+# The e2e tier is deliberately not run here: it needs the Docker stack up, and
+# this workflow is scoped to build + test. Adding it later is `pnpm up` followed
+# by `pnpm test:e2e`, with a `pnpm down` in an always() step.

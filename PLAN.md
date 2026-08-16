@@ -268,6 +268,26 @@ A dedicated platform team makes this viable; it does not make it automatic. The 
 
 ---
 
+## Local stack and test strategy
+
+**Everything runs locally in Docker.** `pnpm up` builds and starts the stack; `pnpm stack:test` runs the suite inside the same image the services run in, so a green local run and a green containerised run mean the same thing. One parameterised `docker/node-app.Dockerfile` serves every Node service — a new satellite is four lines of compose, not a new Dockerfile. The image installs pnpm explicitly rather than through corepack, which ships with Node only up to v25 and would break the image on the next LTS.
+
+**Three tiers, separated by what they are allowed to touch** — and, more usefully, by *how they fail*:
+
+| Tier | Touches | Catches what the tier below cannot |
+|---|---|---|
+| **unit** | Pure logic — schemas, validators, tree adapters, version policy | Logic errors, fast, on every save |
+| **integration** | A real server on a real port, in-process. No browser | That a satellite enforces its **own** tenant scoping when called directly, with the hub absent. A unit test structurally cannot make this claim |
+| **e2e** | The running stack over published ports; browser once the hub exists | The code *as deployed* — image, entrypoint, environment, healthcheck, port mapping. A green integration suite alongside a broken Dockerfile is exactly this gap |
+
+**The verification list in this document is already the e2e plan.** Items 1–16 map nearly one-to-one onto Playwright specs, which is a property worth preserving as the list grows: acceptance criteria written as executable scenarios rather than prose.
+
+**Conformance is tested against the published schemas, not a service's own idea of them.** Every satellite response in the integration and e2e tiers is parsed with `@portal/protocol`'s real schemas, which makes declaration drift a failing build rather than a code review.
+
+**One known shortcut.** Services run TypeScript directly via `tsx`. Node's built-in type stripping cannot do this — it does not rewrite `.js` specifiers to `.ts`, and refuses to strip types inside `node_modules`, which is where workspace packages resolve. Before production, containers should run a `tsc` build output rather than a dev transpiler; the change is contained to the Dockerfile's final stage.
+
+---
+
 ## Library choices (reuse over build)
 
 | Need | Use |
