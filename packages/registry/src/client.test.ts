@@ -103,6 +103,18 @@ describe("a satellite behaving badly", () => {
     if (!result.ok) expect(JSON.stringify(result)).not.toContain("secret.py");
   });
 
+  it("rejects a screen on a protocol major outside the support window", async () => {
+    // The schema only checks that "9.0" is well-formed. Parsed against today's
+    // schemas it would render as if it were current, silently.
+    const result = await client(async () => respond({ ...goodScreen, protocol: "9.0" })).fetchScreen(
+      "orders.list",
+      {},
+      principal,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("invalid-response");
+  });
+
   it("times out rather than waiting on a hung satellite", async () => {
     const result = await client(
       (_input, init) =>
@@ -114,6 +126,68 @@ describe("a satellite behaving badly", () => {
     ).fetchScreen("orders.list", {}, principal);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("timeout");
+  });
+
+  it("times out on a satellite that answers 200 and then stalls mid-body", async () => {
+    // The deadline has to cover reading the body. Clearing it once the headers
+    // arrive lets a satellite hold the hub's request open indefinitely — the
+    // exact hang `timeoutMs` is there to prevent, reached by a slightly more
+    // patient route.
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const signal = init?.signal as AbortSignal | undefined;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"pro'));
+          signal?.addEventListener("abort", () =>
+            controller.error(new DOMException("aborted", "AbortError")),
+          );
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const result = await client(fetchImpl).fetchScreen("orders.list", {}, principal);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("timeout");
+  });
+});
+
+describe("fetching a manifest", () => {
+  const manifest = {
+    protocol: CURRENT_PROTOCOL_VERSION,
+    satelliteId: "orders",
+    displayName: "Orders",
+    audience: ["internal"],
+    screens: [{ id: "orders.list", title: "Orders", audience: ["internal"] }],
+    actions: [],
+  };
+
+  it("accepts a manifest that agrees with the registry", async () => {
+    const result = await client(async () => respond(manifest)).fetchManifest();
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a manifest claiming another satellite's id", async () => {
+    // The manifest is the satellite's self-declaration; the registry is the
+    // file that was reviewed. Accepting the claim would attribute one team's
+    // screens to another.
+    const result = await client(async () =>
+      respond({ ...manifest, satelliteId: "fleet" }),
+    ).fetchManifest();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("invalid-response");
+  });
+
+  it("rejects a manifest widening its own audience past the registry's", async () => {
+    // The registry says internal-only. A projection filtering on the manifest's
+    // audience would otherwise publish these screens outside the org.
+    const result = await client(async () =>
+      respond({
+        ...manifest,
+        audience: ["internal", "external"],
+      }),
+    ).fetchManifest();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("invalid-response");
   });
 });
 
@@ -169,6 +243,39 @@ describe("the circuit breaker", () => {
     } else {
       throw new Error(`expected unavailable, got ${result.ok ? "ok" : result.reason}`);
     }
+  });
+
+  it("does NOT count a 422 as a failure — a rejected query is still an answer", async () => {
+    // FastAPI answers 422 for a malformed query parameter. Five stale links
+    // would otherwise take a demonstrably healthy satellite offline for
+    // everyone, which is what the 4xx carve-out exists to prevent.
+    const breaker = new CircuitBreaker({ failureThreshold: 1, now: () => 0 });
+    const result = await client(async () => respond({}, 422), breaker).fetchScreen(
+      "orders.detail",
+      {},
+      principal,
+    );
+    expect(result.ok).toBe(false);
+    expect(breaker.state).toBe("closed");
+  });
+
+  it("closes the circuit on a 4xx: the satellite demonstrably answered", async () => {
+    // Recording no outcome at all would leave the half-open probe outstanding,
+    // so a recovered satellite whose next request happens to 404 would be
+    // refused for a further cooldown — and again, once per cooldown, forever.
+    let clock = 0;
+    const breaker = new CircuitBreaker({ failureThreshold: 1, cooldownMs: 100, now: () => clock });
+    breaker.recordFailure();
+    expect(breaker.state).toBe("open");
+
+    clock = 100;
+    await client(async () => respond({}, 404), breaker).fetchScreen("orders.detail", {}, principal);
+    expect(breaker.state).toBe("closed");
+
+    const fetchImpl = vi.fn<typeof fetch>(async () => respond(goodScreen));
+    const result = await client(fetchImpl, breaker).fetchScreen("orders.list", {}, principal);
+    expect(fetchImpl).toHaveBeenCalled();
+    expect(result.ok).toBe(true);
   });
 
   it("closes again after a success", async () => {
