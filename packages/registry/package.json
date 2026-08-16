@@ -13,6 +13,7 @@
     "typecheck": "tsc --build --force"
   },
   "dependencies": {
+    "@portal/catalog": "workspace:*",
     "@portal/identity": "workspace:*",
     "@portal/protocol": "workspace:*",
     "yaml": "^2.6.0",
