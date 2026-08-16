@@ -15,6 +15,12 @@ __pycache__/
 .venv/
 venv/
 
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
 .DS_Store
 *.log
 npm-debug.log*

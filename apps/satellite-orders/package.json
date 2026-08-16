@@ -1,0 +1,21 @@
+{
+  "name": "@portal/satellite-orders",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Demo satellite — orders. Serves PUP screens and actions, and authorizes its own tenants.",
+  "main": "./src/server.ts",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --build --force"
+  },
+  "dependencies": {
+    "@portal/protocol": "workspace:*",
+    "express": "^5.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0"
+  }
+}

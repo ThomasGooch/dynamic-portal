@@ -1,0 +1,55 @@
+# Local stack. `pnpm up` builds and starts everything; `pnpm stack:test` runs
+# the suite inside the same image the services run in.
+#
+# Services are added as they are built. Each new Node satellite is four lines:
+# a build arg pointing at its workspace path, a port, an env block, a healthcheck.
+
+name: dynamic-portal
+
+x-node-build: &node-build
+  context: .
+  dockerfile: docker/node-app.Dockerfile
+
+x-satellite-env: &satellite-env
+  NODE_ENV: development
+  # Dev-only shared secret. Production replaces this with per-satellite
+  # verification of an RFC 8693 exchanged token against the issuer's JWKS.
+  PORTAL_PRINCIPAL_SECRET: ${PORTAL_PRINCIPAL_SECRET:-dev-only-not-a-real-secret}
+
+services:
+  satellite-orders:
+    build:
+      <<: *node-build
+      args:
+        APP_PATH: apps/satellite-orders
+    environment:
+      <<: *satellite-env
+      PORT: "4001"
+    ports:
+      - "4001:4001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4001/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # Runs the workspace suite in the same image the services run in, so a green
+  # local run and a green containerised run mean the same thing.
+  test:
+    build:
+      <<: *node-build
+      args:
+        APP_PATH: apps/satellite-orders
+    environment:
+      <<: *satellite-env
+      # Points stack-level tests at the running container rather than an
+      # in-process server. Absent locally, which is why the integration suite
+      # boots its own server when this is unset.
+      PORTAL_STACK_BASE_URL: http://satellite-orders:4001
+    depends_on:
+      satellite-orders:
+        condition: service_healthy
+    command: ["pnpm", "run", "test:unit"]
+    profiles: ["test"]

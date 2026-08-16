@@ -1,0 +1,21 @@
+**/node_modules
+**/dist
+**/build
+**/.next
+**/coverage
+**/*.tsbuildinfo
+
+.git
+.github
+**/.DS_Store
+**/*.log
+
+# Test output and local env
+test-results
+playwright-report
+**/.env
+**/.env.local
+
+# Docs are not needed in the build context
+*.md
+!README.md
