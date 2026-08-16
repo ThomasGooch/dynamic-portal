@@ -8,6 +8,9 @@
       "path": "./packages/identity"
     },
     {
+      "path": "./packages/registry"
+    },
+    {
       "path": "./packages/catalog"
     },
     {

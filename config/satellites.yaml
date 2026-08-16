@@ -1,0 +1,35 @@
+# The satellite registry.
+#
+# Config-as-code on purpose: the set of solutions changes on a deploy cadence,
+# not a request cadence, so a reviewable, diffable, revertible file beats a table.
+#
+# `audience` defaults to [internal]. Leaving it off is how a satellite stays
+# invisible to external clients — never add `external` to make something work.
+
+- id: orders
+  displayName: Order Management
+  description: Track, review and approve customer orders.
+  baseUrl: http://localhost:4001
+  owner: fulfillment-team
+  nav:
+    section: Operations
+    order: 10
+  rbacScopes: [orders.read]
+  timeoutMs: 3000
+  tools:
+    orders.approve:
+      requiresConfirmation: true
+      rbacScopes: [orders.write]
+
+# No mcpUrl: this satellite ships no MCP server, so the hub generates a shim
+# from its PUP manifest. It is the case that keeps the shim exercised.
+- id: fleet
+  displayName: Fleet Operations
+  description: Vehicle status, utilisation and maintenance.
+  baseUrl: http://localhost:4002
+  owner: logistics-team
+  nav:
+    section: Operations
+    order: 20
+  rbacScopes: [fleet.read]
+  timeoutMs: 3000
