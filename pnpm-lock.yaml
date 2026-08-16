@@ -84,6 +84,9 @@ importers:
 
   packages/registry:
     dependencies:
+      '@portal/catalog':
+        specifier: workspace:*
+        version: link:../catalog
       '@portal/identity':
         specifier: workspace:*
         version: link:../identity

@@ -26,3 +26,10 @@ export {
   type BreakerState,
   type CircuitBreakerOptions,
 } from "./breaker.js";
+
+export {
+  SatelliteClient,
+  type Failure,
+  type Result,
+  type SatelliteClientOptions,
+} from "./client.js";

@@ -3,8 +3,22 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*"],
-  "references": [{ "path": "../protocol" }, { "path": "../identity" }]
+  "include": [
+    "src/**/*"
+  ],
+  "references": [
+    {
+      "path": "../protocol"
+    },
+    {
+      "path": "../identity"
+    },
+    {
+      "path": "../catalog"
+    }
+  ]
 }
