@@ -72,15 +72,21 @@ green local run and a green containerised run mean the same thing.
 ## Contributing
 
 `main` is protected by a repository ruleset. Direct pushes, force-pushes and
-deletion are refused; every change lands through a pull request that has:
+deletion are refused; every change lands through a pull request with a green
+**`build + test`** check.
 
-1. **One approving review**, and
-2. **A green `build + test` check** (strict — the branch must be up to date with
-   `main` before merging).
+**Review is a working agreement, not a ruleset rule.** Every PR gets a code
+review pass with findings applied *before* it is merged — including PRs opened
+by whoever wrote the code.
 
-In addition, every PR gets a code review pass with findings applied *before*
-merge — including PRs opened by whoever wrote the code. That part is a working
-agreement rather than something the ruleset can express.
+That split is deliberate. GitHub can require an *approval*, but it forbids a PR
+author from approving their own pull request, and this repository has a single
+collaborator who authors every PR. Requiring one approval therefore made every
+PR permanently unmergeable, with no bypass — the requirement is only meaningful
+once a second account with write access exists. Rather than weaken CI to work
+around it (bypass actors skip *every* rule in a ruleset, including the status
+check), the approval requirement is left off and the review is enforced by
+process. Add it back when there is someone to do the approving.
 
 ## Conventions
 
