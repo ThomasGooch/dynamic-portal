@@ -35,6 +35,29 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # Python, and deliberately no MCP server — the case that proves the hub's
+  # PUP-to-MCP shim has something to do. Its manifest is validated against the
+  # TypeScript protocol schemas by the e2e tier, which is where the polyglot
+  # claim stops being a claim.
+  satellite-fleet:
+    build:
+      context: .
+      dockerfile: docker/python-app.Dockerfile
+      args:
+        APP_PATH: apps/satellite-fleet
+    environment:
+      <<: *satellite-env
+      PORT: "4002"
+    ports:
+      - "4002:4002"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4002/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
   # Runs the workspace suite in the same image the services run in, so a green
   # local run and a green containerised run mean the same thing.
   test:

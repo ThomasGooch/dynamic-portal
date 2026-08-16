@@ -28,3 +28,5 @@ npm-debug.log*
 .turbo/
 .idea/
 .vscode/
+.pytest_cache/
+.ruff_cache/
