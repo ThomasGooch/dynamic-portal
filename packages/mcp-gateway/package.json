@@ -15,7 +15,6 @@
   "dependencies": {
     "@portal/identity": "workspace:*",
     "@portal/protocol": "workspace:*",
-    "@portal/registry": "workspace:*",
-    "zod": "^3.24.0"
+    "@portal/registry": "workspace:*"
   }
 }

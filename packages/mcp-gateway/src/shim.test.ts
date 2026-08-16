@@ -247,6 +247,36 @@ describe("authorization carried onto the tool", () => {
     );
     expect(tool?.audience).toEqual(["internal", "external"]);
   });
+
+  it("never widens past the satellite's own audience, listed or not", () => {
+    // The hub's screen and action routes gate on the satellite's entry before
+    // they look at what a screen declares. A gateway that only read the screen
+    // would hand an internal-only satellite's externally-declared screen to an
+    // external principal — the registry's audience, silently overridden by the
+    // satellite team that wrote the manifest.
+    const tool = find(
+      shimTools(
+        satellite(),
+        manifest({
+          audience: ["internal", "external"],
+          screens: [{ id: "orders.list", title: "Orders", audience: ["external"] }],
+        }),
+      ),
+      "orders__orders_list",
+    );
+    expect(tool).toBeUndefined();
+  });
+
+  it("does not read a tool policy off Object.prototype", () => {
+    // `constructor` is a legal id, and `tools` is a plain object: looked up
+    // with `in` it resolves to `Object`, and the audience narrowing then reads
+    // `.audience` off a function.
+    const result = shimTools(
+      satellite(),
+      manifest({ screens: [{ id: "constructor", title: "C" }] }),
+    );
+    expect(find(result, "orders__constructor")?.audience).toEqual(["internal"]);
+  });
 });
 
 describe("names that cannot be projected", () => {

@@ -139,7 +139,9 @@ export function shimTools(satellite: Satellite, manifest: Manifest): ShimResult 
   // reaching a tool the registry never said it could is worse than a tool being
   // missing. Done over the finished list so a screen and an action cannot
   // collide with each other unnoticed either.
-  const { index, collisions, unprojectable } = indexToolNames(
+  // `unprojectable` is deliberately not read: `build` already refused every id
+  // that has no name, with a reason, so nothing here can be missing one.
+  const { index, collisions } = indexToolNames(
     tools.map((tool) => ({ satelliteId: tool.satelliteId, toolId: tool.targetId })),
   );
 
@@ -153,7 +155,6 @@ export function shimTools(satellite: Satellite, manifest: Manifest): ShimResult 
       });
     }
   }
-  for (const ref of unprojectable) dropped.add(ref.toolId);
 
   return {
     tools: tools.filter((tool) => index.has(tool.name) && !dropped.has(tool.targetId)),
@@ -179,16 +180,26 @@ function build(input: BuildInput): ToolDescriptor | { reason: string } {
     return { reason: `id is too long to project into an MCP tool name` };
   }
 
-  const policy = input.satellite.tools[input.targetId];
+  // `hasOwn`, not `in`: `tools` is a plain object, so an id of `constructor`
+  // — which `IdSchema` accepts — would otherwise resolve to `Object` and this
+  // function would read `audience` off a function.
+  const policy = Object.hasOwn(input.satellite.tools, input.targetId)
+    ? input.satellite.tools[input.targetId]
+    : undefined;
   const isRead = input.kind === "read";
 
-  // The narrower of the two, always. The registry is the governance file and
-  // its silence means internal, so listing a tool at all pins it to internal
-  // unless the entry widens it.
+  // The narrowest of the three, always. The satellite's own entry is included
+  // because the hub's screen and action routes gate on it *before* they look at
+  // what a screen declares — a gateway that skipped it would offer an
+  // internal-only satellite's externally-declared screen to an external
+  // principal, which is the one thing the registry's audience exists to stop.
+  // The registry is the governance file and its silence means internal, so
+  // listing a tool at all pins it to internal unless the entry widens it.
+  const declared = input.audience.filter((value) => input.satellite.audience.includes(value));
   const audience =
     policy === undefined
-      ? input.audience
-      : input.audience.filter((value) => policy.audience.includes(value));
+      ? declared
+      : declared.filter((value) => policy.audience.includes(value));
 
   if (audience.length === 0) {
     return { reason: "registry and manifest agree on no audience for this tool" };

@@ -154,10 +154,13 @@ function readTable(id: string | undefined, props: Record<string, unknown>): Extr
   const rows = source.slice(0, MAX_EXTRACTED_ROWS).map((row) => {
     const record = rec(row) ?? {};
     // Declared columns only. A row's other fields were never shown to a human
-    // either — see the note at the top of this file.
+    // either — see the note at the top of this file. `hasOwn`, not `in`: a row
+    // is a plain object, so `in` would let a column keyed `constructor` copy an
+    // `Object.prototype` member into a result that is supposed to contain only
+    // what the satellite sent.
     const out: Record<string, unknown> = {};
     for (const column of columns) {
-      if (column.key in record) out[column.key] = record[column.key];
+      if (Object.hasOwn(record, column.key)) out[column.key] = record[column.key];
     }
     return out;
   });
@@ -187,9 +190,9 @@ function readChart(props: Record<string, unknown>): ExtractedChart | undefined {
   const points = source.slice(0, MAX_EXTRACTED_ROWS).map((point) => {
     const record = rec(point) ?? {};
     const out: Record<string, unknown> = {};
-    if (xKey in record) out[xKey] = record[xKey];
+    if (Object.hasOwn(record, xKey)) out[xKey] = record[xKey];
     for (const entry of series) {
-      if (entry.key in record) out[entry.key] = record[entry.key];
+      if (Object.hasOwn(record, entry.key)) out[entry.key] = record[entry.key];
     }
     return out;
   });

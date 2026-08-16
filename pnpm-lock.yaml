@@ -90,15 +90,9 @@ importers:
       '@portal/identity':
         specifier: workspace:*
         version: link:../../packages/identity
-      '@portal/mcp-gateway':
-        specifier: workspace:*
-        version: link:../../packages/mcp-gateway
       '@portal/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@portal/registry':
-        specifier: workspace:*
-        version: link:../../packages/registry
       express:
         specifier: ^5.1.0
         version: 5.2.1(supports-color@7.2.0)
@@ -106,6 +100,12 @@ importers:
         specifier: ^3.24.0
         version: 3.25.76
     devDependencies:
+      '@portal/mcp-gateway':
+        specifier: workspace:*
+        version: link:../../packages/mcp-gateway
+      '@portal/registry':
+        specifier: workspace:*
+        version: link:../../packages/registry
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.6
@@ -142,9 +142,6 @@ importers:
       '@portal/registry':
         specifier: workspace:*
         version: link:../registry
-      zod:
-        specifier: ^3.24.0
-        version: 3.25.76
 
   packages/protocol:
     dependencies:

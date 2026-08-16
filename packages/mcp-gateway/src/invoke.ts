@@ -203,19 +203,23 @@ function checkArguments(
 ): Checked {
   const out: Record<string, unknown> = {};
 
+  // `hasOwn` rather than `in` throughout: both objects are plain, so `in` walks
+  // `Object.prototype` and an argument named `constructor` or `toString` would
+  // pass the undeclared-field check by matching a method nobody declared.
   for (const key of Object.keys(args)) {
-    if (!(key in schema.properties)) {
+    if (!Object.hasOwn(schema.properties, key)) {
       return { ok: false, message: `"${key}" is not a parameter of this tool.` };
     }
   }
 
   for (const name of schema.required) {
-    if (args[name] === undefined) {
+    if (!Object.hasOwn(args, name) || args[name] === undefined) {
       return { ok: false, message: `"${name}" is required.` };
     }
   }
 
   for (const [name, property] of Object.entries(schema.properties)) {
+    if (!Object.hasOwn(args, name)) continue;
     const value = args[name];
     if (value === undefined) continue;
 

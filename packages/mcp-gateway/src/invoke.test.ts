@@ -212,6 +212,23 @@ describe("what an agent may not reach", () => {
     expect(calls).toEqual([]);
   });
 
+  it("refuses an argument that only matches Object.prototype", async () => {
+    // `"constructor" in properties` is true for any plain object, so an
+    // undeclared field with that name would pass the check that exists to stop
+    // exactly this, and then be dropped without anyone being told.
+    const result = await invokeTool(
+      surface,
+      "orders__orders_approve",
+      { id: "ord-1", constructor: "globex" },
+      principal,
+      { ...deps(), confirmed: true },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("bad-arguments");
+    expect(calls).toEqual([]);
+  });
+
   it("refuses a missing required argument before calling anything", async () => {
     const result = await invokeTool(surface, "orders__orders_approve", { notify: true }, principal, {
       ...deps(),

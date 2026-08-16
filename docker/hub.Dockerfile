@@ -28,6 +28,7 @@ COPY packages/protocol/package.json  packages/protocol/package.json
 COPY packages/identity/package.json  packages/identity/package.json
 COPY packages/catalog/package.json   packages/catalog/package.json
 COPY packages/registry/package.json  packages/registry/package.json
+COPY packages/mcp-gateway/package.json packages/mcp-gateway/package.json
 COPY apps/satellite-orders/package.json apps/satellite-orders/package.json
 COPY apps/hub/package.json apps/hub/package.json
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
