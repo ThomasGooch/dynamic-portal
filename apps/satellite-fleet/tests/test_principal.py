@@ -46,7 +46,24 @@ def test_rejects_a_tampered_payload() -> None:
         verify_principal(f"{swapped}.{signature}", SECRET)
 
 
-@pytest.mark.parametrize("bad", ["", "no-dot", "a.b.c", "....", "!!!.???", ".", "x."])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "",
+        "no-dot",
+        "a.b.c",
+        "....",
+        "!!!.???",
+        ".",
+        "x.",
+        # Header values arrive decoded as latin-1, so any byte above 0x7F
+        # reaches this function as a non-ASCII character. It must be a rejected
+        # token, not an encoding crash that escapes as a 500.
+        "\xe9.abc",
+        "abc.\xe9",
+        "\xe9\xe9.\xe9\xe9",
+    ],
+)
 def test_rejects_malformed_tokens(bad: str) -> None:
     with pytest.raises(InvalidPrincipalError):
         verify_principal(bad, SECRET)
@@ -106,3 +123,40 @@ class TestCrossLanguageContract:
     def test_that_token_still_fails_under_a_different_secret(self) -> None:
         with pytest.raises(InvalidPrincipalError):
             verify_principal(self.TOKEN, "some-other-secret")
+
+    def test_rejects_unknown_claims_like_the_typescript_schema_does(self) -> None:
+        """Both satellites must agree on what a valid principal *is*.
+
+        `PrincipalSchema` in apps/satellite-orders is `.strict()`. If this side
+        accepted extra claims, a token would authenticate against `fleet` and be
+        refused by `orders` — one identity, two answers. A signature check that
+        passes on one satellite and fails on another is a worse failure than
+        either rejecting or accepting consistently.
+        """
+        import base64
+        import hashlib
+        import hmac
+        import json
+
+        claims = {
+            "sub": "dana@acme.example",
+            "tenantId": "acme",
+            "audience": "internal",
+            "scopes": ["fleet.read"],
+            "isAdmin": True,  # not in the schema
+        }
+        payload = (
+            base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode()
+        )
+        signature = (
+            base64.urlsafe_b64encode(
+                hmac.new(
+                    self.SECRET.encode(), payload.encode(), hashlib.sha256
+                ).digest()
+            )
+            .rstrip(b"=")
+            .decode()
+        )
+        # Correctly signed — only the extra claim can reject it.
+        with pytest.raises(InvalidPrincipalError):
+            verify_principal(f"{payload}.{signature}", self.SECRET)

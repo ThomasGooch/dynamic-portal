@@ -53,7 +53,10 @@ class VehicleRepository:
         return None
 
     def status_summary(self, tenant_id: str) -> dict[str, int]:
+        # Counts in place rather than via `list`, which would copy every vehicle
+        # only to read one field off each.
         summary: dict[str, int] = {}
-        for v in self.list(tenant_id):
-            summary[v.status] = summary.get(v.status, 0) + 1
+        for v in self._vehicles:
+            if v.tenant_id == tenant_id:
+                summary[v.status] = summary.get(v.status, 0) + 1
         return summary

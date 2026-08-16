@@ -28,3 +28,7 @@ testpaths = ["tests"]
 markers = [
     "integration: exercises a real uvicorn server on a real socket",
 ]
+# The tier split is only as good as the marker names. Without this a typo like
+# `@pytest.mark.integraton` is silently ignored, so the test lands in the unit
+# tier and the integration tier stops covering it.
+addopts = ["--strict-markers"]

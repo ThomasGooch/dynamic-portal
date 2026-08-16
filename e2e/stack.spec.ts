@@ -98,10 +98,16 @@ test.describe("cross-satellite protocol agreement", () => {
     expect(new Set(versions).size).toBe(1);
   });
 
-  test("one satellite ships MCP natively and one does not", async ({ request }) => {
+  test("at least one satellite ships no MCP server, so the shim stays exercised", async ({
+    request,
+  }) => {
     // fleet deliberately has no MCP server: it is the case that proves the
-    // hub's PUP-to-MCP shim has something to do. If both satellites ever ship
+    // hub's PUP-to-MCP shim has something to do. If every satellite ever ships
     // MCP, the shim silently stops being exercised anywhere.
+    //
+    // Deliberately *not* asserting that some satellite ships MCP natively:
+    // none does yet (orders' is planned), so such an assertion would have to be
+    // written as something that cannot fail, which is worse than no test.
     const manifests = await Promise.all(
       SATELLITES.map(async (s) => ({
         id: s.id,
@@ -110,10 +116,8 @@ test.describe("cross-satellite protocol agreement", () => {
         ),
       })),
     );
-    const withMcp = manifests.filter((m) => m.manifest.mcpUrl !== undefined);
     const withoutMcp = manifests.filter((m) => m.manifest.mcpUrl === undefined);
     expect(withoutMcp.map((m) => m.id)).toContain("fleet");
-    expect(withMcp.length + withoutMcp.length).toBe(SATELLITES.length);
   });
 
   test("neither satellite leaks a tenant discriminator into rendered rows", async ({ request }) => {

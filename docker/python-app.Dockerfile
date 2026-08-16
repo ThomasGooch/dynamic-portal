@@ -7,6 +7,11 @@
 ARG PYTHON_VERSION=3.13
 ARG UV_VERSION=0.12.5
 
+# A named stage rather than `COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION}`:
+# BuildKit does not expand variables in `--from`, but it does in `FROM`, so this
+# is what keeps the uv version a single ARG instead of a literal that drifts.
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
 FROM python:${PYTHON_VERSION}-slim AS base
 ARG APP_PATH
 ENV PYTHONUNBUFFERED=1 \
@@ -17,7 +22,7 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
-COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /usr/local/bin/uv
+COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 
 # ---- deps: cacheable layer keyed on the lockfile only --------------------

@@ -28,7 +28,13 @@ _READ_SCOPE = "fleet.read"
 
 
 def create_app(*, repository: VehicleRepository, principal_secret: str) -> FastAPI:
-    app = FastAPI(title="satellite-fleet", docs_url=None, redoc_url=None)
+    # `openapi_url=None` as well as the two doc UIs: turning off /docs and
+    # /redoc alone leaves /openapi.json served unauthenticated, which publishes
+    # the whole route surface. The manifest is the satellite's declaration; the
+    # OpenAPI schema is internal detail.
+    app = FastAPI(
+        title="satellite-fleet", docs_url=None, redoc_url=None, openapi_url=None
+    )
 
     def authenticate(
         authorization: Annotated[str | None, Header()] = None,

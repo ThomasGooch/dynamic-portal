@@ -66,7 +66,12 @@ def _b64url_decode(value: str) -> bytes:
 
 
 def _sign(payload: str, secret: str) -> str:
-    digest = hmac.new(secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256)
+    # utf-8, not ascii: the payload segment comes straight off the wire, and an
+    # `ascii` encode raises UnicodeEncodeError on a header byte above 0x7F —
+    # which is not an InvalidPrincipalError, so it would escape the auth
+    # dependency as a 500 instead of a 401. utf-8 also matches the TypeScript
+    # side, where `hmac.update(string)` defaults to utf-8.
+    digest = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256)
     return _b64url_encode(digest.digest())
 
 
@@ -77,9 +82,23 @@ def sign_principal(principal: Principal, secret: str) -> str:
     return f"{payload}.{_sign(payload, secret)}"
 
 
+_CLAIMS: frozenset[str] = frozenset({"sub", "tenantId", "audience", "scopes"})
+
+
 def _parse_claims(decoded: object) -> Principal:
     if not isinstance(decoded, dict):
         raise InvalidPrincipalError("payload is not an object")
+
+    # Reject unknown claims, because the reference TypeScript `PrincipalSchema`
+    # is `.strict()`. Accepting them here would mean a token that `fleet` honours
+    # and `orders` refuses — the two satellites disagreeing about what a valid
+    # identity is, which is exactly what the cross-language contract test below
+    # exists to prevent. Divergence in an auth parser is worth a hard failure.
+    unknown = set(decoded) - _CLAIMS
+    if unknown:
+        raise InvalidPrincipalError(
+            f"unknown claim(s): {', '.join(sorted(unknown))}"
+        )
 
     sub, tenant_id = decoded.get("sub"), decoded.get("tenantId")
     audience, scopes = decoded.get("audience"), decoded.get("scopes")
@@ -112,8 +131,13 @@ def verify_principal(token: str, secret: str) -> Principal:
     if not payload or not signature:
         raise InvalidPrincipalError("empty segment")
 
-    # Constant-time, and over the payload exactly as received.
-    if not hmac.compare_digest(_sign(payload, secret), signature):
+    # Constant-time, and over the payload exactly as received. Compared as
+    # bytes: `compare_digest` on two `str` raises TypeError the moment either
+    # side carries a non-ASCII character, and the signature segment is
+    # attacker-controlled.
+    if not hmac.compare_digest(
+        _sign(payload, secret).encode("ascii"), signature.encode("utf-8")
+    ):
         raise InvalidPrincipalError("signature mismatch")
 
     try:
