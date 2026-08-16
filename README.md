@@ -69,10 +69,29 @@ Dockerfile is exactly the gap the e2e tier closes.
 `pnpm stack:test` runs the suite inside the same image the services run in, so a
 green local run and a green containerised run mean the same thing.
 
+## Contributing
+
+`main` is protected by a repository ruleset. Direct pushes, force-pushes and
+deletion are refused; every change lands through a pull request with a green
+**`build + test`** check.
+
+**Review is a working agreement, not a ruleset rule.** Every PR gets a code
+review pass with findings applied *before* it is merged — including PRs opened
+by whoever wrote the code.
+
+That split is deliberate. GitHub can require an *approval*, but it forbids a PR
+author from approving their own pull request, and this repository has a single
+collaborator who authors every PR. Requiring one approval therefore made every
+PR permanently unmergeable, with no bypass — the requirement is only meaningful
+once a second account with write access exists. Rather than weaken CI to work
+around it (bypass actors skip *every* rule in a ruleset, including the status
+check), the approval requirement is left off and the review is enforced by
+process. Add it back when there is someone to do the approving.
+
 ## Conventions
 
 - **TDD** — red, green, refactor. Tests land with (or before) the code they cover.
-- **A branch per feature**, PR into `main`.
+- **A branch per feature**, PR into `main`. No merge without a review and green CI.
 - **The catalog is additive-only.** Components are deprecated, never removed.
 - **Satellites authorize themselves.** The hub authenticates and propagates the
   principal; every satellite independently enforces tenant scoping. A hub bug
