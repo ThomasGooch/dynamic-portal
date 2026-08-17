@@ -147,6 +147,28 @@ describe("answering without drawing", () => {
   });
 });
 
+describe("what a read result tells the model", () => {
+  it("carries the id the model is required to cite", async () => {
+    // The bug this pins cost every turn the loop had. Grounding demands a
+    // `toolCallId` and nothing told the model what one was, so it cited the
+    // tool's *name* — twice, with different punctuation — and the turn ran out.
+    // The id lives in the model's own `tool_use` block, which turns out not to
+    // be the same as being told.
+    const client = scripted(
+      [toolUse("call-1", "orders__orders_list")],
+      [{ type: "text", text: "done" }],
+    );
+    const result = await runAgent({ messages: ask("go"), surface }, { client, invoke: invoker() });
+
+    const payload = result.messages
+      .flatMap((message) => message.content)
+      .filter((block) => block.type === "tool_result")
+      .map((block) => JSON.parse((block as { content: string }).content) as { toolCallId?: string });
+
+    expect(payload[0]?.toolCallId).toBe("call-1");
+  });
+});
+
 describe("drawing a screen", () => {
   it("grounds the spec against the calls that actually happened", async () => {
     const client = scripted(
@@ -174,6 +196,35 @@ describe("drawing a screen", () => {
 
     expect(result.kind).toBe("screen");
     expect(client.calls).toBe(3);
+  });
+
+  it("names the ids that would have worked, not merely the one that did not", async () => {
+    // A retry after "that id does not exist" is another guess unless the
+    // message says what does exist.
+    const client = scripted(
+      [toolUse("call-1", "orders__orders_list")],
+      [toolUse("draw-1", RENDER_SCREEN_TOOL, screenSpec("invented"))],
+      [{ type: "text", text: "I see." }],
+    );
+    const result = await runAgent({ messages: ask("show me"), surface }, { client, invoke: invoker() });
+
+    const error = result.messages
+      .flatMap((message) => message.content)
+      .find((block) => block.type === "tool_result" && block.is_error === true);
+    expect((error as { content: string }).content).toContain("call-1");
+  });
+
+  it("says so plainly when nothing has been fetched yet", async () => {
+    const client = scripted(
+      [toolUse("draw-1", RENDER_SCREEN_TOOL, screenSpec("invented"))],
+      [{ type: "text", text: "Sorry." }],
+    );
+    const result = await runAgent({ messages: ask("show me"), surface }, { client, invoke: invoker() });
+
+    const error = result.messages
+      .flatMap((message) => message.content)
+      .find((block) => block.type === "tool_result" && block.is_error === true);
+    expect((error as { content: string }).content).toMatch(/no tool call has happened yet/i);
   });
 
   it("tells the model which node was wrong", async () => {

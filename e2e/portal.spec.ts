@@ -270,9 +270,25 @@ test.describe("rendering the untrusted", () => {
 
 test.describe("the agent, switched off", () => {
   // PLAN.md item 13, and the property the whole design rests on: mode one works
-  // with the agent disabled. The compose stack sets no API key, so this is the
-  // portal's default state rather than a state contrived for the test.
+  // with the agent disabled.
+  //
+  // Gated on the stack actually being configured that way. It is the default —
+  // compose passes `ANTHROPIC_API_KEY` through from `.env`, and CI has none —
+  // but a developer with a key in `.env` is running the other configuration,
+  // and these assertions describe this one. The deterministic screens are
+  // covered either way by every test above.
+  let disabled = false;
+
+  test.beforeAll(async ({ request }) => {
+    const response = await request.post("/api/agent", {
+      data: { messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }] },
+      timeout: 180_000,
+    });
+    disabled = response.status() === 404;
+  });
+
   test("mounts nothing when no assistant is configured", async ({ page }) => {
+    test.skip(!disabled, "this stack has an assistant configured");
     await page.goto("/orders");
     await expect(page.getByRole("button", { name: "Ask the portal" })).toHaveCount(0);
     await expect(page.getByRole("complementary", { name: "Assistant" })).toHaveCount(0);
@@ -286,6 +302,7 @@ test.describe("the agent, switched off", () => {
   });
 
   test("answers the agent endpoint with a plain refusal, not an error", async ({ page }) => {
+    test.skip(!disabled, "this stack has an assistant configured");
     // "Not enabled" is a supported way to run this portal, so it is not a 500
     // and it does not leak whether a key merely happens to be missing today.
     await page.goto("/orders");
@@ -604,5 +621,98 @@ test.describe("the audit log", () => {
     expect(last.action.screenId).toBe("fleet.dashboard");
     expect(last.principal.sub).toContain("@");
     expect(Date.parse(last.at)).not.toBeNaN();
+  });
+});
+
+test.describe("the assistant, switched on", () => {
+  // Skipped unless the running stack actually has a key. CI has none, and a
+  // suite that failed there would train everyone to ignore it — but a local run
+  // with `ANTHROPIC_API_KEY` in `.env` exercises the one path no scripted test
+  // can, which is a real model deciding what to do.
+  //
+  // Deliberately few and shape-based. Asserting a model's wording is asserting
+  // something nobody can fix.
+  let enabled = false;
+
+  test.beforeAll(async ({ request }) => {
+    const response = await request.post("/api/agent", {
+      data: { messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }] },
+      timeout: 180_000,
+    });
+    enabled = response.status() !== 404;
+  });
+
+  test("answers a question from a satellite's real data", async ({ request }) => {
+    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+
+    const response = await request.post("/api/agent", {
+      data: {
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "How many orders are pending? One sentence." }],
+          },
+        ],
+      },
+      timeout: 240_000,
+    });
+
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    expect(body.kind).toBe("answer");
+
+    // Compared against what the satellite actually says right now, not against
+    // a constant. Tests earlier in this file approve an order, so the count is
+    // mutable state — an earlier version of this asserted "two", passed on its
+    // own, and failed in a full run for a reason that was nothing to do with
+    // the agent.
+    const listed = await request.get(
+      "/api/public/v1/services/order-management/resources/orders",
+    );
+    const rows = (await listed.json()).collections[0].records as { status: string }[];
+    const pending = rows.filter((row) => row.status === "pending").length;
+
+    const words = ["zero", "one", "two", "three", "four", "five"];
+    expect(body.text.toLowerCase()).toMatch(
+      new RegExp(`\\b(${pending}|${words[pending] ?? "many"})\\b`),
+    );
+  });
+
+  test("composes a grounded screen the hub fills in", async ({ request }) => {
+    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+
+    const response = await request.post("/api/agent", {
+      data: {
+        messages: [
+          { role: "user", content: [{ type: "text", text: "Show me the orders as a screen with a table." }] },
+        ],
+      },
+      timeout: 240_000,
+    });
+
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    expect(body.kind).toBe("screen");
+    // Every citation resolves to a call that happened, and the rows were put
+    // there by the hub rather than written by the model.
+    expect(body.citations.length).toBeGreaterThan(0);
+    expect(JSON.stringify(body.ui)).toContain("ord-1001");
+  });
+
+  test("pauses at a write instead of making it", async ({ request }) => {
+    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+
+    const response = await request.post("/api/agent", {
+      data: {
+        messages: [{ role: "user", content: [{ type: "text", text: "Approve order ord-1003." }] }],
+      },
+      timeout: 240_000,
+    });
+
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    expect(body.kind).toBe("confirm");
+    expect(body.pending.toolName).toBe("orders__orders_approve");
+    expect(body.pending.args).toEqual({ id: "ord-1003" });
   });
 });

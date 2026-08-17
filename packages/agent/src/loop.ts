@@ -231,7 +231,7 @@ export async function runAgent(input: RunInput, deps: RunDeps): Promise<AgentOut
       results.push({
         type: "tool_result",
         tool_use_id: use.id,
-        content: JSON.stringify(payloadOf(result)),
+        content: JSON.stringify(payloadOf(result, use.id)),
         ...(result.ok ? {} : { is_error: true }),
       });
     }
@@ -254,9 +254,14 @@ export async function runAgent(input: RunInput, deps: RunDeps): Promise<AgentOut
  * grounding pass can find the reads again when the history is replayed, which
  * is how a resumed turn still knows what the earlier calls returned.
  */
-function payloadOf(result: ToolResult): Record<string, unknown> {
+function payloadOf(result: ToolResult, toolCallId: string): Record<string, unknown> {
   if (!result.ok) return { kind: "error", message: result.message };
-  if (result.kind === "read") return { kind: "read", data: result.data };
+  // The id travels *with* the data it labels. Grounding asks a screen to cite
+  // the call a figure came from, and until this was here nothing ever told the
+  // model what a call id looks like — it guessed the tool's name, twice, and
+  // burned every turn it had. The id is in its own `tool_use` block, which is
+  // apparently not the same as being told.
+  if (result.kind === "read") return { kind: "read", toolCallId, data: result.data };
   return {
     kind: "write",
     outcome: result.outcome,
@@ -274,9 +279,20 @@ function draw(
     return { ok: false, message: describe("This screen is not valid", lowered.issues) };
   }
 
-  const grounded = groundSpec(lowered.spec, readsIn(messages));
+  const reads = readsIn(messages);
+  const grounded = groundSpec(lowered.spec, reads);
   if (!grounded.ok) {
-    return { ok: false, message: describe("This screen is not grounded", grounded.issues) };
+    // Naming the ids that exist turns "wrong" into "wrong, and here is right".
+    // Without it the model has no way to discover the id it should have used,
+    // and a retry is another guess.
+    const available =
+      reads.length === 0
+        ? "No tool call has happened yet in this conversation; fetch the data first."
+        : `Valid tool call ids: ${reads.map((call) => call.toolCallId).join(", ")}.`;
+    return {
+      ok: false,
+      message: `${describe("This screen is not grounded", grounded.issues)}\n${available}`,
+    };
   }
 
   return { ok: true, spec: grounded.spec };

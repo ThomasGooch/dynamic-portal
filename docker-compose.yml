@@ -76,6 +76,11 @@ services:
       # Mandatory. The hub refuses to serve without both: a default key would
       # produce a log that looks keyed and is not, and a default path one that
       # nobody knows to collect.
+      # Passed through from the root `.env`, which compose loads and git
+      # ignores. Absent means the assistant is off, which is a supported way to
+      # run this portal rather than a broken one — every deterministic screen
+      # behaves identically either way.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       PORTAL_AUDIT_KEY: ${PORTAL_AUDIT_KEY:-dev-only-not-a-real-audit-key}
       PORTAL_AUDIT_LOG: /tmp/portal-audit.jsonl
       PORT: "3000"
