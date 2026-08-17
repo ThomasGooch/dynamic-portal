@@ -62,6 +62,9 @@ importers:
       '@portal/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@portal/public-api':
+        specifier: workspace:*
+        version: link:../../packages/public-api
       '@portal/registry':
         specifier: workspace:*
         version: link:../../packages/registry
@@ -175,6 +178,21 @@ importers:
       zod:
         specifier: ^3.24.0
         version: 3.25.76
+
+  packages/public-api:
+    dependencies:
+      '@portal/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@portal/mcp-gateway':
+        specifier: workspace:*
+        version: link:../mcp-gateway
+      '@portal/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@portal/registry':
+        specifier: workspace:*
+        version: link:../registry
 
   packages/registry:
     dependencies:

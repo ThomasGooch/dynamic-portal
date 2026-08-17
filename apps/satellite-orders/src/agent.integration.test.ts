@@ -48,6 +48,10 @@ const registryEntry = (url: string) =>
   displayName: Order Management
   baseUrl: ${url}
   owner: fulfillment-team
+  # Matches what the satellite actually declares. The client refuses a manifest
+  # claiming an audience its registry entry does not grant, so a fixture that
+  # drifts from the real manifest fails every test in the file at once.
+  audience: [internal, external]
   rbacScopes: [orders.read]
   tools:
     orders.approve:

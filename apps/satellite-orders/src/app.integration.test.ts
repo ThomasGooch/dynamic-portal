@@ -75,9 +75,12 @@ describe("protocol conformance over real HTTP", () => {
     expect(() => ScreenResponseSchema.parse(body)).not.toThrow();
   });
 
-  it("declares itself internal-only by default", async () => {
+  it("declares the audiences it was deliberately widened for", async () => {
+    // Widened for the brokered public API. The exact list is pinned in
+    // `screens.test.ts`; what matters here is that the manifest served over the
+    // wire says the same thing the source does.
     const manifest = ManifestSchema.parse(await (await get("/portal/manifest")).json());
-    expect(manifest.audience).toEqual(["internal"]);
+    expect(manifest.audience).toEqual(["internal", "external"]);
   });
 });
 
@@ -108,9 +111,18 @@ describe("declared audience, enforced by the satellite", () => {
   // The manifest says internal-only. Default-deny is worth nothing if the
   // satellite parses the principal's audience and then ignores it: a validly
   // signed external principal would read internal tenant data.
-  it("refuses a validly signed principal from an undeclared audience", async () => {
+  it("distinguishes what it published externally from what it did not", async () => {
+    // The signature is valid either way, so this is the satellite enforcing
+    // audience rather than trusting the hub to have filtered. Screens it
+    // published are served; the action it kept internal is refused, on the real
+    // manifest rather than an injected one.
     const external = signPrincipal(principal({ audience: "external" }), SECRET);
-    expect((await get("/portal/screens/orders.list", external)).status).toBe(403);
+    expect((await get("/portal/screens/orders.list", external)).status).toBe(200);
+
+    const own = repository.list("acme")[0]!;
+    expect(
+      (await post("/portal/actions/orders.approve", { id: own.id }, external)).status,
+    ).toBe(403);
   });
 
   it("refuses an external principal's action even with the write scope", async () => {

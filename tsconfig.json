@@ -21,6 +21,9 @@
     },
     {
       "path": "./packages/agent"
+    },
+    {
+      "path": "./packages/public-api"
     }
   ]
 }

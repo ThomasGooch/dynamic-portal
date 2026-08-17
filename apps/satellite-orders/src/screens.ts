@@ -40,19 +40,23 @@ export function manifest(): Manifest {
     satelliteId: "orders",
     displayName: "Order Management",
     description: "Track, review, and approve customer orders.",
-    audience: ["internal"],
+    // Widened deliberately, and only this far. A customer may read their own
+    // orders; approving one stays internal. Tenant scoping does the rest — an
+    // external principal is scoped by the same `tenantId` an internal one is,
+    // and this satellite checks it on every call rather than trusting the hub.
+    audience: ["internal", "external"],
     screens: [
       {
         id: "orders.list",
         title: "Orders",
         description: "All orders for the current tenant.",
-        audience: ["internal"],
+        audience: ["internal", "external"],
       },
       {
         id: "orders.detail",
         title: "Order detail",
         params: [{ name: "id", required: true, description: "Order id" }],
-        audience: ["internal"],
+        audience: ["internal", "external"],
       },
     ],
     actions: [
