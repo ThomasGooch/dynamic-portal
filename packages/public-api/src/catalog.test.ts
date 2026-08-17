@@ -171,8 +171,47 @@ describe("default-deny, at the outermost edge", () => {
       resolveOperation([governed], readOnly, "order-management", "approve"),
     ).toBeUndefined();
 
+    // Widened explicitly, because the registry's silence means internal — see
+    // the test below.
     const writer: Principal = { ...external, scopes: ["orders.read", "orders.write"] };
-    expect(resolveOperation([governed], writer, "order-management", "approve")).toBeDefined();
+    const publicWrite = entry({
+      tools: {
+        "orders.approve": { rbacScopes: ["orders.write"], audience: ["internal", "external"] },
+      },
+    });
+    expect(resolveOperation([publicWrite], writer, "order-management", "approve")).toBeDefined();
+  });
+
+  it("keeps a governed tool internal unless the registry entry says otherwise", () => {
+    // Surfaced by putting the rule in one function: the façade had been reading
+    // only the *action's* audience, while the MCP gateway also narrowed by the
+    // tool policy's. Two projections of one declaration disagreeing about who
+    // may call it is the whole class of bug the shared rule removes — and the
+    // governance file's silence meaning internal is the safer of the two.
+    const writer: Principal = { ...external, scopes: ["orders.read", "orders.write"] };
+    const governed = entry({ tools: { "orders.approve": { rbacScopes: ["orders.write"] } } });
+
+    expect(buildCatalog([governed], writer).services[0]?.operations).toEqual([]);
+    expect(resolveOperation([governed], writer, "order-management", "approve")).toBeUndefined();
+  });
+
+  it("applies the tool policy to a published screen, exactly as the gateway does", () => {
+    // The same disagreement, one declaration further along: `shimTools` narrows
+    // a *read*'s tool by its registry policy too, so a façade that consulted the
+    // policy only for writes would publish externally a screen the governance
+    // file had pinned to internal — while the agent projection of the same
+    // declaration refused it.
+    const governed = entry({ tools: { "orders.list": { rbacScopes: ["orders.read"] } } });
+
+    expect(buildCatalog([governed], external).services[0]?.resources.map((r) => r.name)).toEqual([
+      "order",
+    ]);
+    expect(resolveResource([governed], external, "order-management", "orders")).toBeUndefined();
+
+    const widened = entry({
+      tools: { "orders.list": { rbacScopes: ["orders.read"], audience: ["internal", "external"] } },
+    });
+    expect(resolveResource([widened], external, "order-management", "orders")).toBeDefined();
   });
 
   it("does not read a tool policy off the prototype chain", () => {

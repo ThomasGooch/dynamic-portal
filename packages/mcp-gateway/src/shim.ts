@@ -1,5 +1,5 @@
 import type { Audience, Manifest } from "@portal/protocol";
-import type { Satellite } from "@portal/registry";
+import { combine, satelliteLayer, toolPolicy, type Satellite } from "@portal/registry";
 import { indexToolNames, projectToolName } from "./names";
 
 /**
@@ -180,26 +180,21 @@ function build(input: BuildInput): ToolDescriptor | { reason: string } {
     return { reason: `id is too long to project into an MCP tool name` };
   }
 
-  // `hasOwn`, not `in`: `tools` is a plain object, so an id of `constructor`
-  // — which `IdSchema` accepts — would otherwise resolve to `Object` and this
-  // function would read `audience` off a function.
-  const policy = Object.hasOwn(input.satellite.tools, input.targetId)
-    ? input.satellite.tools[input.targetId]
-    : undefined;
+  const policy = toolPolicy(input.satellite, input.targetId);
   const isRead = input.kind === "read";
 
-  // The narrowest of the three, always. The satellite's own entry is included
-  // because the hub's screen and action routes gate on it *before* they look at
-  // what a screen declares — a gateway that skipped it would offer an
-  // internal-only satellite's externally-declared screen to an external
-  // principal, which is the one thing the registry's audience exists to stop.
-  // The registry is the governance file and its silence means internal, so
-  // listing a tool at all pins it to internal unless the entry widens it.
-  const declared = input.audience.filter((value) => input.satellite.audience.includes(value));
-  const audience =
-    policy === undefined
-      ? declared
-      : declared.filter((value) => policy.audience.includes(value));
+  // Every enclosing layer, narrowed and accumulated by one function rather than
+  // restated here. The satellite's entry is a layer because the hub's screen
+  // and action routes gate on it *before* they look at what a screen declares —
+  // skipping it once offered an internal-only satellite's externally-declared
+  // screen to an external principal. The registry's tool policy is a layer
+  // because its silence means internal, so listing a tool at all pins it there
+  // unless the entry widens it.
+  const { audience, rbacScopes } = combine([
+    satelliteLayer(input.satellite),
+    { audience: input.audience },
+    policy,
+  ]);
 
   if (audience.length === 0) {
     return { reason: "registry and manifest agree on no audience for this tool" };
@@ -219,9 +214,7 @@ function build(input: BuildInput): ToolDescriptor | { reason: string } {
       additionalProperties: false,
     },
     audience,
-    // Union, not override: a tool policy adds a requirement, it never relieves
-    // the caller of the satellite's.
-    rbacScopes: [...new Set([...input.satellite.rbacScopes, ...(policy?.rbacScopes ?? [])])],
+    rbacScopes,
     requiresConfirmation: policy?.requiresConfirmation ?? !isRead,
     agentVisible: policy?.agentVisible ?? isRead,
   };
