@@ -8,8 +8,8 @@
 #
 # Every `.env` is ignored, and `.env.example` is un-ignored so the *names* of
 # the settings can be committed without their values. That pairing matters here:
-# the hub refuses to start without PORTAL_PRINCIPAL_SECRET and PORTAL_AUDIT_KEY,
-# so a newcomer needs to know they exist, and must not learn it from a leak.
+# the hub and both satellites refuse to start without PORTAL_PRINCIPAL_SECRET,
+# so a newcomer needs to know it exists, and must not learn it from a leak.
 .env
 .env.*
 !.env.example
@@ -20,9 +20,10 @@
 *.pfx
 .npmrc.local
 
-# Audit logs carry principals, tenants and parameter digests. `PORTAL_AUDIT_LOG`
-# is a path an operator chooses, and pointing it at the working tree during a
-# local run should not put tenant data in a commit.
+# Audit logs carry principals, tenants and parameter digests. Nothing persists
+# them yet — the audit schema exists, the sink does not — so this is defensive,
+# ahead of the writer: the first local run that lands one in the working tree
+# must not be the run that commits tenant data.
 *.audit.jsonl
 audit.jsonl
 
