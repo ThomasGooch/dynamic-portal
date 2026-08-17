@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AuditEventSchema, canonicalDigest, screenRead, toolCall } from "./audit";
+import { AuditEventSchema, auditDigest, screenRead, tenantAuditKey, toolCall } from "./audit";
 import type { Principal } from "./principal";
 
 const alice: Principal = {
@@ -8,6 +8,42 @@ const alice: Principal = {
   audience: "internal",
   scopes: ["orders.read"],
 };
+
+const KEY = tenantAuditKey("root-secret", "acme");
+const canonicalDigest = (value: unknown) => auditDigest(value, KEY);
+
+describe("the per-tenant key", () => {
+  it("gives two tenants different digests for the same request", () => {
+    // The point of keying per tenant rather than per deployment: handing one
+    // tenant their own log tells them nothing about anyone else's, because the
+    // digests cannot be matched across them.
+    const acme = auditDigest({ id: "ord-1001" }, tenantAuditKey("root-secret", "acme"));
+    const globex = auditDigest({ id: "ord-1001" }, tenantAuditKey("root-secret", "globex"));
+    expect(acme).not.toBe(globex);
+  });
+
+  it("is stable for one tenant, which is what makes a digest comparable", () => {
+    expect(tenantAuditKey("root-secret", "acme")).toEqual(tenantAuditKey("root-secret", "acme"));
+  });
+
+  it("changes with the root secret, so rotating it invalidates old digests", () => {
+    expect(tenantAuditKey("a", "acme")).not.toEqual(tenantAuditKey("b", "acme"));
+  });
+
+  it("refuses an empty root secret rather than deriving from nothing", () => {
+    // There is no unkeyed path left. A deployment without a key fails here
+    // rather than producing a log that looks keyed and is not.
+    expect(() => tenantAuditKey("", "acme")).toThrow(/audit key is required/i);
+  });
+
+  it("is not recoverable from the digest without the key", () => {
+    // The claim the unkeyed version could not make: an order id drawn from a
+    // known set was recoverable by anyone holding the log. Now a candidate list
+    // is not enough — you need the tenant's key too.
+    const guess = auditDigest({ id: "ord-1001" }, tenantAuditKey("someone-elses-guess", "acme"));
+    expect(guess).not.toBe(canonicalDigest({ id: "ord-1001" }));
+  });
+});
 
 describe("canonicalDigest", () => {
   // The audit record must prove *what was asked* without storing it, because
@@ -91,6 +127,7 @@ describe("audit events", () => {
   it("records a screen read", () => {
     const event = screenRead({
       principal: alice,
+      auditKey: KEY,
       satelliteId: "orders",
       screenId: "orders.list",
       params: { page: "2" },
@@ -106,6 +143,7 @@ describe("audit events", () => {
   it("stores a digest of parameters, never the parameters", () => {
     const event = screenRead({
       principal: alice,
+      auditKey: KEY,
       satelliteId: "orders",
       screenId: "orders.detail",
       params: { id: "ord-1001", note: "patient referral" },
@@ -127,6 +165,7 @@ describe("audit events", () => {
     // identifiers it considers safe to retain.
     const event = screenRead({
       principal: alice,
+      auditKey: KEY,
       satelliteId: "orders",
       screenId: "orders.detail",
       params: { id: "ord-1001" },
@@ -146,6 +185,7 @@ describe("audit events", () => {
     // id resolves to.
     const event = toolCall({
       principal: alice,
+      auditKey: KEY,
       satelliteId: "orders",
       toolName: "orders.search",
       toolCallId: "toolu_abc",
@@ -166,6 +206,7 @@ describe("audit events", () => {
         id: "e",
         at: "2026-08-16T10:00:00.000Z",
         principal: { sub: "a", tenantId: "t", audience: "internal" },
+        auditKey: KEY,
         action: { kind: "mystery" },
         outcome: { status: "ok" },
         latencyMs: 1,
@@ -176,6 +217,7 @@ describe("audit events", () => {
   it("rejects unknown top-level fields, so the record cannot drift", () => {
     const event = screenRead({
       principal: alice,
+      auditKey: KEY,
       satelliteId: "orders",
       screenId: "orders.list",
       params: {},
@@ -190,6 +232,7 @@ describe("audit events", () => {
   it("never records the principal's scopes — they are authorization input, not evidence", () => {
     const event = screenRead({
       principal: alice,
+      auditKey: KEY,
       satelliteId: "orders",
       screenId: "orders.list",
       params: {},
@@ -206,6 +249,7 @@ describe("audit events", () => {
     // written down.
     const event = screenRead({
       principal: { ...alice, audience: "external" },
+      auditKey: KEY,
       satelliteId: "orders",
       screenId: "orders.list",
       params: {},

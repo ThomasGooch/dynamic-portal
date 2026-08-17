@@ -1,4 +1,4 @@
-import { AuditEventSchema, type AuditEvent, type Principal } from "@portal/identity";
+import { AuditEventSchema, type AuditEvent, type Principal, tenantAuditKey } from "@portal/identity";
 import { ManifestSchema } from "@portal/protocol";
 import { SatelliteSchema } from "@portal/registry";
 import type { Result } from "@portal/registry";
@@ -6,6 +6,9 @@ import type { ActionResponse, ScreenResponse } from "@portal/protocol";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSurface } from "./surface";
 import { invokeTool, type ToolTransport } from "./invoke";
+
+/** Any key will do here; what matters is that one is required. */
+const AUDIT_KEY = tenantAuditKey("test-root-key", "acme");
 
 const principal: Principal = {
   sub: "agent@acme.example",
@@ -77,6 +80,7 @@ function transport(over: Partial<ToolTransport> = {}): ToolTransport {
 
 const deps = (over: Partial<ToolTransport> = {}) => ({
   transport: transport(over),
+  auditKey: AUDIT_KEY,
   onAudit: (event: AuditEvent) => audits.push(event),
   // Injected so a test asserts a real latency and a real id without a clock.
   now: () => 1_000,

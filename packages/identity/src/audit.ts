@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { z } from "zod";
 import { AudienceSchema } from "@portal/protocol";
 import type { Principal } from "./principal";
@@ -13,15 +13,22 @@ import type { Principal } from "./principal";
  *
  * Two deliberate choices:
  *
- * **Parameters are digested, never stored.** They carry regulated data. The
- * digest proves *what was asked* — the same request always yields the same
- * value — without the record itself becoming a copy of the data it describes.
- * Note the limit of that claim: an unkeyed SHA-256 over a low-entropy parameter
- * (an order id, a national insurance number) is recoverable by anyone holding
- * the log and a candidate list. The digest is not a confidentiality control; it
- * keeps the record from being a *copy*. Before this log is exported anywhere
- * the parameters themselves may not go, `canonicalDigest` needs a per-tenant
- * HMAC key rather than a bare hash.
+ * **Parameters are digested under a per-tenant key, never stored.** They carry
+ * regulated data. The digest proves *what was asked* — the same request always
+ * yields the same value — without the record becoming a copy of the data it
+ * describes.
+ *
+ * The key is what makes that a confidentiality claim rather than a hope. An
+ * unkeyed SHA-256 over a low-entropy parameter — an order id, a national
+ * insurance number — is recoverable by anyone holding the log and a candidate
+ * list, which is most people who would ever read it. This started life unkeyed,
+ * with a comment saying so and a note to fix it before the log was exported;
+ * keying it is not optional now and there is no unkeyed path left to fall back
+ * to.
+ *
+ * Per *tenant*, not per deployment, so a digest from one tenant's records
+ * cannot be matched against another's, and handing one tenant their own log
+ * gives them nothing about anyone else's.
  *
  * **`subjects` exists because a digest cannot answer "which records".** A
  * digest is one-way, so it cannot be read back to enumerate what was touched.
@@ -119,14 +126,28 @@ export type AuditEvent = z.infer<typeof AuditEventSchema>;
 export type AuditOutcome = z.infer<typeof OutcomeSchema>;
 
 /**
- * A stable hash of a value, independent of key insertion order.
+ * The per-tenant key, derived from one configured secret.
+ *
+ * Derived rather than configured per tenant because an operator managing one
+ * secret manages it well and an operator managing forty rotates none of them.
+ * The label is versioned so the derivation can change without silently
+ * producing digests that collide with the old scheme.
+ */
+export function tenantAuditKey(rootKey: string, tenantId: string): Buffer {
+  if (rootKey === "") throw new Error("an audit key is required; there is no unkeyed digest");
+  return createHmac("sha256", rootKey).update(`portal.audit.v1:${tenantId}`, "utf8").digest();
+}
+
+/**
+ * A stable digest of a value under a tenant's key, independent of key insertion
+ * order.
  *
  * Order-independence is what makes the digest comparable at all: two identical
  * requests serialised by different code paths must agree. Array order is
  * preserved, because in an argument list order is meaning.
  */
-export function canonicalDigest(value: unknown): string {
-  return createHash("sha256").update(canonicalize(value), "utf8").digest("hex");
+export function auditDigest(value: unknown, key: Buffer): string {
+  return createHmac("sha256", key).update(canonicalize(value), "utf8").digest("hex");
 }
 
 /** A step in the walk: a value still to expand, or literal text to emit. */
@@ -231,6 +252,13 @@ interface BaseInput {
   readonly outcome: AuditOutcome;
   readonly latencyMs: number;
   readonly subjects?: readonly string[];
+  /**
+   * This tenant's digest key, from `tenantAuditKey`.
+   *
+   * Required on every builder rather than defaulted, because a default is how a
+   * deployment ends up with an unkeyed log that looks exactly like a keyed one.
+   */
+  readonly auditKey: Buffer;
 }
 
 export function screenRead(
@@ -244,7 +272,7 @@ export function screenRead(
       kind: "screen.read",
       satelliteId: input.satelliteId,
       screenId: input.screenId,
-      paramsDigest: canonicalDigest(input.params),
+      paramsDigest: auditDigest(input.params, input.auditKey),
       ...(input.subjects !== undefined ? { subjects: [...input.subjects] } : {}),
     },
     outcome: input.outcome,
@@ -263,7 +291,7 @@ export function actionInvoke(
       kind: "action.invoke",
       satelliteId: input.satelliteId,
       actionId: input.actionId,
-      paramsDigest: canonicalDigest(input.params),
+      paramsDigest: auditDigest(input.params, input.auditKey),
       ...(input.subjects !== undefined ? { subjects: [...input.subjects] } : {}),
     },
     outcome: input.outcome,
@@ -288,7 +316,7 @@ export function toolCall(
       satelliteId: input.satelliteId,
       toolName: input.toolName,
       toolCallId: input.toolCallId,
-      paramsDigest: canonicalDigest(input.args),
+      paramsDigest: auditDigest(input.args, input.auditKey),
       ...(input.subjects !== undefined ? { subjects: [...input.subjects] } : {}),
     },
     outcome: input.outcome,

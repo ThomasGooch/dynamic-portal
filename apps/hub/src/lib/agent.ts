@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { AuditEvent, Principal } from "@portal/identity";
 import { anthropicClient, type ModelClient } from "@portal/agent";
 import {
@@ -10,6 +9,7 @@ import {
   type ToolTransport,
 } from "@portal/mcp-gateway";
 import { visibleSatellites } from "@portal/registry";
+import { auditKeyFor, auditStamp, recordAudit } from "./audit";
 import { getPortal } from "./portal";
 
 /**
@@ -88,7 +88,21 @@ export interface AgentInvoker {
     args: Record<string, unknown>,
     options: { readonly confirmed: boolean },
   ) => Promise<ToolResult>;
-  readonly audits: readonly AuditEvent[];
+  /** Waits for this turn's audit writes. See `InvokerDeps.flush`. */
+  readonly flush: () => Promise<void>;
+}
+
+export interface InvokerDeps {
+  readonly deps: Omit<InvokeDeps, "confirmed">;
+  /**
+   * Waits for every audit write this turn started.
+   *
+   * The gateway's `onAudit` is synchronous and writing a file is not, so the
+   * writes are collected here and awaited before a response goes out. A
+   * response that left before its record was on disk would make the log
+   * "mostly complete", which is the one thing an audit log may not be.
+   */
+  readonly flush: () => Promise<void>;
 }
 
 /**
@@ -96,14 +110,13 @@ export interface AgentInvoker {
  * to whoever is asking, not to this factory. The agent loop supplies it per
  * call; the MCP route never supplies it at all.
  *
- * Takes no principal and no surface, because it depends on neither: the gateway
- * hands the principal to each transport call itself. A factory that accepted
- * one anyway would read as though these dependencies were bound to an identity,
- * and dependencies that only look principal-bound are how a cached one ends up
- * serving the wrong tenant.
+ * It does take the principal, and only for one reason: the digest key is
+ * derived per tenant. The transport still hands the principal to each call
+ * itself, so nothing else here is bound to an identity.
  */
-export function agentInvokerDeps(): Omit<InvokeDeps, "confirmed"> {
+export function agentInvokerDeps(principal: Principal): InvokerDeps {
   const portal = getPortal();
+  const pending: Promise<void>[] = [];
 
   const transport: ToolTransport = {
     fetchScreen: (satelliteId, screenId, params, who) => {
@@ -119,43 +132,38 @@ export function agentInvokerDeps(): Omit<InvokeDeps, "confirmed"> {
   };
 
   return {
-    transport,
-    // Discarded, as everywhere else on this path, until the audit sink's
-    // per-tenant key is decided. See the note on `agentInvoker`.
-    onAudit: () => {},
-    now: () => Date.now(),
-    at: () => new Date().toISOString(),
-    newId: () => randomUUID(),
+    deps: {
+      transport,
+      auditKey: auditKeyFor(principal),
+      // The gateway builds a valid event for every call including the refusals.
+      // This is where they land — started here, awaited in `flush`.
+      onAudit: (event) => {
+        pending.push(recordAudit(event));
+      },
+      now: () => Date.now(),
+      at: () => auditStamp().at,
+      newId: () => auditStamp().id,
+    },
+    flush: async () => {
+      await Promise.all(pending);
+    },
   };
 }
 
 /**
  * The gateway, bound to one principal for one turn.
  *
- * Audit events are collected and, today, discarded. There is nowhere to write
- * them: PLAN.md leaves the per-tenant HMAC key for the digest as an open
- * decision, and a log that starts collecting before that is settled is a log
- * that has to be re-keyed later.
- *
- * Said plainly because the alternative is a comment implying the agent path is
- * audited when it is not. The gateway builds a valid event for every call
- * including the refusals; this is the seam a sink attaches to, and until one
- * does, the agent path has no audit trail.
+ * Every call it makes is recorded under this tenant's key, including the ones
+ * it refuses — "nothing happened" and "an agent was stopped from doing this"
+ * are the same entry in a log that only records successes.
  */
 export function agentInvoker(principal: Principal, surface: ToolSurface): AgentInvoker {
-  const audits: AuditEvent[] = [];
-  const deps = agentInvokerDeps();
+  const { deps, flush } = agentInvokerDeps(principal);
 
   return {
-    audits,
+    flush,
     invoke: (name, args, options) =>
-      invokeTool(surface, name, args, principal, {
-        ...deps,
-        // The one dependency this path does not discard: a turn's refusals are
-        // what the confirmation card is rendered from.
-        onAudit: (event) => audits.push(event),
-        confirmed: options.confirmed,
-      }),
+      invokeTool(surface, name, args, principal, { ...deps, confirmed: options.confirmed }),
   };
 }
 

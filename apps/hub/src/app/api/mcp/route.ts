@@ -52,7 +52,7 @@ export async function POST(request: Request): Promise<Response> {
       { status: 503, headers: { "content-type": "application/json", "cache-control": "no-store" } },
     );
   }
-  const deps = agentInvokerDeps();
+  const { deps, flush } = agentInvokerDeps(principal);
 
   const server = new Server(
     { name: "dynamic-portal", version: "1.0.0" },
@@ -82,6 +82,9 @@ export async function POST(request: Request): Promise<Response> {
       principal,
       deps,
     );
+    // Before the response leaves. A tool call whose record is still in flight
+    // is a tool call the log may never show.
+    await flush();
     // Copied into mutable arrays because the SDK's result type is not readonly,
     // and `isError` is spread rather than set so it is absent on success —
     // `exactOptionalPropertyTypes` treats an explicit `undefined` as a value.
@@ -104,7 +107,9 @@ export async function POST(request: Request): Promise<Response> {
 
   await server.connect(transport);
   try {
-    return await transport.handleRequest(request);
+    const response = await transport.handleRequest(request);
+    await flush();
+    return response;
   } finally {
     // Nothing is kept between requests, so nothing may be left holding a socket.
     await transport.close();

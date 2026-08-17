@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { authorize } from "@portal/identity";
 import { findSatellite, visibleSatellites } from "@portal/registry";
+import { screenRead } from "@portal/identity";
+import { auditKeyFor, auditStamp, recordAudit } from "@/lib/audit";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 import { ErrorCard } from "@/components/ScreenView";
@@ -81,7 +83,24 @@ export default async function ScreenPage({
     if (typeof value === "string") params_[key] = value;
   }
 
+  const startedAt = Date.now();
   const result = await client.fetchScreen(screenId, params_, principal);
+
+  // Recorded before anything is rendered, and awaited: if the read cannot be
+  // recorded it does not count as having happened. See `lib/audit.ts` on why
+  // this fails closed.
+  await recordAudit(
+    screenRead({
+      ...auditStamp(),
+      principal,
+      auditKey: auditKeyFor(principal),
+      satelliteId: satellite.id,
+      screenId,
+      params: params_,
+      outcome: result.ok ? { status: "ok" } : { status: "error", reason: result.reason },
+      latencyMs: Date.now() - startedAt,
+    }),
+  );
 
   if (!result.ok) {
     return (

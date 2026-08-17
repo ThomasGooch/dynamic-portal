@@ -1,3 +1,4 @@
+import { tenantAuditKey } from "@portal/identity";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -12,6 +13,9 @@ import { buildSurface, invokeTool, type ToolSurface, type ToolTransport } from "
 import { SatelliteClient, loadRegistry } from "@portal/registry";
 import { createApp } from "./app";
 import { OrderRepository, seedOrders } from "./repository";
+
+/** Any key will do here; what matters is that one is required. */
+const AUDIT_KEY = tenantAuditKey("test-root-key", "acme");
 
 /**
  * The agent loop against a real satellite, with a scripted model.
@@ -95,6 +99,7 @@ afterAll(async () => {
 const invoke = (name: string, args: Record<string, unknown>, options: { confirmed: boolean }) =>
   invokeTool(surface, name, args, principal, {
     transport,
+    auditKey: AUDIT_KEY,
     onAudit: (event) => audits.push(event),
     now: () => Date.now(),
     at: () => new Date().toISOString(),

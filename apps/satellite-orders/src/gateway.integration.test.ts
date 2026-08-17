@@ -1,12 +1,15 @@
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AuditEvent, Principal } from "@portal/identity";
-import { AuditEventSchema } from "@portal/identity";
+import { AuditEventSchema, tenantAuditKey } from "@portal/identity";
 import { ManifestSchema } from "@portal/protocol";
 import { SatelliteClient, SatelliteSchema, loadRegistry } from "@portal/registry";
 import { buildSurface, invokeTool, type ToolTransport } from "@portal/mcp-gateway";
 import { createApp } from "./app";
 import { OrderRepository, seedOrders } from "./repository";
+
+/** Any key will do here; what matters is that one is required. */
+const AUDIT_KEY = tenantAuditKey("test-root-key", "acme");
 
 /**
  * The gateway against a real satellite, over a real socket.
@@ -94,6 +97,7 @@ async function surfaceFor(who: Principal) {
 
 const deps = (confirmed?: boolean) => ({
   transport,
+  auditKey: AUDIT_KEY,
   onAudit: (event: AuditEvent) => audits.push(event),
   now: () => Date.now(),
   at: () => new Date().toISOString(),

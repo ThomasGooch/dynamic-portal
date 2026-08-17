@@ -64,6 +64,9 @@ export async function POST(request: Request): Promise<Response> {
       { client: modelClient(), invoke: invoker.invoke },
     );
 
+    // Every tool call this turn made is on disk before the answer goes out.
+    await invoker.flush();
+
     if (outcome.kind === "screen") {
       const allowed = visibleSatellites(getPortal().registry, principal).map((s) => s.id);
       return json(

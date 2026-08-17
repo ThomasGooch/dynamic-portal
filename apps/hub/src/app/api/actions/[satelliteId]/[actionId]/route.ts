@@ -1,8 +1,9 @@
-import { authorize } from "@portal/identity";
+import { actionInvoke, authorize } from "@portal/identity";
 import { findSatellite } from "@portal/registry";
 import type { Failure } from "@portal/registry";
 import type { ActionApiResult } from "@/lib/actionApi";
 import { MAX_PAYLOAD_BYTES, readBounded, statusFor } from "@/lib/http";
+import { auditKeyFor, auditStamp, recordAudit } from "@/lib/audit";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 
@@ -112,7 +113,24 @@ export async function POST(
     return json(NOT_FOUND, 404);
   }
 
+  const startedAt = Date.now();
   const result = await client.invokeAction(actionId, payload, principal);
+
+  await recordAudit(
+    actionInvoke({
+      ...auditStamp(),
+      principal,
+      auditKey: auditKeyFor(principal),
+      satelliteId: satellite.id,
+      actionId,
+      params: payload,
+      outcome: result.ok
+        ? { status: "ok" }
+        : { status: "error", reason: result.reason, httpStatus: statusFor(result) },
+      latencyMs: Date.now() - startedAt,
+    }),
+  );
+
   if (!result.ok) {
     return json(
       { ok: false, reason: result.reason, message: messageFor(satellite.displayName, result) },
