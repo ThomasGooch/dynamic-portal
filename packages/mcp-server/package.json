@@ -1,0 +1,17 @@
+{
+  "name": "@portal/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The hub's own MCP server — one governed endpoint over every solution",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --build --force" },
+  "dependencies": {
+    "@portal/identity": "workspace:*",
+    "@portal/mcp-gateway": "workspace:*",
+    "@portal/protocol": "workspace:*",
+    "@portal/registry": "workspace:*"
+  }
+}

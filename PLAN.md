@@ -119,7 +119,7 @@ What crosses the boundary is records and a summary, never a UI tree, and never t
 - **Model choice is a compliance decision.** `claude-opus-5` is zero-data-retention eligible. **Claude Fable 5 / Mythos 5 are not** — they require 30-day retention and reject requests from ZDR orgs outright. Do not reach for the more capable model without checking this first; the plan uses Opus 5 partly for this reason.
 - **The gateway is the single choke point where regulated data can reach the model.** Tool results are the only data path in. That makes field-level redaction, minimization, and per-tenant policy enforceable in exactly one place rather than sprayed across satellites.
 - **Grounding doubles as the audit trail.** Because every displayed fact must carry `source: {toolCallId}`, the provenance chain answers *"which records did the agent read, for which principal, when"* precisely. A control that exists for correctness pays for itself twice.
-- **Per-tenant agent kill switch**, so a client who won't accept AI processing can be served the deterministic portal with no code change.
+- **Per-tenant agent kill switch**, so a client who won't accept AI processing can be served the deterministic portal with no code change. It governs the *surface*, not whose model reaches it — the outward MCP endpoint needs no key of ours and is gated all the same, which is a distinction that had to be made explicit after asking "is our agent configured" left that endpoint open.
 
 ---
 
@@ -213,6 +213,12 @@ Two durability properties: because we own the client, satellite MCP tools reach 
 ### Outward MCP server
 
 The hub exposes its aggregated, RBAC- and audience-filtered tool surface as an MCP server, so Claude Desktop, ChatGPT, or an IDE agent reaches every solution through one governed endpoint. This makes the portal headless-capable and is the org's single agent-facing capability surface.
+
+**An internal contract, like PUP.** Partners are brokered through the public API and never see this; "outward" means outside the hub's own UI, not outside the organization.
+
+**Stateless, one server per request.** No session id, JSON responses, nothing kept between calls — so two replicas share nothing and a restart costs a host a reconnect. The tool surface is rebuilt per request for the same reason the agent's is.
+
+**Governed writes are not listed, and refuse if called by name anyway.** A confirmation is a person being shown what is about to happen in a screen the hub renders; a host cannot render that, and delegating the decision to a client we do not control would leave the hub the choke point on paper only. Listing a tool that always refuses would be worse — it reads as a capability and is a dead end. Instead the server's `instructions` name those actions and say where they are performed, so an agent directs the user to the portal rather than reporting the thing impossible. The consequence, stated plainly: **the outward MCP surface is read-only except for writes a registry policy has explicitly ungoverned.**
 
 ---
 
@@ -369,7 +375,7 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 
 **M3 — External surfaces**
 12. `packages/public-api` — brokered façade over audience-external declarations, versioned independently *(done)*.
-13. Outward MCP server — aggregated tools, `ui://` resources, capability negotiation.
+13. Outward MCP server — aggregated tools over one governed endpoint *(done)*; `ui://` resources and the MCP Apps path *(deferred with M3's third-party work)*.
 14. MCP→PUP generation — a tools-only satellite gets generated screens.
 15. Third-party MCP path — compliant sandboxed-iframe fallback with foreign-source chrome.
 16. `packages/sdk-node` + `packages/conformance` — the adoption ergonomics that decide whether teams onboard.

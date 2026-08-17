@@ -388,3 +388,93 @@ test.describe("the brokered public API", () => {
     ).toBe(404);
   });
 });
+
+test.describe("the hub as an MCP server", () => {
+  // PLAN.md's "single agent-facing capability surface": one endpoint over every
+  // solution, filtered by the same entitlement the screens use. An internal
+  // contract — partners are brokered through the public API and never see this.
+  const rpc = async (
+    request: import("@playwright/test").APIRequestContext,
+    method: string,
+    params: Record<string, unknown> = {},
+  ) => {
+    const response = await request.post("/api/mcp", {
+      headers: { accept: "application/json, text/event-stream" },
+      data: { jsonrpc: "2.0", id: 1, method, params },
+    });
+    return { status: response.status(), body: await response.json() };
+  };
+
+  const initialize = {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: { name: "e2e", version: "1.0.0" },
+  };
+
+  test("introduces itself and says where governed writes happen", async ({ request }) => {
+    const { status, body } = await rpc(request, "initialize", initialize);
+    expect(status).toBe(200);
+    expect(body.result.serverInfo.name).toBe("dynamic-portal");
+    // The instructions are where a host learns that approving an order is
+    // possible but not here — without them an agent reports it impossible.
+    expect(body.result.instructions).toMatch(/portal/i);
+  });
+
+  test("lists the same tools the portal would give this account", async ({ request }) => {
+    await rpc(request, "initialize", initialize);
+    const { body } = await rpc(request, "tools/list");
+
+    const names = body.result.tools.map((tool: { name: string }) => tool.name);
+    expect(names).toContain("orders__orders_list");
+    expect(names).toContain("fleet__fleet_dashboard");
+
+    const read = body.result.tools.find(
+      (tool: { name: string }) => tool.name === "orders__orders_list",
+    );
+    expect(read.annotations.readOnlyHint).toBe(true);
+    expect(read.inputSchema.additionalProperties).toBe(false);
+  });
+
+  test("does not list the write that needs a person to approve it", async ({ request }) => {
+    await rpc(request, "initialize", initialize);
+    const { body } = await rpc(request, "tools/list");
+    const names = body.result.tools.map((tool: { name: string }) => tool.name);
+    expect(names).not.toContain("orders__orders_approve");
+  });
+
+  test("returns a satellite's real data through a tool call", async ({ request }) => {
+    await rpc(request, "initialize", initialize);
+    const { body } = await rpc(request, "tools/call", {
+      name: "orders__orders_list",
+      arguments: {},
+    });
+
+    expect(body.result.isError).toBeUndefined();
+    const text = body.result.content[0].text;
+    expect(text).toContain("ord-1001");
+    // Data, not a screen: no component name crosses this boundary either.
+    expect(text).not.toContain("StatTile");
+  });
+
+  test("refuses the governed write even when called by name", async ({ request }) => {
+    // Absent from the listing is not enough — a host that guessed the name
+    // would otherwise walk around the gate the listing respects.
+    await rpc(request, "initialize", initialize);
+    const { body } = await rpc(request, "tools/call", {
+      name: "orders__orders_approve",
+      arguments: { id: "ord-1001" },
+    });
+
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toMatch(/approved by a person in the portal/i);
+  });
+
+  test("refuses an argument the tool never declared", async ({ request }) => {
+    await rpc(request, "initialize", initialize);
+    const { body } = await rpc(request, "tools/call", {
+      name: "orders__orders_list",
+      arguments: { tenantId: "globex" },
+    });
+    expect(body.result.isError).toBe(true);
+  });
+});
