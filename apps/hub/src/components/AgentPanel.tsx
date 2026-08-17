@@ -22,6 +22,23 @@ interface Turn {
   readonly result: AgentApiResult | undefined;
 }
 
+/**
+ * Declining a confirmation by asking something else.
+ *
+ * A paused write leaves its `tool_use` in the history with nothing answering
+ * it, which is exactly what lets the user approve it later. If they type a new
+ * question instead, that unanswered call has to go: a conversation carrying one
+ * is rejected before the model ever sees the new question, and the panel would
+ * be wedged for the rest of the session with no way out but a reload.
+ */
+function withoutPendingCalls(messages: readonly Message[]): Message[] {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "assistant") return [...messages];
+  return last.content.some((block) => block.type === "tool_use")
+    ? messages.slice(0, -1)
+    : [...messages];
+}
+
 export function AgentPanel() {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
@@ -63,7 +80,9 @@ export function AgentPanel() {
     const asked = question.trim();
     if (asked === "" || busy) return;
     setQuestion("");
-    void send([...messages, { role: "user", content: [{ type: "text", text: asked }] }], [], asked);
+    const history = withoutPendingCalls(messages);
+    setMessages(history);
+    void send([...history, { role: "user", content: [{ type: "text", text: asked }] }], [], asked);
   }
 
   if (!open) {

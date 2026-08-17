@@ -78,11 +78,15 @@ export interface AgentInvoker {
 /**
  * The gateway, bound to one principal for one turn.
  *
- * Audit events are collected rather than written, because there is nowhere to
- * write them yet: PLAN.md leaves the per-tenant HMAC key for the digest as an
- * open decision, and an audit log that goes somewhere before that is settled is
- * a log that has to be re-keyed later. They are returned so the route can count
- * them, and so the day a sink exists it is one line.
+ * Audit events are collected and, today, discarded. There is nowhere to write
+ * them: PLAN.md leaves the per-tenant HMAC key for the digest as an open
+ * decision, and a log that starts collecting before that is settled is a log
+ * that has to be re-keyed later.
+ *
+ * Said plainly because the alternative is a comment implying the agent path is
+ * audited when it is not. The gateway builds a valid event for every call
+ * including the refusals; this is the seam a sink attaches to, and until one
+ * does, the agent path has no audit trail.
  */
 export function agentInvoker(principal: Principal, surface: ToolSurface): AgentInvoker {
   const portal = getPortal();

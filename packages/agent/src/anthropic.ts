@@ -52,6 +52,21 @@ export function anthropicClient(options: AnthropicClientOptions): ModelClient {
         messages: messages.map(toSdkMessage),
       });
 
+      // Two stop reasons produce content the loop cannot use, and both look
+      // like an ordinary success to a caller that only reads `content`.
+      //
+      // A refusal arrives as HTTP 200 with the content empty, so the loop would
+      // see no tool call, take the empty text for an answer, and the user would
+      // get a blank reply. Truncation is worse: a `tool_use` cut off mid-input
+      // is a tool call with half its arguments, which the loop would go on to
+      // make. Both are raised so the route can say something true instead.
+      if (message.stop_reason === "refusal") {
+        throw new Error("The model declined to answer this request.");
+      }
+      if (message.stop_reason === "max_tokens") {
+        throw new Error("The model's reply did not fit within the token budget.");
+      }
+
       return { content: message.content.map(fromSdkBlock) };
     },
   };

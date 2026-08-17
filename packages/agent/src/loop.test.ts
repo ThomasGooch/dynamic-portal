@@ -267,13 +267,64 @@ describe("the confirmation gate", () => {
     expect(result.kind).toBe("confirm");
   });
 
-  it("never calls the satellite for an unapproved write", async () => {
+  it("asks the gateway about the unapproved write, and nothing else", async () => {
+    // The gateway refuses without reaching the satellite, and that refusal is
+    // the audit record for a stopped write. Skipping the call entirely was
+    // tidier and silently lost the entry that matters most.
     const client = scripted([toolUse("write-1", "orders__orders_approve", { id: "ord-1" })]);
     await runAgent({ messages: ask("approve"), surface }, { client, invoke: invoker() });
-    // The gateway is asked, and refuses; what matters is that it was asked with
-    // `confirmed: false` and therefore did not reach the satellite.
     expect(invoked).toEqual([
       { name: "orders__orders_approve", args: { id: "ord-1" }, confirmed: false },
+    ]);
+  });
+
+  it("runs nothing at all when a write shares its turn with a read", async () => {
+    // The reason the check happens before the loop rather than inside it: a
+    // `tool_use` block is answered all at once or not at all, so stopping
+    // half-way threw away the read's result and ran it again on resume — a
+    // duplicate satellite call, a duplicate audit entry, and a second write if
+    // a policy had cleared its confirmation.
+    const client = scripted([
+      toolUse("call-1", "orders__orders_list"),
+      toolUse("write-1", "orders__orders_approve", { id: "ord-1" }),
+    ]);
+
+    const result = await runAgent({ messages: ask("do both"), surface }, { client, invoke: invoker() });
+
+    expect(result.kind).toBe("confirm");
+    // Only the write, and only to be refused. The read beside it never ran, so
+    // it cannot run twice when the turn resumes.
+    expect(invoked).toEqual([
+      { name: "orders__orders_approve", args: { id: "ord-1" }, confirmed: false },
+    ]);
+  });
+
+  it("runs the whole turn once the write in it is approved", async () => {
+    const client = scripted([{ type: "text", text: "Done." }]);
+
+    const resumed = await runAgent(
+      {
+        messages: [
+          ...ask("do both"),
+          {
+            role: "assistant",
+            content: [
+              toolUse("call-1", "orders__orders_list"),
+              toolUse("write-1", "orders__orders_approve", { id: "ord-1" }),
+            ],
+          },
+        ],
+        surface,
+        approvals: ["write-1"],
+      },
+      { client, invoke: invoker() },
+    );
+
+    expect(resumed.kind).toBe("answer");
+    // Each call made exactly once, which is the property the pre-check buys.
+    expect(invoked.map((call) => call.name).sort()).toEqual([
+      "orders__orders_approve",
+      "orders__orders_list",
     ]);
   });
 });

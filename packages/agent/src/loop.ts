@@ -131,18 +131,85 @@ export async function runAgent(input: RunInput, deps: RunDeps): Promise<AgentOut
       continue;
     }
 
+    /**
+     * Nothing in this turn runs until every call in it is cleared to run.
+     *
+     * The alternative was executing them in order and stopping at the first
+     * write that needs approving — which threw away the results already
+     * collected, because a `tool_use` block has to be answered all at once or
+     * not at all. Those calls then ran again on resume: a duplicate satellite
+     * call, a duplicate audit entry, and — since a registry policy may clear
+     * `requiresConfirmation` on a write — a second write nobody asked for.
+     *
+     * Reading `requiresConfirmation` here is not a second policy engine. It is
+     * the policy the gateway published, read so the loop knows to stop before
+     * it starts; the gateway still refuses on its own account, and now is not
+     * even asked.
+     */
+    const unapproved = pending.find(
+      (use) =>
+        use.name !== RENDER_SCREEN_TOOL &&
+        input.surface.byName.get(use.name)?.requiresConfirmation === true &&
+        !approvals.has(use.id),
+    );
+
+    if (unapproved !== undefined) {
+      // The gateway is still asked about *this* call, and only this one. It
+      // refuses without reaching the satellite, and refusing is what writes the
+      // audit record — "an agent was stopped from doing this" and "nothing
+      // happened" look identical in a log that only records successes. Skipping
+      // the call entirely was tidier and silently lost that entry.
+      await deps.invoke(unapproved.name, unapproved.input, { confirmed: false });
+
+      const descriptor = input.surface.byName.get(unapproved.name);
+      // Returned before anything is appended, so the unanswered calls are still
+      // in the history — which is exactly what lets the resumed turn pick them
+      // all up together.
+      return {
+        kind: "confirm",
+        pending: {
+          toolUseId: unapproved.id,
+          toolName: unapproved.name,
+          title: descriptor?.title ?? unapproved.name,
+          description: descriptor?.description ?? "",
+          args: unapproved.input,
+        },
+        messages,
+      };
+    }
+
     const results: ContentBlock[] = [];
 
-    for (const use of pending) {
+    for (const [index, use] of pending.entries()) {
       if (use.name === RENDER_SCREEN_TOOL) {
         const drawn = draw(use.input, messages);
         if (drawn.ok) {
           // The turn ends here. Any other call the assistant made alongside the
           // screen is abandoned, which costs nothing: the screen is the answer.
+          //
+          // Abandoned is not the same as unanswered, though. Every `tool_use`
+          // has to be closed by a `tool_result` or the history stops being a
+          // conversation the API will accept, and the *next* question the user
+          // asks — sent with this same history — fails before the model sees
+          // it. So the screen call is answered, the abandoned ones are answered
+          // as not run, and the turn is left resumable.
+          results.push({
+            type: "tool_result",
+            tool_use_id: use.id,
+            content: "The screen was rendered for the user.",
+          });
+          for (const abandoned of pending.slice(index + 1)) {
+            results.push({
+              type: "tool_result",
+              tool_use_id: abandoned.id,
+              content: "Not run: the screen already answered the question.",
+              is_error: true,
+            });
+          }
           return {
             kind: "screen",
             spec: drawn.spec,
-            citations: citationsIn(messages),
+            citations: citationsFor(drawn.spec, messages),
             messages: [...messages, { role: "user", content: results }],
           };
         }
@@ -157,26 +224,9 @@ export async function runAgent(input: RunInput, deps: RunDeps): Promise<AgentOut
         continue;
       }
 
-      const confirmed = approvals.has(use.id);
-      const result = await deps.invoke(use.name, use.input, { confirmed });
-
-      if (!result.ok && result.reason === "needs-confirmation") {
-        // Returned *before* the result is appended, so the unanswered call is
-        // still in the history. That is what makes the resumed turn pick up
-        // exactly here.
-        const descriptor = input.surface.byName.get(use.name);
-        return {
-          kind: "confirm",
-          pending: {
-            toolUseId: use.id,
-            toolName: use.name,
-            title: descriptor?.title ?? use.name,
-            description: descriptor?.description ?? "",
-            args: use.input,
-          },
-          messages,
-        };
-      }
+      const result = await deps.invoke(use.name, use.input, {
+        confirmed: approvals.has(use.id),
+      });
 
       results.push({
         type: "tool_result",
@@ -290,15 +340,34 @@ function readsIn(messages: readonly Message[]): ToolCallRecord[] {
   return records;
 }
 
-/** Which tool produced each call id, so a screen can say where it came from. */
-function citationsIn(messages: readonly Message[]): Citation[] {
-  const citations: Citation[] = [];
+/**
+ * Which tool produced each call *this screen* cites.
+ *
+ * Scoped to the spec rather than to the conversation. Listing every call the
+ * assistant has ever made would attribute a screen to reads it did not draw on
+ * — including the ones that errored, and every call from earlier questions in
+ * the same thread — which is the provenance line saying something untrue.
+ */
+function citationsFor(spec: FlatSpec, messages: readonly Message[]): Citation[] {
+  const names = new Map<string, string>();
   for (const message of messages) {
     for (const block of message.content) {
       if (block.type === "tool_use" && block.name !== RENDER_SCREEN_TOOL) {
-        citations.push({ toolCallId: block.id, toolName: block.name });
+        names.set(block.id, block.name);
       }
     }
+  }
+
+  const citations: Citation[] = [];
+  const seen = new Set<string>();
+  for (const element of spec.elements) {
+    const source = (element.props as { source?: { toolCallId?: unknown } } | undefined)?.source;
+    const toolCallId = source?.toolCallId;
+    if (typeof toolCallId !== "string" || seen.has(toolCallId)) continue;
+    const toolName = names.get(toolCallId);
+    if (toolName === undefined) continue;
+    seen.add(toolCallId);
+    citations.push({ toolCallId, toolName });
   }
   return citations;
 }
