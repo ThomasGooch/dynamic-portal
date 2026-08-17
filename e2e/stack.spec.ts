@@ -332,7 +332,10 @@ test.describe("the conformance kit, against the deployed satellites", () => {
     return runConformance({
       baseUrl: base,
       principalSecret: SECRET,
-      scopes: scopes.split(","),
+      // Filtered, because `"".split(",")` is `[""]` and a principal carrying an
+      // empty scope fails `PrincipalSchema` — every probe would then come back
+      // 401 and the run would blame the satellite for the test's own token.
+      scopes: scopes.split(",").filter((scope) => scope !== ""),
     });
   };
 

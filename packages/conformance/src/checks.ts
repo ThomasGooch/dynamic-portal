@@ -58,6 +58,14 @@ export interface ConformanceOptions {
    * without them is reported as unchecked rather than broken.
    */
   readonly scopes?: readonly string[];
+  /**
+   * The whole principal, replacing the one built from `scopes`.
+   *
+   * A full override rather than a merge: `scopes` is ignored when this is
+   * supplied, because a caller handing over a complete identity means it, and
+   * quietly grafting scopes onto it would produce a principal neither side
+   * asked for.
+   */
   readonly principal?: Principal;
   readonly timeoutMs?: number;
   readonly fetch?: typeof fetch;
@@ -81,19 +89,24 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
   const doFetch = options.fetch ?? fetch;
   const principal = options.principal ?? {
     ...DEFAULT_PRINCIPAL,
-    scopes: [...(options.scopes ?? [])],
+    // Blanks are dropped rather than passed through: `PrincipalSchema` requires
+    // every scope to be non-empty, so one `""` — which is what splitting an
+    // empty environment variable on "," produces — mints a token every
+    // satellite rejects, and the run then reports the probe's own malformed
+    // principal as a satellite that 401s its own screens.
+    scopes: [...(options.scopes ?? [])].filter((scope) => scope.trim() !== ""),
   };
   const token = signPrincipal(principal, options.principalSecret);
 
-  const get = async (path: string, headers: Record<string, string> = {}) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 5000);
-    try {
-      return await doFetch(`${base}${path}`, { headers, signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
-  };
+  // `AbortSignal.timeout` rather than a cleared timer: a timer cleared once the
+  // response resolves stops covering the body, and `response.json()` on a
+  // satellite that sends headers and then stalls would hang the run forever —
+  // the exact failure `timeoutMs` exists to bound.
+  const get = async (path: string, headers: Record<string, string> = {}) =>
+    doFetch(`${base}${path}`, {
+      headers,
+      signal: AbortSignal.timeout(options.timeoutMs ?? 5000),
+    });
 
   // ---- the manifest ------------------------------------------------------
   let manifest: Manifest | undefined;
@@ -145,12 +158,18 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
   // ---- authentication ----------------------------------------------------
   // None of this is visible in a manifest, and all of it is what stops a hub
   // bug from becoming a disclosure.
-  const firstScreen = manifest.screens[0];
+  // Probed on a screen that takes no required parameter. A satellite that
+  // validates its query string before it authenticates answers 400 or 404 to a
+  // parameterless request, and all three checks below would then report a
+  // defect the satellite does not have.
+  const probeScreen =
+    manifest.screens.find((screen) => !(screen.params ?? []).some((param) => param.required)) ??
+    manifest.screens[0];
 
-  if (firstScreen === undefined) {
+  if (probeScreen === undefined) {
     results.push(skip("authentication", "the satellite declares no screens to probe"));
   } else {
-    const path = `/portal/screens/${encodeURIComponent(firstScreen.id)}`;
+    const path = `/portal/screens/${encodeURIComponent(probeScreen.id)}`;
 
     results.push(await expectStatus(get, path, {}, 401, "refuses an unsigned request"));
     results.push(
@@ -163,27 +182,46 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
       ),
     );
 
-    if (firstScreen.audience.includes("external")) {
+    if (probeScreen.audience.includes("external")) {
       results.push(
         skip(
           "refuses an undeclared audience",
-          `${firstScreen.id} is published externally, so there is no audience to be refused`,
+          `${probeScreen.id} is published externally, so there is no audience to be refused`,
         ),
       );
     } else {
-      const foreign = signPrincipal(
-        { ...principal, audience: "external" },
-        options.principalSecret,
-      );
-      results.push(
-        await expectStatus(
-          get,
-          path,
-          { authorization: `Bearer ${foreign}` },
-          403,
-          "refuses an undeclared audience",
-        ),
-      );
+      // A refusal only demonstrates an audience check if the *correctly*
+      // audienced principal is accepted on the same path. A satellite refuses
+      // for a missing scope with the same 403, so without this baseline a
+      // satellite performing no audience check at all earns the tick — on the
+      // default empty scopes, which is every first run.
+      const baseline = await statusOrUndefined(get, path, { authorization: `Bearer ${token}` });
+
+      if (baseline === undefined || baseline >= 400) {
+        results.push(
+          skip(
+            "refuses an undeclared audience",
+            baseline === undefined
+              ? `${probeScreen.id} could not be probed`
+              : `${probeScreen.id} refuses this probe's own principal with ${baseline}, so a ` +
+                "refusal proves nothing about audience; pass PORTAL_CONFORMANCE_SCOPES",
+          ),
+        );
+      } else {
+        const foreign = signPrincipal(
+          { ...principal, audience: "external" },
+          options.principalSecret,
+        );
+        results.push(
+          await expectStatus(
+            get,
+            path,
+            { authorization: `Bearer ${foreign}` },
+            403,
+            "refuses an undeclared audience",
+          ),
+        );
+      }
     }
   }
 
@@ -206,14 +244,20 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
       });
 
       if (response.status === 403) {
-        // The satellite is enforcing scopes the probe does not hold, which is
-        // correct behaviour on its part and ignorance on ours: required scopes
-        // live in the hub's registry, which a satellite team may not have. A
-        // failure here would blame the satellite for the probe not knowing.
+        // The satellite is refusing this probe, which is correct behaviour on
+        // its part and ignorance on ours: required scopes live in the hub's
+        // registry, which a satellite team may not have. A failure here would
+        // blame the satellite for the probe not knowing. The two reasons for a
+        // 403 are kept apart because only one of them has a remedy — no scope
+        // this tool can be handed will make an `external`-only screen answer an
+        // `internal` principal.
         results.push(
           skip(
             `screen ${screen.id}`,
-            "refused this probe's scopes; pass PORTAL_CONFORMANCE_SCOPES to check it",
+            screen.audience.includes(principal.audience)
+              ? "refused this probe's scopes; pass PORTAL_CONFORMANCE_SCOPES to check it"
+              : `is declared for ${screen.audience.join(", ")} and this probe is ` +
+                `${principal.audience}; pass a principal from that audience to check it`,
           ),
         );
         continue;
@@ -306,6 +350,19 @@ async function expectStatus(
       : fail(name, `answered ${response.status}, expected ${expected}`);
   } catch (error) {
     return fail(name, `could not be probed: ${(error as Error).message}`);
+  }
+}
+
+/** The status of a probe, or `undefined` when the request never got one. */
+async function statusOrUndefined(
+  get: (path: string, headers?: Record<string, string>) => Promise<Response>,
+  path: string,
+  headers: Record<string, string>,
+): Promise<number | undefined> {
+  try {
+    return (await get(path, headers)).status;
+  } catch {
+    return undefined;
   }
 }
 

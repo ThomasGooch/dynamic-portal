@@ -103,6 +103,7 @@ describe("a satellite that behaves", () => {
     expect(statusOf(report.results, "manifest")).toBe("pass");
     expect(statusOf(report.results, "screen orders.list")).toBe("pass");
     expect(statusOf(report.results, "health")).toBe("pass");
+    expect(statusOf(report.results, "refuses an undeclared audience")).toBe("pass");
   });
 
   it("still reports what it could not check", async () => {
@@ -142,6 +143,48 @@ describe("the claims a manifest cannot make", () => {
       }),
     );
     expect(statusOf(report.results, "refuses an undeclared audience")).toBe("fail");
+  });
+
+  it("does not credit an audience check to a satellite that refuses everything", async () => {
+    // `authorize` answers 403 for a missing scope exactly as it does for a
+    // wrong audience, so a refusal only demonstrates an audience check when the
+    // correctly audienced principal is *accepted* on the same path. This fake
+    // performs no audience check at all — `foreign` is unset — and simply
+    // refuses every principal; before the baseline it collected a pass on the
+    // most security-relevant claim the kit makes, on the default empty scopes.
+    const report = await run(
+      healthy({
+        "/portal/screens/orders.list": { status: 403, unauthenticated: 401, forged: 401 },
+      }),
+    );
+    expect(statusOf(report.results, "refuses an undeclared audience")).toBe("skip");
+  });
+
+  it("probes a screen that needs no parameter, when one exists", async () => {
+    // A satellite that validates its query string before it authenticates
+    // answers 400 to a parameterless request, and all three checks would then
+    // report a defect it does not have.
+    const report = await run(
+      healthy({
+        "/portal/manifest": {
+          body: manifest({
+            screens: [
+              {
+                id: "orders.detail",
+                title: "Detail",
+                params: [{ name: "id", required: true }],
+                audience: ["internal"],
+              },
+              { id: "orders.list", title: "Orders", audience: ["internal"] },
+            ],
+          }),
+        },
+        "/portal/screens/orders.detail": { status: 400 },
+      }),
+    );
+    expect(statusOf(report.results, "refuses an unsigned request")).toBe("pass");
+    expect(statusOf(report.results, "refuses a forged signature")).toBe("pass");
+    expect(statusOf(report.results, "refuses an undeclared audience")).toBe("pass");
   });
 });
 

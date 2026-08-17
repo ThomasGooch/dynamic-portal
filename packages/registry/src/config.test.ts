@@ -120,26 +120,38 @@ describe("the workspace itself", () => {
     const { fileURLToPath } = await import("node:url");
 
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-    const packages = join(root, "packages");
 
-    for (const name of readdirSync(packages)) {
-      const manifestPath = join(packages, name, "package.json");
-      if (!existsSync(manifestPath)) continue;
+    /**
+     * Every relative path a package.json field names, however deeply nested.
+     *
+     * `exports` and `bin` are both string-or-map, and `exports` nests further
+     * for conditions (`{ ".": { "import": "./dist/index.js" } }`). Reading only
+     * the top level would leave the conditional form silently unchecked, which
+     * is the same hole in a different shape.
+     */
+    const paths = (value: unknown): string[] => {
+      if (typeof value === "string") return value.startsWith(".") ? [value] : [];
+      if (value === null || typeof value !== "object") return [];
+      return Object.values(value as Record<string, unknown>).flatMap(paths);
+    };
 
-      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-        main?: string;
-        types?: string;
-        exports?: Record<string, string>;
-      };
+    // Apps declare entry points too, and an app that cannot be imported is the
+    // same defect as a package that cannot.
+    for (const group of ["packages", "apps"]) {
+      const dir = join(root, group);
+      for (const name of readdirSync(dir)) {
+        const manifestPath = join(dir, name, "package.json");
+        if (!existsSync(manifestPath)) continue;
 
-      const entries = [
-        manifest.main,
-        manifest.types,
-        ...Object.values(manifest.exports ?? {}),
-      ].filter((entry): entry is string => typeof entry === "string");
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
 
-      for (const entry of entries) {
-        expect(existsSync(join(packages, name, entry)), `${name}: ${entry}`).toBe(true);
+        for (const field of ["main", "types", "exports", "bin"]) {
+          for (const entry of paths(manifest[field])) {
+            expect(existsSync(join(dir, name, entry)), `${group}/${name}: ${field} ${entry}`).toBe(
+              true,
+            );
+          }
+        }
       }
     }
   });
