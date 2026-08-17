@@ -1,6 +1,12 @@
 import type { Principal } from "@portal/identity";
 import type { ActionDescriptor, Manifest, ScreenDescriptor } from "@portal/protocol";
-import { entitle, toolPolicy, type Satellite } from "@portal/registry";
+import {
+  entitle,
+  satelliteLayer,
+  toolPolicy,
+  type EntitlementLayer,
+  type Satellite,
+} from "@portal/registry";
 
 /**
  * The brokered external surface.
@@ -199,35 +205,41 @@ export function resolveOperation(
  */
 function offeredTo(
   principal: Principal,
-  layers: Parameters<typeof entitle>[1],
+  layers: readonly (EntitlementLayer | undefined)[],
 ): boolean {
   const decision = entitle(principal, layers);
   return decision.allowed && decision.audience.includes("external");
 }
 
-const satelliteLayer = (satellite: Satellite) => ({
-  audience: satellite.audience,
-  rbacScopes: satellite.rbacScopes,
-});
-
 const reachable = (satellite: Satellite, principal: Principal): boolean =>
   offeredTo(principal, [satelliteLayer(satellite)]);
 
+/**
+ * The registry's tool policy is a layer here exactly as it is in the gateway.
+ *
+ * It governs reads as well as writes: `shimTools` narrows a *screen*'s tool by
+ * its policy too, so a façade that skipped it would publish externally a screen
+ * the governance file had pinned to internal — the same two-projections-
+ * disagree bug, one declaration further along.
+ */
 const publishes = (
   satellite: Satellite,
   screen: ScreenDescriptor,
   principal: Principal,
-): boolean => offeredTo(principal, [satelliteLayer(satellite), { audience: screen.audience }]);
+): boolean =>
+  offeredTo(principal, [
+    satelliteLayer(satellite),
+    { audience: screen.audience },
+    toolPolicy(satellite, screen.id),
+  ]);
 
 /**
- * Everything a screen needs, plus the two things a *write* does.
+ * Everything a screen needs, plus the one thing a *write* does.
  *
  * An action that declares no parameters is not offered at all, for the same
  * reason the MCP gateway skips one — and for a sharper reason here: a
  * parameterless projection accepts only `{}`, so publishing it would offer a
- * partner a write they can never send the fields for. And the registry's tool
- * policy is a layer, so a governed write demands its scopes rather than the
- * satellite's read ones.
+ * partner a write they can never send the fields for.
  */
 function offered(
   satellite: Satellite,
@@ -235,13 +247,10 @@ function offered(
   principal: Principal,
 ): boolean {
   if (action.params === undefined) return false;
-  const policy = toolPolicy(satellite, action.id);
   return offeredTo(principal, [
     satelliteLayer(satellite),
     { audience: action.audience },
-    ...(policy === undefined
-      ? []
-      : [{ audience: policy.audience, rbacScopes: policy.rbacScopes }]),
+    toolPolicy(satellite, action.id),
   ]);
 }
 

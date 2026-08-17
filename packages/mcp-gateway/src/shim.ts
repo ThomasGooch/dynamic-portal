@@ -1,5 +1,5 @@
 import type { Audience, Manifest } from "@portal/protocol";
-import { combine, toolPolicy, type Satellite } from "@portal/registry";
+import { combine, satelliteLayer, toolPolicy, type Satellite } from "@portal/registry";
 import { indexToolNames, projectToolName } from "./names";
 
 /**
@@ -191,11 +191,9 @@ function build(input: BuildInput): ToolDescriptor | { reason: string } {
   // because its silence means internal, so listing a tool at all pins it there
   // unless the entry widens it.
   const { audience, rbacScopes } = combine([
-    { audience: input.satellite.audience, rbacScopes: input.satellite.rbacScopes },
+    satelliteLayer(input.satellite),
     { audience: input.audience },
-    ...(policy === undefined
-      ? []
-      : [{ audience: policy.audience, rbacScopes: policy.rbacScopes }]),
+    policy,
   ]);
 
   if (audience.length === 0) {

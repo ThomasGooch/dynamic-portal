@@ -52,6 +52,22 @@ describe("narrowing", () => {
     expect(result.reason).toMatch(/no audience/i);
   });
 
+  it("ignores a layer that is not there, rather than making callers branch", () => {
+    // A registry tool policy is optional at every call site. Accepting the
+    // absence here is what keeps the "or nothing" branch from being restated
+    // once per projection — which is how this rule got lost six times.
+    const result = entitle(principal(), [layer(["internal", "external"]), undefined]);
+    expect(result.audience).toEqual(["internal", "external"]);
+    expect(result.allowed).toBe(true);
+  });
+
+  it("deduplicates, because nothing rejects [internal, internal]", () => {
+    // `AudienceListSchema` checks membership and non-emptiness, not uniqueness,
+    // and the result is serialised into an MCP tool descriptor.
+    const result = entitle(principal(), [layer(["internal", "internal"])]);
+    expect(result.audience).toEqual(["internal"]);
+  });
+
   it("preserves the order of the outermost layer, so output is stable", () => {
     const result = entitle(principal(), [
       layer(["internal", "external"]),

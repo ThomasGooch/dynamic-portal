@@ -1,5 +1,5 @@
 import type { Principal } from "@portal/identity";
-import { ManifestSchema, type Audience } from "@portal/protocol";
+import { ManifestSchema, isAudienceSubset, type Audience } from "@portal/protocol";
 import { SatelliteSchema } from "@portal/registry";
 import { buildSurface } from "@portal/mcp-gateway";
 import { buildCatalog } from "@portal/public-api";
@@ -14,12 +14,18 @@ import { describe, expect, it } from "vitest";
  * rather than in someone's audit.
  *
  * The property is deliberately narrow and absolute: **no projection may expose
- * anything to an audience its satellite was not marked for.** Everything else —
- * scopes, tool policy, confirmation — is checked in the packages that own it.
- * This is the one that reaches outside the organization when it is wrong.
+ * anything to an audience *every* layer enclosing it was not marked for** — the
+ * satellite, the screen or action, and the registry's tool policy alike. A
+ * satellite-only check would miss the exact bug that prompted this file, where
+ * one projection read the action's audience and skipped the policy's.
+ * Everything else — scopes, confirmation — is checked in the packages that own
+ * it. This is the one that reaches outside the organization when it is wrong.
  */
 
 const AUDIENCES: readonly Audience[][] = [["internal"], ["external"], ["internal", "external"]];
+
+const SCREEN_ID = "orders.list";
+const ACTION_ID = "orders.approve";
 
 const principals: readonly Principal[] = (["internal", "external"] as const).map((audience) => ({
   sub: `${audience}@acme.example`,
@@ -41,13 +47,13 @@ function fixture(
     owner: "team",
     audience: satelliteAudience,
     rbacScopes: [],
-    tools: { "orders.approve": { agentVisible: true, audience: policyAudience } },
+    tools: { [ACTION_ID]: { agentVisible: true, audience: policyAudience } },
     ...(satelliteAudience.includes("external")
       ? {
           public: {
             service: "order-management",
-            resources: [{ name: "orders", screenId: "orders.list" }],
-            operations: [{ name: "approve", actionId: "orders.approve" }],
+            resources: [{ name: "orders", screenId: SCREEN_ID }],
+            operations: [{ name: "approve", actionId: ACTION_ID }],
           },
         }
       : {}),
@@ -58,10 +64,10 @@ function fixture(
     satelliteId: "orders",
     displayName: "Orders",
     audience: satelliteAudience,
-    screens: [{ id: "orders.list", title: "Orders", audience: screenAudience }],
+    screens: [{ id: SCREEN_ID, title: "Orders", audience: screenAudience }],
     actions: [
       {
-        id: "orders.approve",
+        id: ACTION_ID,
         title: "Approve",
         params: [{ name: "id", type: "string", required: true }],
         audience: actionAudience,
@@ -71,14 +77,6 @@ function fixture(
 
   return { satellite, manifest };
 }
-
-/**
- * The schemas already refuse a declaration wider than its satellite, so those
- * combinations describe a registry that cannot load. Skipping them keeps this
- * about the projections rather than about the parsers.
- */
-const subset = (inner: Audience[], outer: Audience[]) =>
-  inner.every((value) => outer.includes(value));
 
 describe("no projection is wider than the satellite it projects", () => {
   const cases: {
@@ -92,18 +90,17 @@ describe("no projection is wider than the satellite it projects", () => {
     for (const screen of AUDIENCES) {
       for (const action of AUDIENCES) {
         for (const policy of AUDIENCES) {
-          if (!subset(screen, satellite) || !subset(action, satellite)) continue;
-          if (!subset(policy, satellite)) continue;
+          // The schemas already refuse a declaration wider than its satellite,
+          // so those combinations describe a registry that cannot load.
+          // Skipping them keeps this about the projections, not the parsers.
+          if (![screen, action, policy].every((inner) => isAudienceSubset(inner, satellite))) {
+            continue;
+          }
           cases.push({ satellite, screen, action, policy });
         }
       }
     }
   }
-
-  // Counted, because every assertion above sits behind an `if`. A refactor that
-  // quietly emptied both projections would satisfy all of them and prove
-  // nothing — this is the check that the checks ran.
-  const seen = { tools: 0, catalog: 0 };
 
   it("covers a meaningful spread of declarations", () => {
     // A guard on the guard: a filter that accidentally excluded everything
@@ -114,6 +111,15 @@ describe("no projection is wider than the satellite it projects", () => {
 
   for (const entry of cases) {
     const label = `satellite=${entry.satellite} screen=${entry.screen} action=${entry.action} policy=${entry.policy}`;
+
+    // Every layer enclosing one target id. Asserting against *these* rather than
+    // against the satellite alone is what makes this a guard: the bug this file
+    // was written for was a projection reading one inner declaration and
+    // ignoring another, which a satellite-only check cannot see.
+    const enclosing = (targetId: string): Audience[][] =>
+      targetId === SCREEN_ID
+        ? [entry.satellite, entry.screen]
+        : [entry.satellite, entry.action, entry.policy];
 
     for (const principal of principals) {
       it(`${label} · ${principal.audience} principal`, () => {
@@ -127,21 +133,32 @@ describe("no projection is wider than the satellite it projects", () => {
         // The agent's projection.
         const surface = buildSurface([{ satellite, manifest }], principal);
         for (const tool of surface.tools) {
-          for (const audience of tool.audience) {
-            expect(satellite.audience, `${label}: tool ${tool.name}`).toContain(audience);
+          for (const declared of enclosing(tool.targetId)) {
+            for (const audience of tool.audience) {
+              expect(declared, `${label}: tool ${tool.name}`).toContain(audience);
+            }
           }
           expect(tool.audience, `${label}: tool ${tool.name}`).toContain(principal.audience);
         }
 
-        // The partner's projection.
+        // The partner's projection. Checked per published thing, not per
+        // service: a service is visible when the *satellite* allows it, so a
+        // service-level assertion says nothing about the screen or the action.
         const catalog = buildCatalog([{ satellite, manifest }], principal);
-        if (catalog.services.length > 0) {
-          seen.catalog += 1;
-          expect(satellite.audience, `${label}: catalog`).toContain("external");
-          // Only a principal the satellite admits sees anything at all.
-          expect(satellite.audience, `${label}: catalog`).toContain(principal.audience);
+        for (const service of catalog.services) {
+          const published: [string, string][] = [
+            ...service.resources.map((r): [string, string] => [SCREEN_ID, `resource ${r.name}`]),
+            ...service.operations.map((o): [string, string] => [ACTION_ID, `operation ${o.name}`]),
+          ];
+          for (const [targetId, what] of published) {
+            for (const declared of enclosing(targetId)) {
+              // The façade's own rule, applied to every enclosing layer rather
+              // than to the innermost one it happened to read.
+              expect(declared, `${label}: ${what}`).toContain("external");
+              expect(declared, `${label}: ${what}`).toContain(principal.audience);
+            }
+          }
         }
-        seen.tools += surface.tools.length;
 
         // The rule that matters most, stated once and directly: nothing an
         // internal-only satellite declared may reach an external caller,
@@ -155,7 +172,31 @@ describe("no projection is wider than the satellite it projects", () => {
   }
 
   it("actually exercised both projections, rather than finding them empty", () => {
-    expect(seen.tools, "no tool was ever projected").toBeGreaterThan(0);
-    expect(seen.catalog, "no service was ever projected").toBeGreaterThan(0);
+    // Every assertion in the sweep sits behind an `if` or a `for`, so a change
+    // that quietly emptied both projections would satisfy all of them and prove
+    // nothing. This walks the same cases again and counts.
+    //
+    // Recounted rather than accumulated across the tests above: counters
+    // mutated by sibling tests fail whenever the file is run with a `-t`
+    // filter or a shuffled order, which is a false alarm on the one test whose
+    // job is to be trustworthy.
+    let tools = 0;
+    let services = 0;
+
+    for (const entry of cases) {
+      for (const principal of principals) {
+        const { satellite, manifest } = fixture(
+          entry.satellite,
+          entry.screen,
+          entry.action,
+          entry.policy,
+        );
+        tools += buildSurface([{ satellite, manifest }], principal).tools.length;
+        services += buildCatalog([{ satellite, manifest }], principal).services.length;
+      }
+    }
+
+    expect(tools, "no tool was ever projected").toBeGreaterThan(0);
+    expect(services, "no service was ever projected").toBeGreaterThan(0);
   });
 });

@@ -195,6 +195,25 @@ describe("default-deny, at the outermost edge", () => {
     expect(resolveOperation([governed], writer, "order-management", "approve")).toBeUndefined();
   });
 
+  it("applies the tool policy to a published screen, exactly as the gateway does", () => {
+    // The same disagreement, one declaration further along: `shimTools` narrows
+    // a *read*'s tool by its registry policy too, so a façade that consulted the
+    // policy only for writes would publish externally a screen the governance
+    // file had pinned to internal — while the agent projection of the same
+    // declaration refused it.
+    const governed = entry({ tools: { "orders.list": { rbacScopes: ["orders.read"] } } });
+
+    expect(buildCatalog([governed], external).services[0]?.resources.map((r) => r.name)).toEqual([
+      "order",
+    ]);
+    expect(resolveResource([governed], external, "order-management", "orders")).toBeUndefined();
+
+    const widened = entry({
+      tools: { "orders.list": { rbacScopes: ["orders.read"], audience: ["internal", "external"] } },
+    });
+    expect(resolveResource([widened], external, "order-management", "orders")).toBeDefined();
+  });
+
   it("does not read a tool policy off the prototype chain", () => {
     // `constructor` is a legal id, `tools` is a plain object, and bare bracket
     // access resolves it to the `Object` function — whose `rbacScopes` is

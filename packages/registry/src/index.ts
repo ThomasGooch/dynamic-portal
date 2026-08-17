@@ -26,6 +26,7 @@ export {
 export {
   combine,
   entitle,
+  satelliteLayer,
   toolPolicy,
   type Entitlement,
   type EntitlementLayer,
