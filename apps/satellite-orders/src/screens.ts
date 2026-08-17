@@ -60,12 +60,19 @@ export function manifest(): Manifest {
         id: "orders.approve",
         title: "Approve order",
         description: "Move a pending order to approved.",
+        // Declared so the MCP gateway can describe this write to an agent. An
+        // action that says nothing about its inputs stays uncallable by one,
+        // which is better than a model guessing field names at a write.
+        params: [
+          { name: "id", type: "string", required: true, description: "The order id to approve." },
+        ],
         audience: ["internal"],
       },
       {
         id: "orders.refresh",
         title: "Refresh orders",
         description: "Re-read the order table without leaving the screen.",
+        params: [],
         audience: ["internal"],
       },
     ],

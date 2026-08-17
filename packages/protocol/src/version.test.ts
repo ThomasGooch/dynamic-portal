@@ -83,3 +83,19 @@ describe("isSupportedProtocolVersion", () => {
     expect(isSupportedProtocolVersion("not-a-version")).toBe(false);
   });
 });
+
+describe("the additive-within-a-major promise", () => {
+  it("still supports a satellite declaring the previous minor", () => {
+    // The promise the version scheme makes: a minor bump adds optional fields
+    // and never asks a satellite to redeploy. If this ever fails, the bump was
+    // not additive and the major should have moved instead.
+    expect(isSupportedProtocolVersion("1.0")).toBe(true);
+    expect(isSupportedProtocolVersion(CURRENT_PROTOCOL_VERSION)).toBe(true);
+  });
+
+  it("supports a satellite that is ahead of the hub within the major", () => {
+    // Unknown components degrade visibly rather than failing the screen, so a
+    // satellite on a newer minor is a supported state, not an error.
+    expect(isSupportedProtocolVersion("1.99")).toBe(true);
+  });
+});

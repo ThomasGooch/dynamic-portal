@@ -166,3 +166,44 @@ describe("resolveNav", () => {
     expect(nav[0]?.items[0]?.satelliteId).toBe("a");
   });
 });
+
+describe("tool policy — what silence means", () => {
+  const withTool = (policy: string) =>
+    loadRegistry(
+      `- id: orders
+  displayName: Orders
+  baseUrl: http://localhost:4001
+  owner: team
+  tools:
+    orders.approve:
+${policy}
+`,
+      {},
+    )[0]?.tools["orders.approve"];
+
+  it("leaves agentVisible unset rather than defaulting it", () => {
+    // Deliberately not defaulted: the safe value differs by what the tool does,
+    // and only the gateway knows whether this is a read or a write. Defaulting
+    // it here would mean a tool listed for some unrelated reason — to add a
+    // scope, say — arrived pre-approved for the agent.
+    expect(withTool("      rbacScopes: [orders.write]")?.agentVisible).toBeUndefined();
+  });
+
+  it("leaves requiresConfirmation unset rather than defaulting it to false", () => {
+    // The dangerous direction: a default of `false` would silently clear the
+    // confirmation on a write the moment anyone listed it.
+    expect(withTool("      rbacScopes: [orders.write]")?.requiresConfirmation).toBeUndefined();
+  });
+
+  it("still honours both when they are stated", () => {
+    const tool = withTool("      agentVisible: false\n      requiresConfirmation: true");
+    expect(tool?.agentVisible).toBe(false);
+    expect(tool?.requiresConfirmation).toBe(true);
+  });
+
+  it("pins a listed tool to internal unless the entry widens it", () => {
+    // The registry is the governance file. Its silence is deny, so naming a
+    // tool at all narrows it to internal even where the satellite is wider.
+    expect(withTool("      rbacScopes: []")?.audience).toEqual(["internal"]);
+  });
+});

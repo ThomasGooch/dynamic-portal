@@ -39,11 +39,13 @@ export {
 
 export {
   ActionDescriptorSchema,
+  ActionParamSchema,
   ManifestSchema,
   NavEntrySchema,
   ScreenDescriptorSchema,
   ScreenParamSchema,
   type ActionDescriptor,
+  type ActionParam,
   type Manifest,
   type NavEntry,
   type ScreenDescriptor,

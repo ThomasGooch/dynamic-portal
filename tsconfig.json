@@ -11,6 +11,9 @@
       "path": "./packages/registry"
     },
     {
+      "path": "./packages/mcp-gateway"
+    },
+    {
       "path": "./packages/catalog"
     },
     {

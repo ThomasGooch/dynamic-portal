@@ -19,8 +19,17 @@
     order: 10
   rbacScopes: [orders.read]
   timeoutMs: 3000
+  # Tool policy is the governance file, and it governs *writes*. Screens are
+  # agent-readable without an entry here — they are already bounded by audience
+  # and scopes, and requiring one per screen would mean adding a screen needed a
+  # hub deploy after all. A write is invisible until it is named here, on
+  # purpose: exposing a mutation to a model is a decision a human makes.
+  #
+  # `orders.refresh` is deliberately absent. It is a write, so it stays
+  # agent-invisible, and nothing about that is an oversight.
   tools:
     orders.approve:
+      agentVisible: true
       requiresConfirmation: true
       rbacScopes: [orders.write]
 

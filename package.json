@@ -27,7 +27,10 @@
   "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@portal/catalog": "workspace:*",
+    "@portal/identity": "workspace:*",
+    "@portal/mcp-gateway": "workspace:*",
     "@portal/protocol": "workspace:*",
+    "@portal/registry": "workspace:*",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^4.1.10",
     "jsdom": "^30.0.1",
