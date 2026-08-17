@@ -24,6 +24,9 @@
     },
     {
       "path": "./packages/public-api"
+    },
+    {
+      "path": "./packages/mcp-server"
     }
   ]
 }

@@ -10,10 +10,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@portal/agent": "workspace:*",
     "@portal/catalog": "workspace:*",
     "@portal/identity": "workspace:*",
     "@portal/mcp-gateway": "workspace:*",
+    "@portal/mcp-server": "workspace:*",
     "@portal/protocol": "workspace:*",
     "@portal/public-api": "workspace:*",
     "@portal/registry": "workspace:*",

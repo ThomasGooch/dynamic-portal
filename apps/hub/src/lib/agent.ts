@@ -88,6 +88,40 @@ export interface AgentInvoker {
  * including the refusals; this is the seam a sink attaches to, and until one
  * does, the agent path has no audit trail.
  */
+/**
+ * The gateway's dependencies for one principal, without the confirmation
+ * decision — which belongs to whoever is asking, not to this factory. The agent
+ * loop supplies it per call; the MCP route never supplies it at all.
+ */
+export function agentInvokerDeps(
+  principal: Principal,
+  surface: ToolSurface,
+): Omit<Parameters<typeof invokeTool>[4], "confirmed"> {
+  void surface;
+  const portal = getPortal();
+
+  return {
+    transport: {
+      fetchScreen: (satelliteId, screenId, params, who) => {
+        const satellite = portal.registry.find((entry) => entry.id === satelliteId);
+        if (satellite === undefined) throw new Error(`no satellite ${satelliteId}`);
+        return portal.clientFor(satellite).fetchScreen(screenId, params, who);
+      },
+      invokeAction: (satelliteId, actionId, params, who) => {
+        const satellite = portal.registry.find((entry) => entry.id === satelliteId);
+        if (satellite === undefined) throw new Error(`no satellite ${satelliteId}`);
+        return portal.clientFor(satellite).invokeAction(actionId, params, who);
+      },
+    },
+    // Discarded, as everywhere else on this path, until the audit sink's
+    // per-tenant key is decided. See the note on `agentInvoker`.
+    onAudit: () => {},
+    now: () => Date.now(),
+    at: () => new Date().toISOString(),
+    newId: () => randomUUID(),
+  };
+}
+
 export function agentInvoker(principal: Principal, surface: ToolSurface): AgentInvoker {
   const portal = getPortal();
   const audits: AuditEvent[] = [];
