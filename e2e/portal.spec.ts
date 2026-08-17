@@ -30,11 +30,11 @@ const healthUrl = (base: string): string => `${base.replace(/\/+$/, "")}/healthz
  * turn, or a minute, on the question.
  *
  * `/api/agent` decides `isAgentEnabled` before it reads the request body, so a
- * POST with no `messages` is answered 404 when the assistant is off and 400
- * when it is on, and reaches no model either way. Probing with a real question
- * instead would bill a turn purely to decide whether to skip, and would run
- * inside a `beforeAll` — whose timeout is the config's 30s test timeout, not
- * whatever the request was given.
+ * POST with neither a `history` nor an `ask` is answered 404 when the assistant
+ * is off and 400 when it is on, and reaches no model either way. Probing with a
+ * real question instead would bill a turn purely to decide whether to skip, and
+ * would run inside a `beforeAll` — whose timeout is the config's 30s test
+ * timeout, not whatever the request was given.
  *
  * Any other status is a stack that is broken rather than configured, and is
  * raised rather than quietly read as one answer or the other: a 502 from an
@@ -773,13 +773,19 @@ test.describe("the assistant, switched on", () => {
     const tampered = JSON.parse(JSON.stringify(first.messages)) as {
       content: { type: string; content?: string }[];
     }[];
+    // Edited unconditionally rather than by a regex over model-shaped output: a
+    // pattern that happened not to match would leave the history byte-identical,
+    // and the test would then fail against a hub that is working correctly.
     for (const message of tampered) {
       for (const block of message.content) {
-        if (block.type === "tool_result" && block.content !== undefined) {
-          block.content = block.content.replace(/"value":"\d+"/, '"value":"999"');
+        if (block.type === "tool_result" && typeof block.content === "string") {
+          block.content = block.content.replace(/\d/, (digit) => (digit === "9" ? "8" : "9"));
         }
       }
     }
+    // If nothing was actually changed the history still verifies, and the 400
+    // below would be asserted against a hub behaving correctly.
+    expect(JSON.stringify(tampered)).not.toBe(JSON.stringify(first.messages));
 
     const response = await request.post("/api/agent", {
       data: { history: tampered, signature: first.signature, ask: "again" },
@@ -793,6 +799,9 @@ test.describe("the assistant, switched on", () => {
     const first = await (
       await request.post("/api/agent", { data: { ask: "How many orders are pending?" } })
     ).json();
+    // Asserted before the signature, so a turn that failed reads as a failed
+    // turn rather than as "undefined is not 64 hex characters".
+    expect(first.ok).toBe(true);
     expect(first.signature).toMatch(/^[a-f0-9]{64}$/);
 
     const second = await request.post("/api/agent", {

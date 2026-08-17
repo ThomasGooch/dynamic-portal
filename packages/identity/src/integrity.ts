@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { canonicalValue } from "./audit";
+import type { Principal } from "./principal";
 
 /**
  * Signing something the hub hands out and expects back.
@@ -65,4 +66,46 @@ export function verifyValue(value: unknown, signature: string, key: Buffer): boo
   // Length first: `timingSafeEqual` throws on a mismatch, and that throw is
   // itself a signal about the length of the expected value.
   return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+/**
+ * Signing a conversation to one principal, key derivation included.
+ *
+ * This is one function rather than a key derivation the caller then signs with
+ * because the two halves are where the mistake lives. The key is derived per
+ * *tenant*, so signing the messages alone produces a value that verifies for
+ * every other user in that tenant. Grounding re-renders a screen from the
+ * `tool_result` blocks in the history rather than re-fetching, so a
+ * conversation captured from a colleague and replayed would draw figures from
+ * evidence the replayer's own entitlements never reached — a disclosure between
+ * two people who legitimately share a tenant and legitimately differ in scope.
+ *
+ * That was live in the first version of this endpoint, and every test passed:
+ * the binding is invisible unless something varies the subject, and nothing
+ * did. Hence a named function with the subject folded in, and a test below that
+ * varies exactly that.
+ */
+export function signConversation(
+  principal: Principal,
+  conversation: unknown,
+  rootKey: string,
+): string {
+  return signValue(
+    { sub: principal.sub, conversation },
+    tenantKey(rootKey, "conversation.v1", principal.tenantId),
+  );
+}
+
+/** The other half. False for a wrong subject, wrong tenant or altered history. */
+export function verifyConversation(
+  principal: Principal,
+  conversation: unknown,
+  signature: string,
+  rootKey: string,
+): boolean {
+  return verifyValue(
+    { sub: principal.sub, conversation },
+    signature,
+    tenantKey(rootKey, "conversation.v1", principal.tenantId),
+  );
 }

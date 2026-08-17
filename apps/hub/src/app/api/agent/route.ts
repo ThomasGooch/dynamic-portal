@@ -1,6 +1,6 @@
 import { flatToKeyed, keyedToNested } from "@portal/catalog";
 import { runAgent, type Message } from "@portal/agent";
-import { signValue, tenantKey, verifyValue } from "@portal/identity";
+import { signConversation, verifyConversation } from "@portal/identity";
 import { visibleSatellites } from "@portal/registry";
 import type { AgentApiResult } from "@/lib/agentApi";
 import { agentInvoker, buildAgentSurface, isAgentEnabled, modelClient } from "@/lib/agent";
@@ -64,6 +64,26 @@ export async function POST(request: Request): Promise<Response> {
     return json({ ok: false, message: "The portal could not read that request." }, 400);
   }
 
+  let rootKey: string;
+  try {
+    rootKey = auditConfig().rootKey;
+  } catch {
+    // A missing root secret is a misconfigured stack, not a bad request. It has
+    // to be caught here rather than left to escape the handler: an uncaught
+    // throw is a 500 whose body is not the JSON envelope every caller parses,
+    // so the browser reports "could not reach the assistant" for a server that
+    // answered perfectly well.
+    return json({ ok: false, message: "The assistant could not complete that request." }, 502);
+  }
+
+  /**
+   * Signing and verifying both live in `@portal/identity`, which is where the
+   * key derivation and the sealed shape can be held together and tested. The
+   * shape matters as much as the key: derived per tenant, a signature over the
+   * messages alone verifies for every colleague in that tenant.
+   */
+  const sign = (messages: readonly Message[]) => signConversation(principal, messages, rootKey);
+
   /**
    * The conversation is the hub's state, and between turns it lives in the
    * browser. Everything grounding believes about what a tool returned is
@@ -78,13 +98,12 @@ export async function POST(request: Request): Promise<Response> {
    * the first version of this did exactly that and would have rejected every
    * second turn.
    */
-  const conversationKey = tenantKey(auditConfig().rootKey, "conversation.v1", principal.tenantId);
   const history = Array.isArray(body.history) ? (body.history as Message[]) : [];
   const ask = typeof body.ask === "string" ? body.ask.trim() : "";
 
   if (history.length > 0) {
     const signature = typeof body.signature === "string" ? body.signature : "";
-    if (!verifyValue(history, signature, conversationKey)) {
+    if (!verifyConversation(principal, history, signature, rootKey)) {
       return json(
         {
           ok: false,
@@ -145,7 +164,7 @@ export async function POST(request: Request): Promise<Response> {
           citations: outcome.citations,
           allowedSatelliteIds: allowed,
           messages: outcome.messages,
-          signature: signValue(outcome.messages, conversationKey),
+          signature: sign(outcome.messages),
         },
         200,
       );
@@ -158,7 +177,7 @@ export async function POST(request: Request): Promise<Response> {
           kind: "confirm",
           pending: outcome.pending,
           messages: outcome.messages,
-          signature: signValue(outcome.messages, conversationKey),
+          signature: sign(outcome.messages),
         },
         200,
       );
@@ -171,7 +190,7 @@ export async function POST(request: Request): Promise<Response> {
           kind: "answer",
           text: outcome.text,
           messages: outcome.messages,
-          signature: signValue(outcome.messages, conversationKey),
+          signature: sign(outcome.messages),
         },
         200,
       );

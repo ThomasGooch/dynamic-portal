@@ -21,8 +21,10 @@ export {
 } from "./authorize";
 
 export {
+  signConversation,
   signValue,
   tenantKey,
+  verifyConversation,
   verifyValue,
   type KeyPurpose,
 } from "./integrity";

@@ -63,6 +63,14 @@ export function AgentPanel() {
       if (result.ok) {
         setMessages([...result.messages]);
         setSignature(result.signature);
+      } else if (response.status === 400) {
+        // The hub refused the conversation — it did not verify, or it is no
+        // longer one the API would accept. Keeping it would wedge the panel:
+        // every later turn posts the same rejected history and is rejected the
+        // same way, with no way out but a reload. The hub's message says to
+        // start a new one, so this is the panel actually doing that.
+        setMessages([]);
+        setSignature("");
       }
       setTurns((previous) => previous.map((turn) => (turn.id === id ? { ...turn, result } : turn)));
     } catch {
@@ -83,9 +91,6 @@ export function AgentPanel() {
     const asked = question.trim();
     if (asked === "" || busy) return;
     setQuestion("");
-    // The pending call is dropped by the *hub*, not here: the signature covers
-    // the conversation the hub issued, and a history this side has already
-    // shortened no longer verifies against it.
     // The pending call, if there is one, is dropped by the *hub*: the signature
     // covers the conversation the hub issued, so a history shortened here would
     // no longer verify against it.
