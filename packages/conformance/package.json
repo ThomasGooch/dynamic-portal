@@ -1,0 +1,17 @@
+{
+  "name": "@portal/conformance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Does this satellite actually speak the protocol? Run it and find out.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "bin": { "portal-conformance": "./src/cli.ts" },
+  "scripts": { "typecheck": "tsc --build --force" },
+  "dependencies": {
+    "@portal/catalog": "workspace:*",
+    "@portal/identity": "workspace:*",
+    "@portal/protocol": "workspace:*"
+  }
+}

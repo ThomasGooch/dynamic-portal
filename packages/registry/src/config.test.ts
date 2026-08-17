@@ -108,3 +108,39 @@ describe("the committed registry", () => {
     expect(visible).toEqual(["orders"]);
   });
 });
+
+describe("the workspace itself", () => {
+  it("every workspace package's declared entry point exists", async () => {
+    // `tsc` compiles a directory, not an entry point, so a package.json whose
+    // `main`/`exports` names a file nobody wrote still typechecks clean. The
+    // conformance package shipped in exactly that state — every check passing,
+    // and unimportable.
+    const { readdirSync, existsSync, readFileSync } = await import("node:fs");
+    const { join, dirname, resolve } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+    const packages = join(root, "packages");
+
+    for (const name of readdirSync(packages)) {
+      const manifestPath = join(packages, name, "package.json");
+      if (!existsSync(manifestPath)) continue;
+
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+        main?: string;
+        types?: string;
+        exports?: Record<string, string>;
+      };
+
+      const entries = [
+        manifest.main,
+        manifest.types,
+        ...Object.values(manifest.exports ?? {}),
+      ].filter((entry): entry is string => typeof entry === "string");
+
+      for (const entry of entries) {
+        expect(existsSync(join(packages, name, entry)), `${name}: ${entry}`).toBe(true);
+      }
+    }
+  });
+});

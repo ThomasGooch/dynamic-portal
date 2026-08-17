@@ -22,11 +22,13 @@
     "logs": "docker compose logs -f",
     "stack:test": "docker compose build test && docker compose run --rm test",
     "test:py": "cd apps/satellite-fleet && uv run pytest",
-    "verify:ci": "bash scripts/verify-ci.sh"
+    "verify:ci": "bash scripts/verify-ci.sh",
+    "conformance": "tsx packages/conformance/src/cli.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@portal/catalog": "workspace:*",
+    "@portal/conformance": "workspace:*",
     "@portal/identity": "workspace:*",
     "@portal/mcp-gateway": "workspace:*",
     "@portal/protocol": "workspace:*",

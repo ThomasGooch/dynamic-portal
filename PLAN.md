@@ -378,7 +378,7 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 13. Outward MCP server — aggregated tools over one governed endpoint *(done)*; `ui://` resources and the MCP Apps path *(deferred with M3's third-party work)*.
 14. MCP→PUP generation — a tools-only satellite gets generated screens.
 15. Third-party MCP path — compliant sandboxed-iframe fallback with foreign-source chrome.
-16. `packages/sdk-node` + `packages/conformance` — the adoption ergonomics that decide whether teams onboard.
+16. `packages/conformance` — the CLI a satellite team runs against their own service *(done)*; `packages/sdk-node` typed builders *(next)*.
 
 ---
 
@@ -401,7 +401,7 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 13. **Agent off, per tenant** — deterministic portal fully intact for that tenant. Proves additive, never load-bearing.
 14. **Outward MCP** — point Claude Desktop at the hub; it works across both satellites through the gateway.
 15. **Polyglot + shim** — fleet is Python, no MCP server, still agent-reachable via the generated shim.
-16. **Conformance** — `pnpm conformance http://localhost:4001` passes; break a response, watch it fail precisely.
+16. **Conformance** — `pnpm conformance http://localhost:4001` passes; break a response, watch it fail precisely. It reports four states, and the distinction matters: a *skip* is never a pass. A screen behind a required parameter cannot be fetched without inventing a value, a screen refused for want of scopes is the probe's ignorance rather than the satellite's defect (required scopes live in the registry, which a satellite team may not have), and tenant isolation cannot be proved from outside with one tenant's credentials. All three come back as unchecked, with the reason, on every run — a green result that quietly omitted the important half is worse than a red one.
 
 ---
 

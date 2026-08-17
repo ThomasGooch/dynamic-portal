@@ -321,3 +321,64 @@ test.describe("the agent-facing projection of the same declarations", () => {
     expect(surface.tools.every((tool) => tool.kind === "read")).toBe(true);
   });
 });
+
+test.describe("the conformance kit, against the deployed satellites", () => {
+  // The adoption story, run for real. A satellite team's first contact with
+  // this platform is this command, so it is tested against both satellites —
+  // including the Python one, which shares no code with the kit and is still on
+  // protocol 1.0.
+  const run = async (base: string, scopes: string) => {
+    const { runConformance } = await import("@portal/conformance");
+    return runConformance({
+      baseUrl: base,
+      principalSecret: SECRET,
+      scopes: scopes.split(","),
+    });
+  };
+
+  test("passes the TypeScript satellite", async () => {
+    const report = await run(ORDERS, "orders.read");
+    const failures = report.results.filter((result) => result.status === "fail");
+    expect(failures.map((f) => `${f.name}: ${f.detail}`)).toEqual([]);
+    expect(report.ok).toBe(true);
+  });
+
+  test("passes the Python satellite, which shares no code with the kit", async () => {
+    const report = await run(FLEET, "fleet.read");
+    const failures = report.results.filter((result) => result.status === "fail");
+    expect(failures.map((f) => `${f.name}: ${f.detail}`)).toEqual([]);
+    expect(report.ok).toBe(true);
+  });
+
+  test("proves the authentication claims a manifest cannot make", async () => {
+    // The checks that matter most: these are the ones that stop a hub bug from
+    // becoming a disclosure, and none of them are visible in a declaration.
+    const report = await run(FLEET, "fleet.read");
+    for (const name of [
+      "refuses an unsigned request",
+      "refuses a forged signature",
+      "refuses an undeclared audience",
+    ]) {
+      expect(
+        report.results.find((result) => result.name === name)?.status,
+        name,
+      ).toBe("pass");
+    }
+  });
+
+  test("never reports something it did not check as a pass", async () => {
+    // The property that makes a green run worth trusting.
+    const report = await run(ORDERS, "orders.read");
+    const skipped = report.results.filter((result) => result.status === "skip");
+    expect(skipped.length).toBeGreaterThan(0);
+    for (const result of skipped) {
+      expect(result.detail, result.name).not.toBe("");
+    }
+  });
+
+  test("fails a service that is not a satellite, once and clearly", async () => {
+    const report = await run("http://127.0.0.1:3000", "");
+    expect(report.ok).toBe(false);
+    expect(report.results.filter((result) => result.status === "fail")).toHaveLength(1);
+  });
+});
