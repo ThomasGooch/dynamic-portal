@@ -108,3 +108,51 @@ describe("the committed registry", () => {
     expect(visible).toEqual(["orders"]);
   });
 });
+
+describe("the workspace itself", () => {
+  it("every workspace package's declared entry point exists", async () => {
+    // `tsc` compiles a directory, not an entry point, so a package.json whose
+    // `main`/`exports` names a file nobody wrote still typechecks clean. The
+    // conformance package shipped in exactly that state — every check passing,
+    // and unimportable.
+    const { readdirSync, existsSync, readFileSync } = await import("node:fs");
+    const { join, dirname, resolve } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+    /**
+     * Every relative path a package.json field names, however deeply nested.
+     *
+     * `exports` and `bin` are both string-or-map, and `exports` nests further
+     * for conditions (`{ ".": { "import": "./dist/index.js" } }`). Reading only
+     * the top level would leave the conditional form silently unchecked, which
+     * is the same hole in a different shape.
+     */
+    const paths = (value: unknown): string[] => {
+      if (typeof value === "string") return value.startsWith(".") ? [value] : [];
+      if (value === null || typeof value !== "object") return [];
+      return Object.values(value as Record<string, unknown>).flatMap(paths);
+    };
+
+    // Apps declare entry points too, and an app that cannot be imported is the
+    // same defect as a package that cannot.
+    for (const group of ["packages", "apps"]) {
+      const dir = join(root, group);
+      for (const name of readdirSync(dir)) {
+        const manifestPath = join(dir, name, "package.json");
+        if (!existsSync(manifestPath)) continue;
+
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+
+        for (const field of ["main", "types", "exports", "bin"]) {
+          for (const entry of paths(manifest[field])) {
+            expect(existsSync(join(dir, name, entry)), `${group}/${name}: ${field} ${entry}`).toBe(
+              true,
+            );
+          }
+        }
+      }
+    }
+  });
+});
