@@ -18,6 +18,9 @@
     },
     {
       "path": "./apps/satellite-orders"
+    },
+    {
+      "path": "./packages/agent"
     }
   ]
 }

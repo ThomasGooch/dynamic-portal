@@ -184,7 +184,13 @@ export const COMPONENTS = {
       kind: z.enum(["line", "bar", "area", "donut"]),
       xKey: z.string(),
       series: z.array(z.object({ key: z.string(), label: z.string() }).strict()),
-      data: z.array(z.record(z.unknown())),
+      /**
+       * Optional, like `Table.rows` and for the same two reasons: a producer
+       * may legitimately have nothing to plot yet, and the agent path is not
+       * allowed to write this at all — the hub fills it in from the tool call
+       * the node cites, so the spec is briefly and correctly dataless.
+       */
+      data: z.array(z.record(z.unknown())).optional(),
       source: Source.optional(),
     })
     .strict(),
