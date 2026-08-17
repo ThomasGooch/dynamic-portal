@@ -1,6 +1,6 @@
-import { authorize, type Principal } from "@portal/identity";
+import type { Principal } from "@portal/identity";
 import type { ActionDescriptor, Manifest, ScreenDescriptor } from "@portal/protocol";
-import type { Satellite } from "@portal/registry";
+import { entitle, toolPolicy, type Satellite } from "@portal/registry";
 
 /**
  * The brokered external surface.
@@ -89,7 +89,7 @@ export function buildCatalog(
     const resources = projection.resources
       .map(({ name, screenId }) => {
         const screen = entry.manifest.screens.find((candidate) => candidate.id === screenId);
-        return screen !== undefined && published(screen.audience, principal)
+        return screen !== undefined && publishes(entry.satellite, screen, principal)
           ? describeResource(name, screen)
           : undefined;
       })
@@ -153,7 +153,7 @@ export function resolveResource(
     if (mapping === undefined) continue;
 
     const screen = entry.manifest.screens.find((candidate) => candidate.id === mapping.screenId);
-    if (screen === undefined || !published(screen.audience, principal)) continue;
+    if (screen === undefined || !publishes(entry.satellite, screen, principal)) continue;
 
     return {
       satelliteId: entry.satellite.id,
@@ -189,60 +189,61 @@ export function resolveOperation(
   return undefined;
 }
 
-const reachable = (satellite: Satellite, principal: Principal): boolean =>
-  satellite.audience.includes("external") &&
-  authorize(principal, {
-    audience: satellite.audience,
-    rbacScopes: satellite.rbacScopes,
-  }).allowed;
-
 /**
- * Marked external by the satellite *and* callable by this principal.
+ * Reachable *and* published, in one place.
  *
- * The first half is what makes the façade the façade: an internal caller here
- * sees the public API, not everything they happen to be entitled to. The
- * surface is defined by what it projects, not by who is asking.
+ * The façade adds one rule to the shared entitlement: whatever survives the
+ * narrowing must still include `external`. That is what makes it a façade — an
+ * internal caller here sees the public API, not everything they are entitled
+ * to. The surface is defined by what it projects, not by who is asking.
  */
-const published = (audience: readonly ("internal" | "external")[], principal: Principal): boolean =>
-  audience.includes("external") &&
-  authorize(principal, { audience, rbacScopes: [] }).allowed;
+function offeredTo(
+  principal: Principal,
+  layers: Parameters<typeof entitle>[1],
+): boolean {
+  const decision = entitle(principal, layers);
+  return decision.allowed && decision.audience.includes("external");
+}
+
+const satelliteLayer = (satellite: Satellite) => ({
+  audience: satellite.audience,
+  rbacScopes: satellite.rbacScopes,
+});
+
+const reachable = (satellite: Satellite, principal: Principal): boolean =>
+  offeredTo(principal, [satelliteLayer(satellite)]);
+
+const publishes = (
+  satellite: Satellite,
+  screen: ScreenDescriptor,
+  principal: Principal,
+): boolean => offeredTo(principal, [satelliteLayer(satellite), { audience: screen.audience }]);
 
 /**
- * Everything `published` asks of a screen, plus the two things a *write* needs.
+ * Everything a screen needs, plus the two things a *write* does.
  *
  * An action that declares no parameters is not offered at all, for the same
- * reason the MCP gateway skips one: a caller who cannot see the shape guesses
- * field names at a write endpoint, and here it is worse than for an agent —
- * the façade would accept only `{}`, so every call posts an empty payload to a
- * mutation and the partner has no way to send what it actually needs.
- *
- * And the registry's tool policy is the file that governs writes, so the scopes
- * it attaches to one are required here too. Without this, `reachable` is the
- * only scope check on the whole path and it asks for the satellite's *read*
- * scopes — a partner holding `orders.read` could run an operation the registry
- * says needs `orders.write`, and only the satellite's own check would stop it.
- * The agent path already enforces this; the outermost edge should not be the
- * one surface that does not.
+ * reason the MCP gateway skips one — and for a sharper reason here: a
+ * parameterless projection accepts only `{}`, so publishing it would offer a
+ * partner a write they can never send the fields for. And the registry's tool
+ * policy is a layer, so a governed write demands its scopes rather than the
+ * satellite's read ones.
  */
-const offered = (
+function offered(
   satellite: Satellite,
   action: ActionDescriptor,
   principal: Principal,
-): boolean =>
-  action.params !== undefined &&
-  published(action.audience, principal) &&
-  authorize(principal, {
-    audience: action.audience,
-    // `hasOwn`, not bare bracket access: `tools` is a plain object and
-    // `constructor` is a legal id, so `tools["constructor"]` resolves to the
-    // `Object` function, whose `rbacScopes` is undefined — and `?? []` would
-    // then quietly require *no* scopes on exactly the surface where that is
-    // worst. The gateway fixed this same read two changes ago; the fix did not
-    // travel with the rule.
-    rbacScopes: Object.hasOwn(satellite.tools, action.id)
-      ? (satellite.tools[action.id]?.rbacScopes ?? [])
-      : [],
-  }).allowed;
+): boolean {
+  if (action.params === undefined) return false;
+  const policy = toolPolicy(satellite, action.id);
+  return offeredTo(principal, [
+    satelliteLayer(satellite),
+    { audience: action.audience },
+    ...(policy === undefined
+      ? []
+      : [{ audience: policy.audience, rbacScopes: policy.rbacScopes }]),
+  ]);
+}
 
 function describeResource(name: string, screen: ScreenDescriptor): PublicResource {
   return {

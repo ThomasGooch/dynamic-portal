@@ -171,8 +171,28 @@ describe("default-deny, at the outermost edge", () => {
       resolveOperation([governed], readOnly, "order-management", "approve"),
     ).toBeUndefined();
 
+    // Widened explicitly, because the registry's silence means internal — see
+    // the test below.
     const writer: Principal = { ...external, scopes: ["orders.read", "orders.write"] };
-    expect(resolveOperation([governed], writer, "order-management", "approve")).toBeDefined();
+    const publicWrite = entry({
+      tools: {
+        "orders.approve": { rbacScopes: ["orders.write"], audience: ["internal", "external"] },
+      },
+    });
+    expect(resolveOperation([publicWrite], writer, "order-management", "approve")).toBeDefined();
+  });
+
+  it("keeps a governed tool internal unless the registry entry says otherwise", () => {
+    // Surfaced by putting the rule in one function: the façade had been reading
+    // only the *action's* audience, while the MCP gateway also narrowed by the
+    // tool policy's. Two projections of one declaration disagreeing about who
+    // may call it is the whole class of bug the shared rule removes — and the
+    // governance file's silence meaning internal is the safer of the two.
+    const writer: Principal = { ...external, scopes: ["orders.read", "orders.write"] };
+    const governed = entry({ tools: { "orders.approve": { rbacScopes: ["orders.write"] } } });
+
+    expect(buildCatalog([governed], writer).services[0]?.operations).toEqual([]);
+    expect(resolveOperation([governed], writer, "order-management", "approve")).toBeUndefined();
   });
 
   it("does not read a tool policy off the prototype chain", () => {

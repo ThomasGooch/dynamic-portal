@@ -24,6 +24,14 @@ export {
 } from "./registry";
 
 export {
+  combine,
+  entitle,
+  toolPolicy,
+  type Entitlement,
+  type EntitlementLayer,
+} from "./entitlement";
+
+export {
   CircuitBreaker,
   type BreakerState,
   type CircuitBreakerOptions,
