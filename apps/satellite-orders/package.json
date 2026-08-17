@@ -18,6 +18,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@portal/agent": "workspace:*",
     "@portal/mcp-gateway": "workspace:*",
     "@portal/registry": "workspace:*",
     "@types/express": "^5.0.0",

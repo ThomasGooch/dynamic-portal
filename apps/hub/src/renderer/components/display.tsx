@@ -67,7 +67,7 @@ export const StatTile: Renderer<"StatTile"> = ({ props }) => (
 );
 
 export const KeyValueList: Renderer<"KeyValueList"> = ({ props }) => (
-  <dl className="r-kv">
+  <dl className="r-kv" data-derived={props.source === undefined ? undefined : ""}>
     {props.items.map((item, index) => (
       <div className="r-kvRow" key={`${item.label}-${index}`}>
         <dt>{item.label}</dt>
@@ -84,6 +84,14 @@ export const KeyValueList: Renderer<"KeyValueList"> = ({ props }) => (
         </dd>
       </div>
     ))}
+    {props.source !== undefined && (
+      <div className="r-kvRow">
+        <dt />
+        <dd>
+          <SourceMark toolCallId={props.source.toolCallId} />
+        </dd>
+      </div>
+    )}
   </dl>
 );
 

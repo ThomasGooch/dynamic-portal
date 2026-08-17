@@ -2,7 +2,7 @@
   "name": "@portal/hub",
   "version": "0.1.0",
   "private": true,
-  "description": "The hub — shell, nav, and the BFF proxy in front of every satellite",
+  "description": "The hub \u2014 shell, nav, and the BFF proxy in front of every satellite",
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",
@@ -10,8 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@portal/agent": "workspace:*",
     "@portal/catalog": "workspace:*",
     "@portal/identity": "workspace:*",
+    "@portal/mcp-gateway": "workspace:*",
     "@portal/protocol": "workspace:*",
     "@portal/registry": "workspace:*",
     "next": "^16.3.1",

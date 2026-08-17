@@ -4,6 +4,8 @@ import { resolveNav } from "@portal/registry";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal, isDevSession } from "@/lib/session";
 import { Toaster } from "@/components/Toaster";
+import { AgentPanel } from "@/components/AgentPanel";
+import { isAgentEnabled } from "@/lib/agent";
 import "./globals.css";
 import "./shell.css";
 import "@/renderer/renderer.css";
@@ -74,7 +76,20 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <main className="main">
             {/* Toasts live above the route so a satellite's `navigate` does not
                 unmount the message it just raised. */}
-            <Toaster>{children}</Toaster>
+            <Toaster>
+              {children}
+
+              {/* Additive, never load-bearing: when the agent is off for this
+                  tenant nothing below is mounted and the portal above is
+                  unchanged. PLAN.md makes that a property, not a preference.
+
+                  Inside the provider, not beside it: the panel renders an
+                  agent-composed screen with the same `ScreenRenderer` the
+                  routes use, and that component calls `useToaster()`, which
+                  throws outside a `<Toaster>`. The panel is `position: fixed`,
+                  so its place in the tree costs nothing visually. */}
+              {isAgentEnabled(principal) && <AgentPanel />}
+            </Toaster>
           </main>
         </div>
       </body>
