@@ -71,6 +71,15 @@ function lowerValue(value: unknown, elementId: string, issues: LoweringIssue[]):
 
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(record)) {
+    if (FORBIDDEN_KEYS.has(key)) {
+      // `out["__proto__"] = child` runs the accessor rather than writing a
+      // property: the key vanishes and `child`'s own keys become inherited
+      // enumerables that Zod's record parse then hoists into props. That is a
+      // route to the properties `schema.ts` deliberately deleted — `Table.rows`,
+      // `Chart.data`, an action `payload` — so it is refused, not repaired.
+      issues.push({ elementId, message: `property "${key}" is not permitted` });
+      continue;
+    }
     out[key] = PAIR_LIST_PROPERTIES.has(key)
       ? toRecord(child, elementId, key, issues)
       : lowerValue(child, elementId, issues);
@@ -116,7 +125,11 @@ function toRecord(
   return out;
 }
 
-function idAt(elements: readonly unknown[], path: readonly (string | number)[]): string {
+/**
+ * The element id behind a Zod issue path, for both this file and `grounding.ts`
+ * — a position in an array the reader cannot see names nothing.
+ */
+export function idAt(elements: readonly unknown[], path: readonly (string | number)[]): string {
   if (path[0] !== "elements" || typeof path[1] !== "number") return "(spec)";
   const element = asRecord(elements[path[1]]);
   const id = element?.["id"];

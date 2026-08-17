@@ -1,5 +1,6 @@
 import { FlatSpecSchema, type FlatSpec } from "@portal/catalog";
-import type { ExtractedData, ExtractedTable } from "@portal/mcp-gateway";
+import type { ExtractedChart, ExtractedData, ExtractedTable } from "@portal/mcp-gateway";
+import { idAt } from "./lower";
 import { MUST_CITE_A_SOURCE } from "./schema";
 
 /**
@@ -65,8 +66,11 @@ export function groundSpec(spec: FlatSpec, calls: readonly ToolCallRecord[]): Gr
         return withRows(element, props, call.data, issues);
       case "Chart":
         return withData(element, props, call.data, issues);
+      case "KeyValueList":
+        checkValues(element.id, itemValues(props), call.data, issues);
+        return element;
       default:
-        checkValue(element.id, props, call.data, issues);
+        checkValues(element.id, stringValue(props["value"]), call.data, issues);
         return element;
     }
   });
@@ -80,7 +84,7 @@ export function groundSpec(spec: FlatSpec, calls: readonly ToolCallRecord[]): Gr
     return {
       ok: false,
       issues: parsed.error.issues.map((issue) => ({
-        elementId: String(issue.path[1] ?? "(spec)"),
+        elementId: idAt(elements, issue.path),
         message: issue.message,
       })),
     };
@@ -98,20 +102,32 @@ function withRows(
   issues: GroundingIssue[],
 ): Element {
   const keys = columnKeys(props);
+  if (keys.length === 0) {
+    issues.push({ elementId: element.id, message: "Table declares no columns" });
+    return element;
+  }
+
   const table = pickTable(element.id, keys, data, issues);
   if (table === undefined) return element;
 
-  // Only the columns the model asked for. The extracted table may be wider than
-  // the screen it composed.
-  const rows = table.rows.map((row) => {
-    const out: Record<string, unknown> = {};
-    for (const key of keys) {
-      if (Object.hasOwn(row, key)) out[key] = row[key];
-    }
-    return out;
-  });
-
-  return { ...element, props: { ...props, rows } };
+  // Only the columns the model asked for, plus the keys a column *refers* to:
+  // a badge column's `toneKey` and the `rowAction` param that makes the first
+  // cell a link. Projecting on `key` alone renders every badge neutral and
+  // silently drops the row link, because the cell the renderer reaches for is
+  // no longer in the row.
+  return {
+    ...element,
+    props: {
+      ...props,
+      rows: project(table.rows, [...new Set([...keys, ...referencedKeys(props)])]),
+      // `total` is a count, which is a fact and not layout. The model may have
+      // written one, and extraction caps rows at MAX_EXTRACTED_ROWS — so
+      // trusting either would present the 200 rows of a 3,000-row result as the
+      // whole answer, which is the failure `extract.ts` reports `rowCount` to
+      // prevent.
+      total: table.rowCount,
+    },
+  };
 }
 
 function withData(
@@ -135,49 +151,85 @@ function withData(
 
   // A chart the cited call already drew, matched on the axis it is drawn
   // against.
-  const chart = data.charts.find(
+  const charts = data.charts.filter(
     (candidate) =>
       candidate.xKey === xKey &&
       seriesKeys.every((key) => candidate.series.some((entry) => entry.key === key)),
   );
-  if (chart !== undefined) {
-    return { ...element, props: { ...props, data: project(chart.data, needed) } };
+  if (charts.length === 1) {
+    return {
+      ...element,
+      props: { ...props, data: project((charts[0] as ExtractedChart).data, needed) },
+    };
+  }
+  // Same rule as a table: two charts on the same axis are two different
+  // questions — one per region, say — and taking the first is a screen of
+  // plausible points from the wrong one.
+  if (charts.length > 1) {
+    issues.push({
+      elementId: element.id,
+      message: `Chart could be drawn from more than one result in this tool call`,
+    });
+    return element;
   }
 
   // Otherwise a table that happens to carry every key the chart needs — which
   // is how a list becomes a chart without the model inventing the points.
-  const table = data.tables.filter((candidate) =>
+  const tables = data.tables.filter((candidate) =>
     needed.every((key) => candidate.columns.some((column) => column.key === key)),
   );
-  if (table.length === 1) {
-    return { ...element, props: { ...props, data: project((table[0] as ExtractedTable).rows, needed) } };
+  if (tables.length === 1) {
+    return {
+      ...element,
+      props: { ...props, data: project((tables[0] as ExtractedTable).rows, needed) },
+    };
   }
 
   issues.push({
     elementId: element.id,
     message:
-      table.length > 1
+      tables.length > 1
         ? `Chart could be drawn from more than one result in this tool call`
         : `Chart needs ${needed.join(", ")}, which this tool call does not supply`,
   });
   return element;
 }
 
-function checkValue(
+/**
+ * Every value a node displays has to appear in the call it cites.
+ *
+ * This is the half of grounding that substitution cannot do. A `StatTile` value
+ * and a `KeyValueList` item are strings the model composes rather than data
+ * dropped into a hole, so citing a real call proves it looked something up and
+ * nothing more.
+ */
+function checkValues(
   elementId: string,
-  props: Record<string, unknown>,
+  values: readonly string[],
   data: ExtractedData,
   issues: GroundingIssue[],
 ): void {
-  const value = props["value"];
-  if (typeof value !== "string") return;
+  if (values.length === 0) return;
+  const available = reported(data);
 
-  if (!reported(data).has(value)) {
-    issues.push({
-      elementId,
-      message: `StatTile shows "${value}", which does not appear in the tool call it cites`,
-    });
+  for (const value of values) {
+    if (!available.has(value)) {
+      issues.push({
+        elementId,
+        message: `shows "${value}", which does not appear in the tool call it cites`,
+      });
+    }
   }
+}
+
+const stringValue = (value: unknown): string[] => (typeof value === "string" ? [value] : []);
+
+function itemValues(props: Record<string, unknown>): string[] {
+  return Array.isArray(props["items"])
+    ? props["items"]
+        .map((item) => (item as { value?: unknown }).value)
+        .filter((value): value is string => typeof value === "string")
+    : [];
 }
 
 /** Every value the cited call actually reported, as the strings a tile shows. */
@@ -210,6 +262,24 @@ function columnKeys(props: Record<string, unknown>): string[] {
         .map((column) => (column as { key?: unknown }).key)
         .filter((key): key is string => typeof key === "string")
     : [];
+}
+
+/**
+ * Keys a column points at rather than displays: the tone column behind a badge
+ * and the identifier a row link is built from. Not required of the cited result
+ * — a table that lacks them still renders — but projected when it has them.
+ */
+function referencedKeys(props: Record<string, unknown>): string[] {
+  const keys = Array.isArray(props["columns"])
+    ? props["columns"]
+        .map((column) => (column as { toneKey?: unknown }).toneKey)
+        .filter((key): key is string => typeof key === "string")
+    : [];
+
+  const paramKey = (props["rowAction"] as { paramKey?: unknown } | undefined)?.paramKey;
+  if (typeof paramKey === "string") keys.push(paramKey);
+
+  return keys;
 }
 
 function pickTable(

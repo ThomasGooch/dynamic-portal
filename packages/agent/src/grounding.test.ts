@@ -138,6 +138,72 @@ describe("tables", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("takes the row count from the result, not from the model", () => {
+    // Extraction caps rows at MAX_EXTRACTED_ROWS and reports what the screen
+    // actually held. Keeping the model's `total` would present the rows that
+    // survived the cap as the whole answer — the failure `rowCount` exists to
+    // prevent.
+    const result = ground(
+      [
+        {
+          id: "a",
+          type: "Table",
+          props: {
+            columns: [{ key: "id", label: "Order" }],
+            total: 1,
+            source: { toolCallId: "call-1" },
+          },
+        },
+      ],
+      [call("call-1", { tables: [{ ...ordersTable, rowCount: 3000, truncated: true }] })],
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.spec.elements[0]?.props?.["total"]).toBe(3000);
+  });
+
+  it("carries the keys a column points at, not only the ones it shows", () => {
+    // A badge column reads its tone from another column, and a row link is
+    // built from the rowAction's param. Projecting on `key` alone renders every
+    // badge neutral and drops the link, silently.
+    const result = ground(
+      [
+        {
+          id: "a",
+          type: "Table",
+          props: {
+            columns: [{ key: "status", label: "Status", as: "badge", toneKey: "statusTone" }],
+            rowAction: { screenId: "orders.detail", paramKey: "id" },
+            source: { toolCallId: "call-1" },
+          },
+        },
+      ],
+      [
+        call("call-1", {
+          tables: [
+            {
+              columns: [
+                { key: "id", label: "Order" },
+                { key: "status", label: "Status" },
+                { key: "statusTone", label: "Tone" },
+              ],
+              rows: [{ id: "ord-1", status: "pending", statusTone: "warning" }],
+              rowCount: 1,
+              truncated: false,
+            },
+          ],
+        }),
+      ],
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.spec.elements[0]?.props?.["rows"]).toEqual([
+      { status: "pending", statusTone: "warning", id: "ord-1" },
+    ]);
+  });
+
   it("keeps only the columns the model asked for", () => {
     // The extracted table may be wider than the screen the model composed.
     const result = ground(
@@ -307,6 +373,34 @@ describe("charts", () => {
     ]);
   });
 
+  it("refuses when the cited call drew two charts that both fit", () => {
+    // The same rule the table path applies. Two charts on one axis are two
+    // different questions — one per region, say — and taking the first is a
+    // screen of plausible points from the wrong one.
+    const series = [{ key: "count", label: "Orders" }];
+    const result = ground(
+      [
+        {
+          id: "a",
+          type: "Chart",
+          props: { kind: "line", xKey: "day", series, source: { toolCallId: "call-1" } },
+        },
+      ],
+      [
+        call("call-1", {
+          charts: [
+            { kind: "line", xKey: "day", series, data: [{ day: "Mon", count: 4 }], truncated: false },
+            { kind: "line", xKey: "day", series, data: [{ day: "Mon", count: 999 }], truncated: false },
+          ],
+        }),
+      ],
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.message).toMatch(/more than one/i);
+  });
+
   it("refuses a chart whose keys nothing in the cited call supplies", () => {
     const result = ground(
       [
@@ -324,6 +418,90 @@ describe("charts", () => {
       [call("call-1", { tables: [ordersTable] })],
     );
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("key-value lists, which carry facts and could not cite one", () => {
+  it("accepts items whose values the cited call reported", () => {
+    const result = ground(
+      [
+        {
+          id: "a",
+          type: "KeyValueList",
+          props: {
+            items: [
+              { label: "Customer", value: "Wile E. Coyote" },
+              { label: "Status", value: "pending" },
+            ],
+            source: { toolCallId: "call-1" },
+          },
+        },
+      ],
+      [
+        call("call-1", {
+          facts: [{ label: "Customer", value: "Wile E. Coyote" }],
+          tables: [ordersTable],
+        }),
+      ],
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses an item the cited call never reported", () => {
+    // The hole this closed: a model could state any figure in a key-value list
+    // and cite nothing, while the tile beside it was held to a citation.
+    const result = ground(
+      [
+        {
+          id: "a",
+          type: "KeyValueList",
+          props: {
+            items: [{ label: "Balance", value: "$1,000,000" }],
+            source: { toolCallId: "call-1" },
+          },
+        },
+      ],
+      [call("call-1", { facts: [{ label: "Balance", value: "$42.00" }] })],
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.message).toMatch(/1,000,000/);
+  });
+
+  it("refuses one that cites nothing at all", () => {
+    const result = ground(
+      [
+        {
+          id: "a",
+          type: "KeyValueList",
+          props: { items: [{ label: "Balance", value: "$42.00" }] },
+        },
+      ],
+      [],
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("names every bad item, not only the first", () => {
+    const result = ground(
+      [
+        {
+          id: "a",
+          type: "KeyValueList",
+          props: {
+            items: [
+              { label: "One", value: "invented-one" },
+              { label: "Two", value: "invented-two" },
+            ],
+            source: { toolCallId: "call-1" },
+          },
+        },
+      ],
+      [call("call-1", { facts: [{ label: "Real", value: "real" }] })],
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toHaveLength(2);
   });
 });
 

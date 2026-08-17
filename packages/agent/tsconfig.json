@@ -3,12 +3,19 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*"],
+  "include": [
+    "src/**/*"
+  ],
   "references": [
-    { "path": "../protocol" },
-    { "path": "../catalog" },
-    { "path": "../mcp-gateway" }
+    {
+      "path": "../catalog"
+    },
+    {
+      "path": "../mcp-gateway"
+    }
   ]
 }

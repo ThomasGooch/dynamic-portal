@@ -15,7 +15,6 @@
   "dependencies": {
     "@portal/catalog": "workspace:*",
     "@portal/mcp-gateway": "workspace:*",
-    "@portal/protocol": "workspace:*",
     "zod": "^3.24.0",
     "zod-to-json-schema": "^3.25.2"
   }

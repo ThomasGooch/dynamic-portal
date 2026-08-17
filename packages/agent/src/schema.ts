@@ -40,6 +40,11 @@ export const AUTHORED_BY_TOOLS: Readonly<Partial<Record<ComponentName, readonly 
 /** Nodes that display a fact, and must therefore say where it came from. */
 export const MUST_CITE_A_SOURCE: readonly ComponentName[] = Object.freeze([
   "StatTile",
+  // Label/value pairs are data by definition. Leaving this off meant a model
+  // could state any figure in a key-value list and cite nothing, while the
+  // tile beside it was held to a citation — the grounding rule with a hole in
+  // it exactly where the prose said there was none.
+  "KeyValueList",
   "Table",
   "Chart",
 ]);

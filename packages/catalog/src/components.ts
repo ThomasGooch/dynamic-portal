@@ -163,6 +163,13 @@ export const COMPONENTS = {
           })
           .strict(),
       ),
+      /**
+       * A key-value list is label/value pairs, which is data by definition —
+       * so it can say where the data came from, and on the agent path it must.
+       * Without this a model could state any figure here and cite nothing,
+       * while the tile beside it was held to a citation.
+       */
+      source: Source.optional(),
     })
     .strict(),
   Table: z

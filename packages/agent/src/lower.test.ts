@@ -81,6 +81,22 @@ describe("lowerSpec", () => {
     expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
   });
 
+  it("refuses a prototype key on props, not only inside params", () => {
+    // `out["__proto__"] = x` runs the accessor rather than writing a property,
+    // so the key disappears and `x`'s own keys become inherited enumerables —
+    // which Zod's record parse hoists straight into props. That is a route to
+    // exactly the properties `schema.ts` deleted so a model could not write
+    // them.
+    const raw = JSON.parse(
+      '{"root":"a","elements":[{"id":"a","type":"Table","props":{"columns":[{"key":"id","label":"Id"}],"__proto__":{"rows":[{"id":"FABRICATED"}]}}}]}',
+    ) as unknown;
+
+    const result = lowerSpec(raw);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.message).toMatch(/__proto__/);
+  });
+
   it("refuses a repeated key rather than picking a winner", () => {
     // Two declarations of one param and no way to tell which the model meant.
     // Silently keeping either produces a link to a record nobody asked for.

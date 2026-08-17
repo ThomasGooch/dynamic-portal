@@ -121,9 +121,6 @@ importers:
       '@portal/mcp-gateway':
         specifier: workspace:*
         version: link:../mcp-gateway
-      '@portal/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       zod:
         specifier: ^3.24.0
         version: 3.25.76
