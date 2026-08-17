@@ -182,7 +182,13 @@ export async function runAgent(input: RunInput, deps: RunDeps): Promise<AgentOut
 
     for (const [index, use] of pending.entries()) {
       if (use.name === RENDER_SCREEN_TOOL) {
-        const drawn = draw(use.input, messages);
+        // The results collected so far *this* turn count too. The model writes
+        // its own `tool_use` ids, so it can fetch and draw in one assistant
+        // message, citing an id it has already emitted. Grounding against
+        // `messages` alone cannot see those reads — they are still in `results`
+        // — and refuses a perfectly grounded screen with "no tool call has
+        // happened yet", which is both false and a wasted turn.
+        const drawn = draw(use.input, [...messages, { role: "user", content: results }]);
         if (drawn.ok) {
           // The turn ends here. Any other call the assistant made alongside the
           // screen is abandoned, which costs nothing: the screen is the answer.

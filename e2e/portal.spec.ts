@@ -25,6 +25,32 @@ const run = promisify(execFile);
  */
 const healthUrl = (base: string): string => `${base.replace(/\/+$/, "")}/healthz`;
 
+/**
+ * Whether the running stack has an assistant — asked without spending a model
+ * turn, or a minute, on the question.
+ *
+ * `/api/agent` decides `isAgentEnabled` before it reads the request body, so a
+ * POST with no `messages` is answered 404 when the assistant is off and 400
+ * when it is on, and reaches no model either way. Probing with a real question
+ * instead would bill a turn purely to decide whether to skip, and would run
+ * inside a `beforeAll` — whose timeout is the config's 30s test timeout, not
+ * whatever the request was given.
+ *
+ * Any other status is a stack that is broken rather than configured, and is
+ * raised rather than quietly read as one answer or the other: a 502 from an
+ * expired key would otherwise look exactly like "the assistant is on".
+ */
+async function assistantConfigured(
+  request: import("@playwright/test").APIRequestContext,
+): Promise<boolean> {
+  const response = await request.post("/api/agent", { data: {} });
+  const status = response.status();
+  if (status !== 400 && status !== 404) {
+    throw new Error(`/api/agent answered ${status}; expected 400 (assistant on) or 404 (off)`);
+  }
+  return status === 400;
+}
+
 /** Waits for a container to report healthy again after being interfered with. */
 async function waitForHealthy(url: string, attempts = 60): Promise<void> {
   for (let i = 0; i < attempts; i += 1) {
@@ -280,11 +306,7 @@ test.describe("the agent, switched off", () => {
   let disabled = false;
 
   test.beforeAll(async ({ request }) => {
-    const response = await request.post("/api/agent", {
-      data: { messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }] },
-      timeout: 180_000,
-    });
-    disabled = response.status() === 404;
+    disabled = !(await assistantConfigured(request));
   });
 
   test("mounts nothing when no assistant is configured", async ({ page }) => {
@@ -632,14 +654,17 @@ test.describe("the assistant, switched on", () => {
   //
   // Deliberately few and shape-based. Asserting a model's wording is asserting
   // something nobody can fix.
+  //
+  // A live turn is several model round trips and a satellite call each, which
+  // does not fit the 30s every other test in this file is held to. Raised for
+  // the group rather than per request: a request timeout above the test's own
+  // is never the one that fires.
+  test.describe.configure({ timeout: 240_000 });
+
   let enabled = false;
 
   test.beforeAll(async ({ request }) => {
-    const response = await request.post("/api/agent", {
-      data: { messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }] },
-      timeout: 180_000,
-    });
-    enabled = response.status() !== 404;
+    enabled = await assistantConfigured(request);
   });
 
   test("answers a question from a satellite's real data", async ({ request }) => {
@@ -654,7 +679,6 @@ test.describe("the assistant, switched on", () => {
           },
         ],
       },
-      timeout: 240_000,
     });
 
     const body = await response.json();
@@ -687,7 +711,6 @@ test.describe("the assistant, switched on", () => {
           { role: "user", content: [{ type: "text", text: "Show me the orders as a screen with a table." }] },
         ],
       },
-      timeout: 240_000,
     });
 
     const body = await response.json();
@@ -696,7 +719,12 @@ test.describe("the assistant, switched on", () => {
     // Every citation resolves to a call that happened, and the rows were put
     // there by the hub rather than written by the model.
     expect(body.citations.length).toBeGreaterThan(0);
-    expect(JSON.stringify(body.ui)).toContain("ord-1001");
+    // `rows` is a property the model has no way to write — the schema omits it
+    // — so any that arrived were substituted by grounding from the cited call.
+    // Asserting a particular cell would be asserting which columns the model
+    // chose: `project` keeps only the keys it asked for, so a screen of
+    // customer, status and total is entirely correct and contains no order id.
+    expect(JSON.stringify(body.ui)).toMatch(/"rows":\s*\[\s*\{/);
   });
 
   test("pauses at a write instead of making it", async ({ request }) => {
@@ -706,7 +734,6 @@ test.describe("the assistant, switched on", () => {
       data: {
         messages: [{ role: "user", content: [{ type: "text", text: "Approve order ord-1003." }] }],
       },
-      timeout: 240_000,
     });
 
     const body = await response.json();

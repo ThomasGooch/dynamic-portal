@@ -198,6 +198,23 @@ describe("drawing a screen", () => {
     expect(client.calls).toBe(3);
   });
 
+  it("grounds against a read made in the same turn as the drawing", async () => {
+    // The model writes its own tool_use ids, so it can fetch and draw in one
+    // message and cite an id it has just emitted. Grounding that only looked at
+    // the history refused this — the read's result had not been appended yet —
+    // and told the model nothing had been fetched, which was untrue and cost a
+    // turn.
+    const client = scripted([
+      toolUse("call-1", "orders__orders_list"),
+      toolUse("draw-1", RENDER_SCREEN_TOOL, screenSpec("call-1")),
+    ]);
+
+    const result = await runAgent({ messages: ask("show me"), surface }, { client, invoke: invoker() });
+
+    expect(result.kind).toBe("screen");
+    expect(client.calls).toBe(1);
+  });
+
   it("names the ids that would have worked, not merely the one that did not", async () => {
     // A retry after "that id does not exist" is another guess unless the
     // message says what does exist.
