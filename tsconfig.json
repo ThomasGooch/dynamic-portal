@@ -30,6 +30,9 @@
     },
     {
       "path": "./packages/conformance"
+    },
+    {
+      "path": "./packages/sdk-node"
     }
   ]
 }

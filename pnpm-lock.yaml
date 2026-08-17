@@ -111,6 +111,9 @@ importers:
       '@portal/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@portal/sdk-node':
+        specifier: workspace:*
+        version: link:../../packages/sdk-node
       express:
         specifier: ^5.1.0
         version: 5.2.1(supports-color@7.2.0)
@@ -244,6 +247,18 @@ importers:
       yaml:
         specifier: ^2.6.0
         version: 2.9.0
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+
+  packages/sdk-node:
+    dependencies:
+      '@portal/catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@portal/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       zod:
         specifier: ^3.24.0
         version: 3.25.76
