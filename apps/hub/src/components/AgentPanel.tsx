@@ -22,31 +22,31 @@ interface Turn {
   readonly result: AgentApiResult | undefined;
 }
 
-/**
- * Declining a confirmation by asking something else.
- *
- * A paused write leaves its `tool_use` in the history with nothing answering
- * it, which is exactly what lets the user approve it later. If they type a new
- * question instead, that unanswered call has to go: a conversation carrying one
- * is rejected before the model ever sees the new question, and the panel would
- * be wedged for the rest of the session with no way out but a reload.
- */
-function withoutPendingCalls(messages: readonly Message[]): Message[] {
+/** True when the last turn is a write still waiting to be approved. */
+function hasPendingCall(messages: readonly Message[]): boolean {
   const last = messages[messages.length - 1];
-  if (last?.role !== "assistant") return [...messages];
-  return last.content.some((block) => block.type === "tool_use")
-    ? messages.slice(0, -1)
-    : [...messages];
+  return last?.role === "assistant" && last.content.some((block) => block.type === "tool_use");
 }
 
 export function AgentPanel() {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
+  // Held beside the conversation it belongs to: the hub refuses a history whose
+  // signature does not match, so losing this ends the thread rather than
+  // silently starting an unverified one.
+  const [signature, setSignature] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
 
-  async function send(next: Message[], approvals: string[], question: string): Promise<void> {
+  async function send(
+    body: {
+      readonly ask?: string;
+      readonly approvals?: readonly string[];
+      readonly declinePending?: boolean;
+    },
+    question: string,
+  ): Promise<void> {
     setBusy(true);
     const id = turns.length;
     setTurns((previous) => [...previous, { id, question, result: undefined }]);
@@ -55,12 +55,15 @@ export function AgentPanel() {
       const response = await fetch(AGENT_ENDPOINT, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: next, approvals }),
+        body: JSON.stringify({ ...body, history: messages, signature }),
         credentials: "same-origin",
       });
       const result = (await response.json()) as AgentApiResult;
 
-      if (result.ok) setMessages([...result.messages]);
+      if (result.ok) {
+        setMessages([...result.messages]);
+        setSignature(result.signature);
+      }
       setTurns((previous) => previous.map((turn) => (turn.id === id ? { ...turn, result } : turn)));
     } catch {
       setTurns((previous) =>
@@ -80,9 +83,13 @@ export function AgentPanel() {
     const asked = question.trim();
     if (asked === "" || busy) return;
     setQuestion("");
-    const history = withoutPendingCalls(messages);
-    setMessages(history);
-    void send([...history, { role: "user", content: [{ type: "text", text: asked }] }], [], asked);
+    // The pending call is dropped by the *hub*, not here: the signature covers
+    // the conversation the hub issued, and a history this side has already
+    // shortened no longer verifies against it.
+    // The pending call, if there is one, is dropped by the *hub*: the signature
+    // covers the conversation the hub issued, so a history shortened here would
+    // no longer verify against it.
+    void send({ ask: asked, declinePending: hasPendingCall(messages) }, asked);
   }
 
   if (!open) {
@@ -139,7 +146,7 @@ export function AgentPanel() {
   );
 
   function approve(pending: PendingWrite): void {
-    void send(messages, [pending.toolUseId], `Approved: ${pending.title}`);
+    void send({ approvals: [pending.toolUseId] }, `Approved: ${pending.title}`);
   }
 }
 

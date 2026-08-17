@@ -21,7 +21,15 @@ export {
 } from "./authorize";
 
 export {
+  signValue,
+  tenantKey,
+  verifyValue,
+  type KeyPurpose,
+} from "./integrity";
+
+export {
   AuditEventSchema,
+  canonicalValue,
   actionInvoke,
   agentCompose,
   auditDigest,

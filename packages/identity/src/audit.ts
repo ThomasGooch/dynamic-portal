@@ -135,6 +135,10 @@ export type AuditOutcome = z.infer<typeof OutcomeSchema>;
  */
 export function tenantAuditKey(rootKey: string, tenantId: string): Buffer {
   if (rootKey === "") throw new Error("an audit key is required; there is no unkeyed digest");
+  // Same derivation `tenantKey(root, "audit.v1", tenantId)` performs; kept here
+  // rather than importing it because `integrity.ts` imports this module for the
+  // canonicaliser, and the cycle is not worth the deduplication. The label is
+  // identical, so existing digests still verify.
   return createHmac("sha256", rootKey).update(`portal.audit.v1:${tenantId}`, "utf8").digest();
 }
 
@@ -147,7 +151,7 @@ export function tenantAuditKey(rootKey: string, tenantId: string): Buffer {
  * preserved, because in an argument list order is meaning.
  */
 export function auditDigest(value: unknown, key: Buffer): string {
-  return createHmac("sha256", key).update(canonicalize(value), "utf8").digest("hex");
+  return createHmac("sha256", key).update(canonicalValue(value), "utf8").digest("hex");
 }
 
 /** A step in the walk: a value still to expand, or literal text to emit. */
@@ -163,7 +167,7 @@ type CanonicalTask =
  * on a deep object — a `RangeError` thrown out of the audit path, on a request
  * that had already been authorized and served.
  */
-function canonicalize(root: unknown): string {
+export function canonicalValue(root: unknown): string {
   const out: string[] = [];
   const stack: CanonicalTask[] = [{ expand: root }];
   // Containers currently open on the path from the root, so a cycle is a

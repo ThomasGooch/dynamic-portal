@@ -1,8 +1,10 @@
 import { flatToKeyed, keyedToNested } from "@portal/catalog";
 import { runAgent, type Message } from "@portal/agent";
+import { signValue, tenantKey, verifyValue } from "@portal/identity";
 import { visibleSatellites } from "@portal/registry";
 import type { AgentApiResult } from "@/lib/agentApi";
 import { agentInvoker, buildAgentSurface, isAgentEnabled, modelClient } from "@/lib/agent";
+import { auditConfig } from "@/lib/audit";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 
@@ -18,6 +20,15 @@ import { currentPrincipal } from "@/lib/session";
  * agent path and the deterministic path meet here and are indistinguishable
  * downstream, which is what makes the renderer worth having had first.
  */
+
+/** Drops a trailing assistant turn that still has tool calls nobody answered. */
+function dropTrailingUnanswered(messages: readonly Message[]): Message[] {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "assistant") return [...messages];
+  return last.content.some((block) => block.type === "tool_use")
+    ? messages.slice(0, -1)
+    : [...messages];
+}
 
 function json(result: AgentApiResult, status: number): Response {
   return new Response(JSON.stringify(result), {
@@ -40,14 +51,50 @@ export async function POST(request: Request): Promise<Response> {
     return json({ ok: false, message: "The assistant is not enabled for this account." }, 404);
   }
 
-  let body: { messages?: unknown; approvals?: unknown };
+  let body: {
+    history?: unknown;
+    signature?: unknown;
+    ask?: unknown;
+    approvals?: unknown;
+    declinePending?: unknown;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return json({ ok: false, message: "The portal could not read that request." }, 400);
   }
 
-  if (!Array.isArray(body.messages) || body.messages.length === 0) {
+  /**
+   * The conversation is the hub's state, and between turns it lives in the
+   * browser. Everything grounding believes about what a tool returned is
+   * rebuilt from these blocks, so an unsigned history let a client fabricate a
+   * `tool_result` and receive a screen of invented figures wearing a provenance
+   * citation.
+   *
+   * `history` and `ask` are separate fields rather than one array on purpose.
+   * The hub signs what it issued; the user then adds to it. Folding the new
+   * message into the same array would mean verifying a signature over something
+   * the hub never signed, which cannot work — a mistake worth naming because
+   * the first version of this did exactly that and would have rejected every
+   * second turn.
+   */
+  const conversationKey = tenantKey(auditConfig().rootKey, "conversation.v1", principal.tenantId);
+  const history = Array.isArray(body.history) ? (body.history as Message[]) : [];
+  const ask = typeof body.ask === "string" ? body.ask.trim() : "";
+
+  if (history.length > 0) {
+    const signature = typeof body.signature === "string" ? body.signature : "";
+    if (!verifyValue(history, signature, conversationKey)) {
+      return json(
+        {
+          ok: false,
+          message:
+            "This conversation could not be verified and has been discarded. Start a new one.",
+        },
+        400,
+      );
+    }
+  } else if (ask === "") {
     return json({ ok: false, message: "The portal could not read that request." }, 400);
   }
 
@@ -55,13 +102,33 @@ export async function POST(request: Request): Promise<Response> {
     ? body.approvals.filter((id): id is string => typeof id === "string")
     : [];
 
+  /**
+   * Declining a pending write by asking something else.
+   *
+   * A paused write leaves its `tool_use` unanswered, which is what lets the user
+   * approve it later. Asking something new instead has to remove it, or the API
+   * rejects the conversation before the model sees the question. The *hub* does
+   * the removing: the signature covers what the hub issued, so a history the
+   * client had already shortened would no longer verify.
+   */
+  const base = body.declinePending === true ? dropTrailingUnanswered(history) : history;
+  const messages: Message[] =
+    ask === "" ? base : [...base, { role: "user", content: [{ type: "text", text: ask }] }];
+
+  if (messages.length === 0) {
+    return json({ ok: false, message: "The portal could not read that request." }, 400);
+  }
+
+  // Declared outside the try so the catch can flush the audit writes a failed
+  // turn had already started.
   let invoker: ReturnType<typeof agentInvoker> | undefined;
+
   try {
     const surface = await buildAgentSurface(principal);
     invoker = agentInvoker(principal, surface);
 
     const outcome = await runAgent(
-      { messages: body.messages as Message[], surface, approvals },
+      { messages, surface, approvals },
       { client: modelClient(), invoke: invoker.invoke },
     );
 
@@ -78,6 +145,7 @@ export async function POST(request: Request): Promise<Response> {
           citations: outcome.citations,
           allowedSatelliteIds: allowed,
           messages: outcome.messages,
+          signature: signValue(outcome.messages, conversationKey),
         },
         200,
       );
@@ -85,13 +153,28 @@ export async function POST(request: Request): Promise<Response> {
 
     if (outcome.kind === "confirm") {
       return json(
-        { ok: true, kind: "confirm", pending: outcome.pending, messages: outcome.messages },
+        {
+          ok: true,
+          kind: "confirm",
+          pending: outcome.pending,
+          messages: outcome.messages,
+          signature: signValue(outcome.messages, conversationKey),
+        },
         200,
       );
     }
 
     if (outcome.kind === "answer") {
-      return json({ ok: true, kind: "answer", text: outcome.text, messages: outcome.messages }, 200);
+      return json(
+        {
+          ok: true,
+          kind: "answer",
+          text: outcome.text,
+          messages: outcome.messages,
+          signature: signValue(outcome.messages, conversationKey),
+        },
+        200,
+      );
     }
 
     return json({ ok: false, message: outcome.reason }, 200);
