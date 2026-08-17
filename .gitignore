@@ -20,12 +20,15 @@
 *.pfx
 .npmrc.local
 
-# Audit logs carry principals, tenants and parameter digests. Nothing persists
-# them yet — the audit schema exists, the sink does not — so this is defensive,
-# ahead of the writer: the first local run that lands one in the working tree
-# must not be the run that commits tenant data.
-*.audit.jsonl
-audit.jsonl
+# Audit records carry principals, tenants and parameter digests.
+# `PORTAL_AUDIT_LOG` is a path an operator chooses, and pointing it at the
+# working tree during a local run must not put tenant data in a commit.
+#
+# One glob rather than the two it replaced, because those matched
+# `portal.audit.jsonl` and `audit.jsonl` but not `portal-audit.jsonl` — which is
+# the name `docker-compose.yml` itself uses. A rule whose coverage depends on
+# which separator the operator typed is not a rule.
+*audit.jsonl
 
 # ---- dependencies ----------------------------------------------------------
 node_modules/
