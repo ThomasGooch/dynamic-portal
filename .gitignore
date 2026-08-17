@@ -20,10 +20,9 @@
 *.pfx
 .npmrc.local
 
-# Audit logs carry principals, tenants and parameter digests. Nothing persists
-# them yet — the audit schema exists, the sink does not — so this is defensive,
-# ahead of the writer: the first local run that lands one in the working tree
-# must not be the run that commits tenant data.
+# Audit records carry principals, tenants and parameter digests.
+# `PORTAL_AUDIT_LOG` is a path an operator chooses, and pointing it at the
+# working tree during a local run must not put tenant data in a commit.
 *.audit.jsonl
 audit.jsonl
 
