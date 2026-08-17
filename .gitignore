@@ -23,8 +23,12 @@
 # Audit records carry principals, tenants and parameter digests.
 # `PORTAL_AUDIT_LOG` is a path an operator chooses, and pointing it at the
 # working tree during a local run must not put tenant data in a commit.
-*.audit.jsonl
-audit.jsonl
+#
+# One glob rather than the two it replaced, because those matched
+# `portal.audit.jsonl` and `audit.jsonl` but not `portal-audit.jsonl` — which is
+# the name `docker-compose.yml` itself uses. A rule whose coverage depends on
+# which separator the operator typed is not a rule.
+*audit.jsonl
 
 # ---- dependencies ----------------------------------------------------------
 node_modules/
