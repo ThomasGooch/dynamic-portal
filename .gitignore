@@ -1,32 +1,110 @@
+# What must never be committed, then what is merely regenerated.
+#
+# Ordered that way on purpose: the first section is a security boundary and the
+# rest is housekeeping. A rule that moves out of the first section should be a
+# deliberate decision, not a tidy-up.
+
+# ---- secrets ---------------------------------------------------------------
+#
+# Every `.env` is ignored, and `.env.example` is un-ignored so the *names* of
+# the settings can be committed without their values. That pairing matters here:
+# the hub refuses to start without PORTAL_PRINCIPAL_SECRET and PORTAL_AUDIT_KEY,
+# so a newcomer needs to know they exist, and must not learn it from a leak.
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc.local
+
+# Audit logs carry principals, tenants and parameter digests. `PORTAL_AUDIT_LOG`
+# is a path an operator chooses, and pointing it at the working tree during a
+# local run should not put tenant data in a commit.
+*.audit.jsonl
+audit.jsonl
+
+# ---- dependencies ----------------------------------------------------------
 node_modules/
+.pnpm-store/
+.yarn/
+jspm_packages/
+
+# ---- build output ----------------------------------------------------------
 dist/
 build/
-.next/
 out/
-coverage/
+*.tgz
+
+# Next.js. `next-env.d.ts` is deliberately absent from this list: Next
+# regenerates it, and its own documentation says to commit it.
+.next/
+.vercel/
+next-env.d.ts.timestamp-*
+
+# TypeScript incremental state. Project references write one per package.
 *.tsbuildinfo
+tsconfig.tsbuildinfo
 
-.env
-.env.local
-.env.*.local
+# ---- test and tooling caches -----------------------------------------------
+coverage/
+*.lcov
+.nyc_output/
+.vitest/
+.turbo/
+.cache/
+.eslintcache
+.stylelintcache
 
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-
-# Playwright
+# Playwright. `test-results` and the reports are per-run artefacts; the browser
+# download lives outside the repository.
 test-results/
 playwright-report/
 blob-report/
+playwright/.cache/
 .playwright/
+.last-run.json
 
-.DS_Store
-*.log
-npm-debug.log*
-.vitest/
-.turbo/
-.idea/
-.vscode/
+# ---- Python (satellite-fleet) ----------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+
+# ---- logs and diagnostics --------------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.node_repl_history
+*.heapsnapshot
+report.*.json
+
+# ---- editors and OS --------------------------------------------------------
+#
+# `.vscode` is ignored except `extensions.json`, which is a shared statement
+# about what this repository needs rather than anyone's personal settings.
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
