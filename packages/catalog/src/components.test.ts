@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  COMPONENTS,
   COMPONENT_NAMES,
   CATALOG_VERSION,
   isComponentName,
@@ -146,5 +147,23 @@ describe("prop schemas", () => {
         }
       }
     });
+  });
+});
+
+describe("data a producer may legitimately not have yet", () => {
+  it("accepts a Chart with no data, as it accepts a Table with no rows", () => {
+    // Two reasons, and the second is the load-bearing one. A producer may have
+    // nothing to plot yet — and the agent path is not allowed to write this
+    // property at all, because a model that can write chart points can invent
+    // them. The hub fills it from the tool call the node cites, so the spec is
+    // briefly and correctly dataless on the way through.
+    expect(
+      COMPONENTS.Chart.safeParse({
+        kind: "line",
+        xKey: "day",
+        series: [{ key: "count", label: "Orders" }],
+      }).success,
+    ).toBe(true);
+    expect(COMPONENTS.Table.safeParse({ columns: [{ key: "a", label: "A" }] }).success).toBe(true);
   });
 });

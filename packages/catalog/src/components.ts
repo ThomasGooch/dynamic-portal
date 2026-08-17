@@ -163,6 +163,13 @@ export const COMPONENTS = {
           })
           .strict(),
       ),
+      /**
+       * A key-value list is label/value pairs, which is data by definition —
+       * so it can say where the data came from, and on the agent path it must.
+       * Without this a model could state any figure here and cite nothing,
+       * while the tile beside it was held to a citation.
+       */
+      source: Source.optional(),
     })
     .strict(),
   Table: z
@@ -184,7 +191,13 @@ export const COMPONENTS = {
       kind: z.enum(["line", "bar", "area", "donut"]),
       xKey: z.string(),
       series: z.array(z.object({ key: z.string(), label: z.string() }).strict()),
-      data: z.array(z.record(z.unknown())),
+      /**
+       * Optional, like `Table.rows` and for the same two reasons: a producer
+       * may legitimately have nothing to plot yet, and the agent path is not
+       * allowed to write this at all — the hub fills it in from the tool call
+       * the node cites, so the spec is briefly and correctly dataless.
+       */
+      data: z.array(z.record(z.unknown())).optional(),
       source: Source.optional(),
     })
     .strict(),

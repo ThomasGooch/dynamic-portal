@@ -1,0 +1,21 @@
+{
+  "name": "@portal/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "What a model may say about a screen, and how the hub checks it",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --build --force"
+  },
+  "dependencies": {
+    "@portal/catalog": "workspace:*",
+    "@portal/mcp-gateway": "workspace:*",
+    "zod": "^3.24.0",
+    "zod-to-json-schema": "^3.25.2"
+  }
+}

@@ -60,7 +60,7 @@ const TOOLTIP = {
 type ChartProps = PropsOf<"Chart">;
 
 export const Chart: Renderer<"Chart"> = ({ props }) => {
-  const data = props.data.map((row) => normalise(row, props));
+  const data = (props.data ?? []).map((row) => normalise(row, props));
 
   return (
     <figure className="r-chart">
