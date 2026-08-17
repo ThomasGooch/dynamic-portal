@@ -118,7 +118,9 @@ What crosses the boundary is records and a summary, never a UI tree, and never t
 
 **Writes fail closed.** If the record cannot be written, the request fails — a system that proceeds when it cannot record what it did has a log that is evidence of nothing.
 
-Every path is covered: screen reads, actions, and every tool call an agent or MCP host makes, including the refusals. Until this landed, each of those built a valid event and dropped it — a more comfortable kind of nothing than having no schema at all, and exactly as useless.
+Every path is covered: screen reads, actions, every tool call an agent or MCP host makes, and the brokered public API — which reads the same regulated data for principals outside the organization and was, until review caught it, the one path with no trail at all.
+
+**Refusals are recorded, but only once the principal is known.** "This principal was refused this screen" is evidence; "someone unauthenticated knocked" is a job for the access log. The distinction is not fastidiousness — audit writes fail closed, so recording a request from someone we cannot identify would hand an unauthenticated caller a way to fill the audit disk and take the hub down with it.
 
 ### The agent's regulated-data path
 

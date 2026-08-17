@@ -205,8 +205,10 @@ describe("audit events", () => {
       AuditEventSchema.parse({
         id: "e",
         at: "2026-08-16T10:00:00.000Z",
+        // No `auditKey` here: it is a builder *input*, never a field on the
+        // record, and the schema is strict — leaving one in would make this
+        // pass on the unknown key rather than on the unknown action kind.
         principal: { sub: "a", tenantId: "t", audience: "internal" },
-        auditKey: KEY,
         action: { kind: "mystery" },
         outcome: { status: "ok" },
         latencyMs: 1,

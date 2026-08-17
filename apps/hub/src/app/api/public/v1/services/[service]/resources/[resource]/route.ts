@@ -1,8 +1,10 @@
+import { screenRead } from "@portal/identity";
 import { extractData } from "@portal/mcp-gateway";
 import { checkResourceParams, projectResource, resolveResource } from "@portal/public-api";
 import { findSatellite } from "@portal/registry";
 import { statusFor } from "@/lib/http";
 import { publicEntries, publicFailure, publicJson, unresolved } from "@/lib/publicApi";
+import { auditKeyFor, auditStamp, recordAudit } from "@/lib/audit";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 
@@ -43,9 +45,26 @@ export async function GET(
   const satellite = findSatellite(portal.registry, resolved.satelliteId);
   if (satellite === undefined) return publicJson(publicFailure("not found"), 404);
 
+  const startedAt = Date.now();
   const screen = await portal
     .clientFor(satellite)
     .fetchScreen(resolved.screenId, checked.value as Record<string, string>, principal);
+
+  // The partner-facing projection reads the same regulated data the screens do,
+  // for principals outside the organization. It was the one path with no trail,
+  // which made it the worst possible omission rather than a tidy one.
+  await recordAudit(
+    screenRead({
+      ...auditStamp(),
+      principal,
+      auditKey: auditKeyFor(principal),
+      satelliteId: resolved.satelliteId,
+      screenId: resolved.screenId,
+      params: checked.value,
+      outcome: screen.ok ? { status: "ok" } : { status: "error", reason: screen.reason },
+      latencyMs: Date.now() - startedAt,
+    }),
+  );
 
   // 503 and 504 are worth retrying and 502 is not; collapsing them would leave a
   // client no way to tell a satellite that is down from one that is broken.

@@ -36,8 +36,14 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   let surface;
+  let invoker;
   try {
     surface = await buildAgentSurface(principal);
+    // Inside the same guard: `agentInvokerDeps` derives this tenant's audit key,
+    // and `auditConfig()` throws when the mandatory audit settings are missing.
+    // Outside, that throw is Next's HTML error page — the one thing this handler
+    // must never hand an MCP host.
+    invoker = agentInvokerDeps(principal);
   } catch {
     // `getPortal()` throws when the registry file or the principal secret is
     // missing. Letting that escape hands the host Next's error page — HTML, and
@@ -52,7 +58,7 @@ export async function POST(request: Request): Promise<Response> {
       { status: 503, headers: { "content-type": "application/json", "cache-control": "no-store" } },
     );
   }
-  const { deps, flush } = agentInvokerDeps(principal);
+  const { deps, flush } = invoker;
 
   const server = new Server(
     { name: "dynamic-portal", version: "1.0.0" },

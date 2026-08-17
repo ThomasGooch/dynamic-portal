@@ -1,4 +1,5 @@
-import type { AuditEvent, Principal } from "@portal/identity";
+import { randomUUID } from "node:crypto";
+import type { Principal } from "@portal/identity";
 import { anthropicClient, type ModelClient } from "@portal/agent";
 import {
   buildSurface,
@@ -9,7 +10,7 @@ import {
   type ToolTransport,
 } from "@portal/mcp-gateway";
 import { visibleSatellites } from "@portal/registry";
-import { auditKeyFor, auditStamp, recordAudit } from "./audit";
+import { auditKeyFor, recordAudit } from "./audit";
 import { getPortal } from "./portal";
 
 /**
@@ -131,6 +132,14 @@ export function agentInvokerDeps(principal: Principal): InvokerDeps {
     },
   };
 
+  // The first write that failed, held until `flush` can throw it. A rejection
+  // is caught the moment the write starts rather than when `flush` gets to it:
+  // between the two there is a model round trip, and a promise that rejects
+  // with no handler attached takes the whole process down under Node's default
+  // `--unhandled-rejections=throw`. Failing the request is the intent; failing
+  // the container is not.
+  let failure: unknown;
+
   return {
     deps: {
       transport,
@@ -138,14 +147,19 @@ export function agentInvokerDeps(principal: Principal): InvokerDeps {
       // The gateway builds a valid event for every call including the refusals.
       // This is where they land — started here, awaited in `flush`.
       onAudit: (event) => {
-        pending.push(recordAudit(event));
+        pending.push(
+          recordAudit(event).catch((error: unknown) => {
+            failure ??= error;
+          }),
+        );
       },
       now: () => Date.now(),
-      at: () => auditStamp().at,
-      newId: () => auditStamp().id,
+      at: () => new Date().toISOString(),
+      newId: () => randomUUID(),
     },
     flush: async () => {
       await Promise.all(pending);
+      if (failure !== undefined) throw failure;
     },
   };
 }

@@ -543,6 +543,14 @@ test.describe("the audit log", () => {
       (event: never) => (event as { action: { kind: string } }).action.kind === "action.invoke",
     );
     expect(invoked.length).toBeGreaterThan(0);
+
+    // The second half of what this test claims, asserted rather than implied:
+    // the record carries a digest of what was asked and never the parameters.
+    const last = invoked[invoked.length - 1] as unknown as {
+      action: Record<string, unknown>;
+    };
+    expect(last.action["paramsDigest"]).toMatch(/^[a-f0-9]{64}$/);
+    expect(last.action).not.toHaveProperty("params");
   });
 
   test("carries no scope, which is authorization input rather than evidence", async ({ page }) => {
@@ -552,6 +560,34 @@ test.describe("the audit log", () => {
     const raw = JSON.stringify(await readLog());
     expect(raw).not.toContain("orders.read");
     expect(raw).not.toContain("scopes");
+  });
+
+  test("records the partner-facing read, which had no trail at all", async ({ request }) => {
+    // The most regulated consumer was the one path with nothing recorded, while
+    // both PLAN.md and the pull request said every path was covered.
+    await request.get("/api/public/v1/services/order-management/resources/orders");
+
+    const events = await readLog();
+    const external = events
+      .map((event) => event as unknown as { action: { kind: string; screenId?: string } })
+      .filter((event) => event.action.kind === "screen.read" && event.action.screenId === "orders.list");
+    expect(external.length).toBeGreaterThan(0);
+  });
+
+  test("records a refusal, once it knows who is being refused", async ({ page }) => {
+    // Only after a principal is established: audit writes fail closed, so
+    // recording an unauthenticated caller would hand them a way to fill the
+    // disk and take the hub down with it.
+    const before = (await readLog()).length;
+    const response = await page.goto("/payroll");
+    expect(response?.status()).toBe(404);
+
+    const events = await readLog();
+    expect(events.length).toBeGreaterThan(before);
+    const denied = events
+      .map((event) => event as unknown as { outcome: { status: string } })
+      .filter((event) => event.outcome.status === "denied");
+    expect(denied.length).toBeGreaterThan(0);
   });
 
   test("answers the question the whole schema exists for", async ({ page }) => {

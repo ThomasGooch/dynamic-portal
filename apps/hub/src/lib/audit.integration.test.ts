@@ -7,6 +7,11 @@ import { auditConfig, auditKeyFor, auditStamp, recordAudit, resetAuditConfig } f
 
 /**
  * The audit is mandatory, and this is where that is true rather than intended.
+ *
+ * In the integration tier because it writes files, and `vitest.config.ts`
+ * defines the unit tier as touching no filesystem. A suite that quietly ignores
+ * the boundary its own config draws makes the boundary meaningless for
+ * everyone.
  */
 
 const principal = (tenantId: string): Principal => ({
@@ -113,5 +118,44 @@ describe("writing", () => {
     process.env["PORTAL_AUDIT_LOG"] = join(logPath, "not-a-directory", "audit.jsonl");
     resetAuditConfig();
     await expect(recordAudit(event("acme"))).rejects.toThrow();
+  });
+});
+
+describe("a write that fails mid-turn", () => {
+  it("surfaces as a rejection rather than taking the process with it", async () => {
+    // The bug this pins: audit writes were started inside a synchronous
+    // callback and only awaited a model round trip later, so a failing write
+    // was an unhandled rejection — and Node's default is to exit. "Fail closed"
+    // became "crash the container", which is not the same thing at all.
+    const failing = join(logPath, "not-a-directory", "audit.jsonl");
+    process.env["PORTAL_AUDIT_LOG"] = failing;
+    resetAuditConfig();
+
+    const started: Promise<void>[] = [];
+    let failure: unknown;
+
+    // The shape the invoker uses: catch attached at push time, rethrown later.
+    started.push(
+      recordAudit(
+        screenRead({
+          ...auditStamp(),
+          principal: principal("acme"),
+          auditKey: auditKeyFor(principal("acme")),
+          satelliteId: "orders",
+          screenId: "orders.list",
+          params: {},
+          outcome: { status: "ok" },
+          latencyMs: 1,
+        }),
+      ).catch((error: unknown) => {
+        failure = error;
+      }),
+    );
+
+    // A turn's worth of other work happening before anything is awaited.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await Promise.all(started);
+    expect(failure).toBeInstanceOf(Error);
   });
 });
