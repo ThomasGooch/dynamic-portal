@@ -5,7 +5,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { callMcpTool, mcpTools, serverInstructions } from "@portal/mcp-server";
-import { agentInvokerDeps, buildAgentSurface } from "@/lib/agent";
+import { agentInvokerDeps, buildAgentSurface, isAgentAllowedForTenant } from "@/lib/agent";
 import { currentPrincipal } from "@/lib/session";
 
 /**
@@ -16,12 +16,12 @@ import { currentPrincipal } from "@/lib/session";
  * gets, filtered by the same `entitle()` the screens use — the difference is
  * the wire, not the policy.
  *
- * **Stateless, and a fresh server per request.** `sessionIdGenerator` is
- * undefined and `enableJsonResponse` is on, so every POST is self-contained:
- * two hub replicas need share nothing, and a restart costs a host nothing but a
- * reconnect. The surface is rebuilt per request for the same reason it is in
- * the agent route — a satellite that changed what it offers is reflected on the
- * next call rather than whenever a session happens to end.
+ * **Stateless, and a fresh server per request.** No session id generator and
+ * `enableJsonResponse` on, so every POST is self-contained: two hub replicas
+ * need share nothing, and a restart costs a host nothing but a reconnect. The
+ * surface is rebuilt per request for the same reason it is in the agent route —
+ * a satellite that changed what it offers is reflected on the next call rather
+ * than whenever a session happens to end.
  */
 
 export async function POST(request: Request): Promise<Response> {
@@ -35,8 +35,24 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  const surface = await buildAgentSurface(principal);
-  const deps = agentInvokerDeps(principal, surface);
+  let surface;
+  try {
+    surface = await buildAgentSurface(principal);
+  } catch {
+    // `getPortal()` throws when the registry file or the principal secret is
+    // missing. Letting that escape hands the host Next's error page — HTML, and
+    // a stack trace in development — where the agent route deliberately returns
+    // a sentence. A host can act on a JSON-RPC error and cannot act on either.
+    return new Response(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32603, message: "The portal could not list what this account can reach." },
+      }),
+      { status: 503, headers: { "content-type": "application/json", "cache-control": "no-store" } },
+    );
+  }
+  const deps = agentInvokerDeps();
 
   const server = new Server(
     { name: "dynamic-portal", version: "1.0.0" },
@@ -75,16 +91,16 @@ export async function POST(request: Request): Promise<Response> {
     };
   });
 
-  // `sessionIdGenerator: undefined` is how this transport is told to run
-  // statelessly — the SDK's own documentation shows exactly this call. Its type
-  // marks the property optional rather than `| undefined`, which
-  // `exactOptionalPropertyTypes` reads as "may be absent, may not be
-  // undefined". Omitting the key instead would turn sessions *on*, so the
-  // assertion is here and the alternative is not silently worse.
+  // Stateless because `sessionIdGenerator` is absent, not because it is set to
+  // `undefined`: the transport stores `options.sessionIdGenerator` verbatim and
+  // then tests it for `undefined`, so omitting the key and passing the key are
+  // the same transport. Omitting it is the one `exactOptionalPropertyTypes`
+  // accepts, which is why there is no assertion here — and no assertion means a
+  // typo in `enableJsonResponse` is still a type error rather than a silent
+  // fall back to SSE that every JSON-mode host would hang on.
   const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
     enableJsonResponse: true,
-  } as unknown as ConstructorParameters<typeof WebStandardStreamableHTTPServerTransport>[0]);
+  });
 
   await server.connect(transport);
   try {

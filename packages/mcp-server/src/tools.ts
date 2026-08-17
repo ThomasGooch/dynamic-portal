@@ -1,4 +1,4 @@
-import type { JsonObjectSchema, ToolSurface } from "@portal/mcp-gateway";
+import type { JsonObjectSchema, ToolDescriptor, ToolSurface } from "@portal/mcp-gateway";
 
 /**
  * The hub's own tool surface, as an MCP server sees it.
@@ -35,9 +35,20 @@ export interface McpToolDescriptor {
   readonly annotations: McpToolAnnotations;
 }
 
+/**
+ * The one rule that separates the outward listing from the gateway's surface.
+ *
+ * A predicate rather than an inline filter because the refusal in `callMcpTool`
+ * has to ask the same question: two spellings of "is this listed" that drift
+ * apart is precisely how a governed write becomes callable by name.
+ */
+export function isListed(tool: ToolDescriptor): boolean {
+  return !tool.requiresConfirmation;
+}
+
 export function mcpTools(surface: ToolSurface): McpToolDescriptor[] {
   return surface.tools
-    .filter((tool) => !tool.requiresConfirmation)
+    .filter(isListed)
     .map((tool) => ({
       name: tool.name,
       description: tool.description,

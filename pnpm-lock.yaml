@@ -181,15 +181,18 @@ importers:
 
   packages/mcp-server:
     dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.30.0
-        version: 1.30.0(supports-color@7.2.0)(zod@3.25.76)
       '@portal/identity':
         specifier: workspace:*
         version: link:../identity
       '@portal/mcp-gateway':
         specifier: workspace:*
         version: link:../mcp-gateway
+      '@portal/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@portal/registry':
+        specifier: workspace:*
+        version: link:../registry
 
   packages/protocol:
     dependencies:

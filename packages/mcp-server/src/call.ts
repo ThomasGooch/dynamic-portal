@@ -1,6 +1,6 @@
 import type { Principal } from "@portal/identity";
 import { invokeTool, type InvokeDeps, type ToolSurface } from "@portal/mcp-gateway";
-import { mcpTools } from "./tools";
+import { isListed } from "./tools";
 
 /**
  * Running one tool for an MCP host.
@@ -36,17 +36,19 @@ export async function callMcpTool(
 ): Promise<McpCallResult> {
   // Listed is not the same as present on the surface. A governed write is on
   // the surface and off the listing, and calling it by name would be a way
-  // around the very gate the listing exists to respect.
-  if (!mcpTools(surface).some((tool) => tool.name === name)) {
-    const governed = surface.byName.get(name);
-    if (governed !== undefined) {
-      return text(
-        `"${governed.title}" changes data and has to be approved by a person in the portal. ` +
-          `Ask the user to do it there; it cannot be run from here.`,
-        true,
-      );
-    }
+  // around the very gate the listing exists to respect. Asked of the surface's
+  // own index rather than by scanning a freshly built listing: same answer, one
+  // lookup, and no second copy of every descriptor per call.
+  const tool = surface.byName.get(name);
+  if (tool === undefined) {
     return text(`No tool named "${name}" is available to this account.`, true);
+  }
+  if (!isListed(tool)) {
+    return text(
+      `"${tool.title}" changes data and has to be approved by a person in the portal. ` +
+        `Ask the user to do it there; it cannot be run from here.`,
+      true,
+    );
   }
 
   const result = await invokeTool(surface, name, args, principal, {

@@ -8,6 +8,8 @@
   "include": ["src/**/*"],
   "references": [
     { "path": "../identity" },
-    { "path": "../mcp-gateway" }
+    { "path": "../mcp-gateway" },
+    { "path": "../protocol" },
+    { "path": "../registry" }
   ]
 }

@@ -9,8 +9,9 @@
   "exports": { ".": "./src/index.ts" },
   "scripts": { "typecheck": "tsc --build --force" },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
     "@portal/identity": "workspace:*",
-    "@portal/mcp-gateway": "workspace:*"
+    "@portal/mcp-gateway": "workspace:*",
+    "@portal/protocol": "workspace:*",
+    "@portal/registry": "workspace:*"
   }
 }

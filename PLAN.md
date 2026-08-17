@@ -119,7 +119,7 @@ What crosses the boundary is records and a summary, never a UI tree, and never t
 - **Model choice is a compliance decision.** `claude-opus-5` is zero-data-retention eligible. **Claude Fable 5 / Mythos 5 are not** — they require 30-day retention and reject requests from ZDR orgs outright. Do not reach for the more capable model without checking this first; the plan uses Opus 5 partly for this reason.
 - **The gateway is the single choke point where regulated data can reach the model.** Tool results are the only data path in. That makes field-level redaction, minimization, and per-tenant policy enforceable in exactly one place rather than sprayed across satellites.
 - **Grounding doubles as the audit trail.** Because every displayed fact must carry `source: {toolCallId}`, the provenance chain answers *"which records did the agent read, for which principal, when"* precisely. A control that exists for correctness pays for itself twice.
-- **Per-tenant agent kill switch**, so a client who won't accept AI processing can be served the deterministic portal with no code change.
+- **Per-tenant agent kill switch**, so a client who won't accept AI processing can be served the deterministic portal with no code change. It governs the *surface*, not whose model reaches it — the outward MCP endpoint needs no key of ours and is gated all the same, which is a distinction that had to be made explicit after asking "is our agent configured" left that endpoint open.
 
 ---
 
