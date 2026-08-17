@@ -42,6 +42,14 @@ export interface ToolTransport {
 
 export interface InvokeDeps {
   readonly transport: ToolTransport;
+  /**
+   * This tenant's audit digest key, from `tenantAuditKey`.
+   *
+   * Required rather than optional: the gateway is where every agent-initiated
+   * call is recorded, and a caller that could omit the key would produce a log
+   * indistinguishable from a keyed one.
+   */
+  readonly auditKey: Buffer;
   readonly onAudit: (event: AuditEvent) => void;
   /** Injected so the audit record has a real clock without this file owning one. */
   readonly now: () => number;
@@ -88,6 +96,7 @@ export async function invokeTool(
         id: deps.newId(),
         at: deps.at(),
         principal,
+        auditKey: deps.auditKey,
         satelliteId,
         toolName: name,
         // One call, one id. The agent's own tool-call id arrives in M2's loop;

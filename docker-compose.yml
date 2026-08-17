@@ -73,6 +73,11 @@ services:
       # this is set. Explicit here so the compose stack is obviously not a
       # production deployment.
       PORTAL_ALLOW_DEV_SESSION: "1"
+      # Mandatory. The hub refuses to serve without both: a default key would
+      # produce a log that looks keyed and is not, and a default path one that
+      # nobody knows to collect.
+      PORTAL_AUDIT_KEY: ${PORTAL_AUDIT_KEY:-dev-only-not-a-real-audit-key}
+      PORTAL_AUDIT_LOG: /tmp/portal-audit.jsonl
       PORT: "3000"
       # Inside the network the satellites answer to their service names, not to
       # localhost. The registry file defaults to localhost for a laptop and is

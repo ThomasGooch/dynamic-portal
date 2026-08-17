@@ -478,3 +478,131 @@ test.describe("the hub as an MCP server", () => {
     expect(body.result.isError).toBe(true);
   });
 });
+
+test.describe("the audit log", () => {
+  // PLAN.md's verification item 11: from the audit log alone, answer which
+  // records were read, for whom, and when. Until this landed every path built a
+  // valid event and dropped it — a more comfortable kind of nothing than having
+  // no schema, and exactly as useless.
+  const readLog = async (): Promise<Record<string, never>[]> => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { stdout } = await promisify(execFile)("docker", [
+      "compose",
+      "exec",
+      "-T",
+      "hub",
+      "cat",
+      "/tmp/portal-audit.jsonl",
+    ]);
+    return stdout
+      .trim()
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line));
+  };
+
+  test("records a screen read that actually happened", async ({ page, request }) => {
+    void request;
+    await page.goto("/orders");
+    await expect(page.locator("table.r-table")).toBeVisible();
+
+    const events = await readLog();
+    const read = events.filter((event: never) => (event as { action: { kind: string } }).action.kind === "screen.read");
+    expect(read.length).toBeGreaterThan(0);
+
+    const last = read[read.length - 1] as unknown as {
+      principal: { sub: string; tenantId: string };
+      action: { satelliteId: string; screenId: string; paramsDigest: string };
+      outcome: { status: string };
+      latencyMs: number;
+    };
+    expect(last.principal.tenantId).toBe("acme");
+    expect(last.action.satelliteId).toBe("orders");
+    expect(last.outcome.status).toBe("ok");
+    expect(last.latencyMs).toBeGreaterThanOrEqual(0);
+    // Keyed HMAC-SHA256, hex.
+    expect(last.action.paramsDigest).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  test("records the action, and never its parameters", async ({ page }) => {
+    await page.goto("/orders");
+    const before = (await readLog()).length;
+
+    await page.evaluate(async () => {
+      await fetch("/api/actions/orders/orders.refresh", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+    });
+
+    const events = await readLog();
+    expect(events.length).toBeGreaterThan(before);
+    const invoked = events.filter(
+      (event: never) => (event as { action: { kind: string } }).action.kind === "action.invoke",
+    );
+    expect(invoked.length).toBeGreaterThan(0);
+
+    // The second half of what this test claims, asserted rather than implied:
+    // the record carries a digest of what was asked and never the parameters.
+    const last = invoked[invoked.length - 1] as unknown as {
+      action: Record<string, unknown>;
+    };
+    expect(last.action["paramsDigest"]).toMatch(/^[a-f0-9]{64}$/);
+    expect(last.action).not.toHaveProperty("params");
+  });
+
+  test("carries no scope, which is authorization input rather than evidence", async ({ page }) => {
+    // Recording them would leak the shape of the permission model into a log
+    // that is read widely.
+    await page.goto("/orders");
+    const raw = JSON.stringify(await readLog());
+    expect(raw).not.toContain("orders.read");
+    expect(raw).not.toContain("scopes");
+  });
+
+  test("records the partner-facing read, which had no trail at all", async ({ request }) => {
+    // The most regulated consumer was the one path with nothing recorded, while
+    // both PLAN.md and the pull request said every path was covered.
+    await request.get("/api/public/v1/services/order-management/resources/orders");
+
+    const events = await readLog();
+    const external = events
+      .map((event) => event as unknown as { action: { kind: string; screenId?: string } })
+      .filter((event) => event.action.kind === "screen.read" && event.action.screenId === "orders.list");
+    expect(external.length).toBeGreaterThan(0);
+  });
+
+  test("records a refusal, once it knows who is being refused", async ({ page }) => {
+    // Only after a principal is established: audit writes fail closed, so
+    // recording an unauthenticated caller would hand them a way to fill the
+    // disk and take the hub down with it.
+    const before = (await readLog()).length;
+    const response = await page.goto("/payroll");
+    expect(response?.status()).toBe(404);
+
+    const events = await readLog();
+    expect(events.length).toBeGreaterThan(before);
+    const denied = events
+      .map((event) => event as unknown as { outcome: { status: string } })
+      .filter((event) => event.outcome.status === "denied");
+    expect(denied.length).toBeGreaterThan(0);
+  });
+
+  test("answers the question the whole schema exists for", async ({ page }) => {
+    // Which satellite, which screen, for whom, when, and how long it took —
+    // from the log alone, with no other system consulted.
+    await page.goto("/fleet");
+    const events = await readLog();
+    const fleet = events
+      .map((event) => event as unknown as { action: { satelliteId?: string; screenId?: string }; at: string; principal: { sub: string } })
+      .filter((event) => event.action.satelliteId === "fleet");
+
+    expect(fleet.length).toBeGreaterThan(0);
+    const last = fleet[fleet.length - 1]!;
+    expect(last.action.screenId).toBe("fleet.dashboard");
+    expect(last.principal.sub).toContain("@");
+    expect(Date.parse(last.at)).not.toBeNaN();
+  });
+});

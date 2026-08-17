@@ -66,6 +66,21 @@ const check = <T>(what: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, val
   return parsed.data;
 };
 
+/**
+ * Validates and discards the parse output, returning what it was handed.
+ *
+ * Zod's parse result is a deep copy, and the envelopes that carry a `UiNode`
+ * carry a `Table` — so keeping it clones every row on every request, which is
+ * the exact copy `ui.ts` goes out of its way not to make. Only safe where the
+ * schema declares no defaults and no transforms, so the output is structurally
+ * its input; `ManifestSchema` does declare them (`audience` defaults to
+ * internal-only) and therefore still uses `check`.
+ */
+const checkInPlace = <T>(what: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: T): T => {
+  check(what, schema, value);
+  return value;
+};
+
 // Input shapes are derived from the protocol's own schemas rather than
 // re-spelled here. A field added to a descriptor becomes expressible through
 // the SDK without an edit, and one that changes shape is a compile error here
@@ -109,12 +124,12 @@ export function screen(input: ScreenInput): ScreenResponse {
     );
   }
 
-  return check<ScreenResponse>("screen", ScreenResponseSchema, {
+  return checkInPlace<ScreenResponse>("screen", ScreenResponseSchema, {
     protocol: CURRENT_PROTOCOL_VERSION,
     screen: {
       id: input.id,
       title: input.title,
-      ...(input.breadcrumbs === undefined ? {} : { breadcrumbs: input.breadcrumbs }),
+      ...(input.breadcrumbs === undefined ? {} : { breadcrumbs: [...input.breadcrumbs] }),
     },
     ui: input.ui,
     ...(input.ttlSeconds === undefined && input.etag === undefined
@@ -148,13 +163,13 @@ export interface OkInput {
  * carries that as a known limit; this is where a satellite author meets it.
  */
 export function ok(input: OkInput = {}): ActionResponse {
-  return check<ActionResponse>("action response", ActionResponseSchema, {
+  return checkInPlace<ActionResponse>("action response", ActionResponseSchema, {
     protocol: CURRENT_PROTOCOL_VERSION,
     outcome: "ok",
     ...(input.message === undefined
       ? {}
       : { toast: { level: input.level ?? "success", message: input.message } }),
-    ...(input.patch === undefined ? {} : { patch: input.patch }),
+    ...(input.patch === undefined ? {} : { patch: [...input.patch] }),
     ...(input.navigate === undefined ? {} : { navigate: input.navigate }),
   });
 }

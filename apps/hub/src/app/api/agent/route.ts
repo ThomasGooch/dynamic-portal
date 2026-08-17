@@ -55,14 +55,18 @@ export async function POST(request: Request): Promise<Response> {
     ? body.approvals.filter((id): id is string => typeof id === "string")
     : [];
 
+  let invoker: ReturnType<typeof agentInvoker> | undefined;
   try {
     const surface = await buildAgentSurface(principal);
-    const invoker = agentInvoker(principal, surface);
+    invoker = agentInvoker(principal, surface);
 
     const outcome = await runAgent(
       { messages: body.messages as Message[], surface, approvals },
       { client: modelClient(), invoke: invoker.invoke },
     );
+
+    // Every tool call this turn made is on disk before the answer goes out.
+    await invoker.flush();
 
     if (outcome.kind === "screen") {
       const allowed = visibleSatellites(getPortal().registry, principal).map((s) => s.id);
@@ -92,6 +96,12 @@ export async function POST(request: Request): Promise<Response> {
 
     return json({ ok: false, message: outcome.reason }, 200);
   } catch {
+    // The turn failed part way through, and the tool calls it did make before
+    // failing still happened. Their records are awaited here too — a turn that
+    // ended badly is exactly the one an audit is read for — and a write that
+    // fails now cannot change an answer that is already a refusal.
+    await invoker?.flush().catch(() => {});
+
     // The model call failed, or a satellite threw where the gateway does not
     // catch. Either way the user gets a sentence, not a stack — the same rule
     // the proxy follows about upstream detail.

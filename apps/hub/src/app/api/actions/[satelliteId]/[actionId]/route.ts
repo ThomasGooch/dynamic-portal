@@ -1,8 +1,9 @@
-import { authorize } from "@portal/identity";
+import { actionInvoke, authorize } from "@portal/identity";
 import { findSatellite } from "@portal/registry";
 import type { Failure } from "@portal/registry";
 import type { ActionApiResult } from "@/lib/actionApi";
 import { MAX_PAYLOAD_BYTES, readBounded, statusFor } from "@/lib/http";
+import { auditKeyFor, auditStamp, recordAudit } from "@/lib/audit";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 
@@ -112,7 +113,41 @@ export async function POST(
     return json(NOT_FOUND, 404);
   }
 
+  const startedAt = Date.now();
   const result = await client.invokeAction(actionId, payload, principal);
+
+  try {
+    await recordAudit(
+      actionInvoke({
+        ...auditStamp(),
+        principal,
+        auditKey: auditKeyFor(principal),
+        satelliteId: satellite.id,
+        actionId,
+        params: payload,
+        outcome: result.ok
+          ? { status: "ok" }
+          : { status: "error", reason: result.reason, httpStatus: statusFor(result) },
+        latencyMs: Date.now() - startedAt,
+      }),
+    );
+  } catch {
+    // Still fails closed — the caller is told the outcome is unknown rather
+    // than told it succeeded. Answered in this route's own envelope, though:
+    // letting the throw escape hands the browser Next's HTML error page, which
+    // the renderer can only read as "could not reach this solution", and the
+    // solution was reached. The action ran; only the record did not.
+    return json(
+      {
+        ok: false,
+        reason: "not-recorded",
+        message:
+          "The change could not be recorded, so the portal cannot confirm it. Check before retrying.",
+      },
+      500,
+    );
+  }
+
   if (!result.ok) {
     return json(
       { ok: false, reason: result.reason, message: messageFor(satellite.displayName, result) },

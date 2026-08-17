@@ -1,3 +1,4 @@
+import { tenantAuditKey } from "@portal/identity";
 import type { Principal } from "@portal/identity";
 import { ManifestSchema } from "@portal/protocol";
 import { SatelliteSchema } from "@portal/registry";
@@ -5,6 +6,9 @@ import { buildSurface, type ToolSurface } from "@portal/mcp-gateway";
 import { beforeEach, describe, expect, it } from "vitest";
 import { callMcpTool } from "./call";
 import { mcpTools, serverInstructions } from "./tools";
+
+/** Any key will do here; what matters is that one is required. */
+const AUDIT_KEY = tenantAuditKey("test-root-key", "acme");
 
 const principal: Principal = {
   sub: "staff@acme.example",
@@ -84,6 +88,7 @@ function stubbedDeps() {
         };
       },
     },
+    auditKey: AUDIT_KEY,
     onAudit: () => {},
     now: () => 0,
     at: () => "2026-08-17T00:00:00.000Z",

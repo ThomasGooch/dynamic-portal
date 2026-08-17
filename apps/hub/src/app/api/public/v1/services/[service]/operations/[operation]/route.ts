@@ -1,7 +1,9 @@
+import { actionInvoke } from "@portal/identity";
 import { checkOperationParams, projectOperation, resolveOperation } from "@portal/public-api";
 import { findSatellite } from "@portal/registry";
 import { MAX_PAYLOAD_BYTES, readBounded, statusFor } from "@/lib/http";
 import { publicEntries, publicFailure, publicJson, unresolved } from "@/lib/publicApi";
+import { auditKeyFor, auditStamp, recordAudit } from "@/lib/audit";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 
@@ -53,9 +55,23 @@ export async function POST(
   const satellite = findSatellite(portal.registry, resolved.satelliteId);
   if (satellite === undefined) return publicJson(publicFailure("not found"), 404);
 
+  const startedAt = Date.now();
   const result = await portal
     .clientFor(satellite)
     .invokeAction(resolved.actionId, checked.value, principal);
+
+  await recordAudit(
+    actionInvoke({
+      ...auditStamp(),
+      principal,
+      auditKey: auditKeyFor(principal),
+      satelliteId: resolved.satelliteId,
+      actionId: resolved.actionId,
+      params: checked.value,
+      outcome: result.ok ? { status: "ok" } : { status: "error", reason: result.reason },
+      latencyMs: Date.now() - startedAt,
+    }),
+  );
 
   // A timed-out write specifically must not be reported as 502: the satellite
   // may well have applied it, and "bad gateway" invites a partner to retry a

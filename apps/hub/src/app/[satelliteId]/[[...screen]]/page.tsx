@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { authorize } from "@portal/identity";
 import { findSatellite, visibleSatellites } from "@portal/registry";
+import { screenRead } from "@portal/identity";
+import { auditKeyFor, auditStamp, recordAudit } from "@/lib/audit";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 import { ErrorCard } from "@/components/ScreenView";
@@ -34,6 +36,31 @@ export default async function ScreenPage({
   // one the URL names.
   if (screen !== undefined && screen.length > 1) notFound();
 
+  /**
+   * A refusal, recorded.
+   *
+   * Only reached once a principal is established, and deliberately: audit
+   * writes fail closed, so auditing a request from someone we cannot identify
+   * would hand an unauthenticated caller a way to fill the disk and take the
+   * hub down with it. "Someone unauthenticated knocked" is a job for the access
+   * log; "this principal was refused this screen" is evidence, and that is what
+   * this records.
+   */
+  const recordRefusal = async (reason: string): Promise<void> => {
+    await recordAudit(
+      screenRead({
+        ...auditStamp(),
+        principal,
+        auditKey: auditKeyFor(principal),
+        satelliteId,
+        screenId: screen?.[0] ?? "(unspecified)",
+        params: {},
+        outcome: { status: "denied", httpStatus: 404, reason },
+        latencyMs: 0,
+      }),
+    );
+  };
+
   const satellite = findSatellite(portal.registry, satelliteId);
   // 404 rather than 403 when a principal may not see a satellite: a 403 would
   // confirm it exists, which is the same disclosure the satellites avoid on
@@ -45,6 +72,9 @@ export default async function ScreenPage({
       rbacScopes: satellite.rbacScopes,
     }).allowed
   ) {
+    await recordRefusal("satellite not visible to this principal");
+    // `notFound()` stays at the call site: it is what TypeScript reads as
+    // terminating the branch, and an awaited `never` is not.
     notFound();
   }
 
@@ -69,19 +99,42 @@ export default async function ScreenPage({
   );
 
   const screenId = screen?.[0] ?? reachable[0]?.id;
-  if (screenId === undefined) notFound();
+  if (screenId === undefined) {
+    await recordRefusal("no screen on this satellite is visible");
+    notFound();
+  }
 
-  const declared = reachable.find((s) => s.id === screenId);
+  const declared = reachable.find((entry) => entry.id === screenId);
   // A screen the principal may not see 404s rather than 403s, for the same
   // reason an unauthorised satellite does: a 403 confirms it exists.
-  if (declared === undefined) notFound();
+  if (declared === undefined) {
+    await recordRefusal("screen not visible to this principal");
+    notFound();
+  }
 
   const params_: Record<string, string> = {};
   for (const [key, value] of Object.entries(query)) {
     if (typeof value === "string") params_[key] = value;
   }
 
+  const startedAt = Date.now();
   const result = await client.fetchScreen(screenId, params_, principal);
+
+  // Recorded before anything is rendered, and awaited: if the read cannot be
+  // recorded it does not count as having happened. See `lib/audit.ts` on why
+  // this fails closed.
+  await recordAudit(
+    screenRead({
+      ...auditStamp(),
+      principal,
+      auditKey: auditKeyFor(principal),
+      satelliteId: satellite.id,
+      screenId,
+      params: params_,
+      outcome: result.ok ? { status: "ok" } : { status: "error", reason: result.reason },
+      latencyMs: Date.now() - startedAt,
+    }),
+  );
 
   if (!result.ok) {
     return (
