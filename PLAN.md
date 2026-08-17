@@ -212,7 +212,9 @@ The hub exposes its aggregated, RBAC- and audience-filtered tool surface as an M
 
 ## Part 3 — The agent
 
-Model: **`claude-opus-5`** via `@anthropic-ai/sdk` (ZDR-eligible — see the regulated-data section). Adaptive thinking on by default; `output_config.effort` starts at `xhigh` for composition, tuned down per route after an eval sweep. Loop via `client.beta.messages.toolRunner()`, whose per-turn hooks give the approval gate without hand-writing the loop.
+Model: **`claude-opus-5`** via `@anthropic-ai/sdk` (ZDR-eligible — see the regulated-data section), with `thinking: {type: "adaptive"}`; a token budget is rejected outright on this model generation. The vendor sits behind a single interface with one implementation, because the model is the fastest-decaying dependency in the table above.
+
+**The loop is hand-written, and `toolRunner` is deliberately not used.** Its per-turn hooks are the right tool when a loop runs to completion in one process. Ours cannot: a write pauses for a human to approve it, and that pause crosses an HTTP boundary and possibly a container restart. Keeping a runner alive server-side, keyed by a session, would make the hub stateful for exactly the feature most likely to be interrupted. So the conversation *is* the state and it travels with the request — which also makes resuming free, since the loop simply looks for a tool call nobody has answered yet and finds the approved write sitting there.
 
 **Grounding is enforceable, not a prompt plea, and it turned out to be structural.** The agent emits through a `render_screen` tool whose `input_schema` *is* the catalog, projected to JSON Schema — so the API constrains output before our validator runs. Two layers, neither a prompt.
 
@@ -299,7 +301,7 @@ A dedicated platform team makes this viable; it does not make it automatic. The 
 | JSON-tree renderer | **Ours** — `apps/hub/src/renderer`. See the reversal note below |
 | Hub framework | **Next.js App Router** — route handlers give us the BFF proxy with no separate service |
 | Components / tokens | **Hand-written CSS + custom properties** — `globals.css` holds the tokens, `renderer.css` the rules. See the reversal note below |
-| Agent | **`@anthropic-ai/sdk`**, `claude-opus-5`, `betaZodTool` + `toolRunner` |
+| Agent | **`@anthropic-ai/sdk`**, `claude-opus-5`, adaptive thinking, hand-written loop (see above) |
 | MCP | **`@modelcontextprotocol/sdk`** (client + server) + `@modelcontextprotocol/ext-apps` |
 | Charts | **Recharts** — the one UI dependency taken. Colours are CSS custom properties, so charts re-theme with everything else |
 | Table / forms / fetching | None. Server-rendered tables, uncontrolled form controls read on submit, fetching in server components |
@@ -355,8 +357,8 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 
 **M2 — Agent + MCP gateway**
 8. `packages/mcp-gateway` — namespacing, RBAC/audience filter, PUP→MCP shim, tool invocation and audit *(done)*; MCP client pool for satellites that ship a server *(next — no satellite ships one yet, and the shim is what makes that survivable)*.
-9. `packages/agent` — `render_screen`'s strict catalog schema, the lowering step, and the grounding validator *(done)*; the model loop, tool surface and provenance rendering *(next)*.
-10. Confirmation flow for `requiresConfirmation` tools; per-tenant kill switch.
+9. `packages/agent` — the strict `render_screen` schema, lowering, grounding, the model loop, the tool surface and provenance rendering *(done)*.
+10. Confirmation flow for `requiresConfirmation` tools; per-tenant kill switch *(done)*.
 11. Agent-composed home screen.
 
 **M3 — External surfaces**
@@ -406,6 +408,8 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 - **Charts need JavaScript; nothing else on a screen does.** Recharts measures its container before drawing, so the SVG appears after hydration rather than in the server's HTML. The container reserves its height, so there is no layout shift — but a chart is the one component that is blank with scripting off, and the only part of a screen that is not server-rendered.
 - **Dates and money render in a fixed locale and in UTC.** Anything reading the ambient locale or timezone produces one string on the server and another in the browser, which React reports as a hydration mismatch — and never does so on a developer's machine running in UTC. Showing a viewer's own timezone is a real feature and a later one; it needs the zone to travel with the render rather than be read independently at each end.
 - **Agent latency and cost** are an order of magnitude above the deterministic path. Deterministic by default; agent on explicit intent.
+- **The vendor call is the one thing in the agent path not covered by a test.** Everything else — the tool surface, the confirmation gate, grounding, the loop — is exercised against a real satellite over a real socket with the model's turns scripted, because a test that depends on what a model chooses to say fails for reasons nobody can fix. That leaves exactly one file, `anthropic.ts`, verified only by running it. Which JSON Schema combinators strict tool schemas accept is confirmed the same way, on first contact.
+- **The agent is off unless switched on, and that is the tested default.** No API key means no agent; `PORTAL_AGENT=off` means no agent; a tenant on `PORTAL_AGENT_DISABLED_TENANTS` means no agent for them. The compose stack sets no key, so every e2e run is a run of the portal with the agent disabled — which is how "mode 1 works with the agent switched off" stays true rather than aspirational.
 - **Third-party MCP servers are a different trust tier** — sandboxed iframe, foreign chrome, no catalog access. Deliberately second-class.
 - **The platform team is a real, ongoing cost.** This design trades per-solution UI work for a permanent platform function. If that team is defunded in year three, the catalog stops evolving and satellites start requesting the iframe escape hatch — which is how this degrades back into the portal it replaced. That risk is organizational, not technical, and no architecture removes it.
 

@@ -267,3 +267,39 @@ test.describe("rendering the untrusted", () => {
     expect(fills.length).toBeGreaterThan(0);
   });
 });
+
+test.describe("the agent, switched off", () => {
+  // PLAN.md item 13, and the property the whole design rests on: mode one works
+  // with the agent disabled. The compose stack sets no API key, so this is the
+  // portal's default state rather than a state contrived for the test.
+  test("mounts nothing when no assistant is configured", async ({ page }) => {
+    await page.goto("/orders");
+    await expect(page.getByRole("button", { name: "Ask the portal" })).toHaveCount(0);
+    await expect(page.getByRole("complementary", { name: "Assistant" })).toHaveCount(0);
+  });
+
+  test("leaves every deterministic screen exactly as it was", async ({ page }) => {
+    await page.goto("/orders");
+    await expect(page.locator("table.r-table")).toBeVisible();
+    await page.goto("/fleet");
+    await expect(page.locator(".r-chart svg[role=application]")).toBeVisible();
+  });
+
+  test("answers the agent endpoint with a plain refusal, not an error", async ({ page }) => {
+    // "Not enabled" is a supported way to run this portal, so it is not a 500
+    // and it does not leak whether a key merely happens to be missing today.
+    await page.goto("/orders");
+    const response = await page.evaluate(async () => {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }] }),
+      });
+      return { status: res.status, body: await res.json() };
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.body.ok).toBe(false);
+    expect(response.body.message).toMatch(/not enabled/i);
+  });
+});

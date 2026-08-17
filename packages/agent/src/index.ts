@@ -8,9 +8,11 @@
  * properties in from the tool call each node cites — refusing anything whose
  * citation does not hold up.
  *
- * Deliberately free of any model SDK. Everything here is a pure function over a
- * spec and a set of tool results, which is what makes the integrity claim
- * testable without a network.
+ * Everything except `anthropic.ts` is a pure function over a spec, a message
+ * list and a set of tool results — which is what makes the integrity claim
+ * testable without a network. The vendor sits behind the smallest interface in
+ * the repository, because PLAN.md rates the model as the fastest-decaying
+ * dependency in the stack.
  */
 
 export {
@@ -28,3 +30,25 @@ export {
   type GroundingResult,
   type ToolCallRecord,
 } from "./grounding";
+
+export {
+  RENDER_SCREEN_TOOL,
+  SYSTEM_PROMPT,
+  toolDefinitions,
+  type ToolDefinition,
+} from "./tools";
+
+export {
+  runAgent,
+  type AgentOutcome,
+  type Citation,
+  type ContentBlock,
+  type Message,
+  type ModelClient,
+  type ModelReply,
+  type PendingWrite,
+  type RunDeps,
+  type RunInput,
+} from "./loop";
+
+export { AGENT_MODEL, anthropicClient, type AnthropicClientOptions } from "./anthropic";
