@@ -10,11 +10,15 @@
 **/.DS_Store
 **/*.log
 
-# Test output and local env
+# Test output and local env.
+#
+# Every `.env` variant, matching `.gitignore` — the Dockerfile does `COPY . .`,
+# so a variant named outside the two the previous list knew about would be
+# baked into an image layer and survive every later `rm`.
 test-results
 playwright-report
 **/.env
-**/.env.local
+**/.env.*
 
 # Docs are not needed in the build context
 *.md
