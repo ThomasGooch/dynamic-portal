@@ -303,3 +303,88 @@ test.describe("the agent, switched off", () => {
     expect(response.body.message).toMatch(/not enabled/i);
   });
 });
+
+test.describe("the brokered public API", () => {
+  // PLAN.md's answer to "external clients, programmatically". A partner never
+  // touches PUP, the component catalog or MCP — they see services, resources
+  // and operations under names the registry assigns, which is what keeps the
+  // internal vocabulary free to change.
+  const base = "/api/public/v1";
+
+  test("names everything publicly, and leaks no internal id", async ({ request }) => {
+    // The assertion that keeps the decoupling honest. If a screen id ever
+    // appears here, a satellite team can no longer rename one without breaking
+    // someone outside the organization.
+    const response = await request.get(`${base}/services`);
+    expect(response.ok()).toBe(true);
+
+    const body = await response.text();
+    expect(body).not.toContain("orders.list");
+    expect(body).not.toContain("orders.detail");
+    expect(body).not.toContain("orders.approve");
+
+    const catalog = JSON.parse(body);
+    expect(catalog.version).toBe("1");
+    expect(catalog.services.map((s: { name: string }) => s.name)).toEqual(["order-management"]);
+  });
+
+  test("offers only the satellite that was widened for external clients", async ({ request }) => {
+    const catalog = await (await request.get(`${base}/services`)).json();
+    const names = catalog.services.map((s: { name: string }) => s.name);
+    expect(names).not.toContain("fleet");
+    expect(names).toHaveLength(1);
+  });
+
+  test("returns records rather than a screen", async ({ request }) => {
+    const body = await (await request.get(`${base}/services/order-management/resources/orders`)).json();
+    expect(body.collections[0].records.length).toBeGreaterThan(0);
+    // Not a UI tree: no component ever crosses this boundary.
+    expect(JSON.stringify(body)).not.toContain("StatTile");
+    expect(JSON.stringify(body)).not.toContain("Table");
+  });
+
+  test("carries a declared parameter through to the satellite", async ({ request }) => {
+    const list = await (await request.get(`${base}/services/order-management/resources/orders`)).json();
+    const id = list.collections[0].records[0].id;
+
+    const detail = await request.get(
+      `${base}/services/order-management/resources/order?id=${encodeURIComponent(id)}`,
+    );
+    expect(detail.ok()).toBe(true);
+    const body = await detail.json();
+    // A detail screen is a summary with no id field of its own — the screen
+    // says which record it is in its title, which is why the façade carries it.
+    expect(body.title).toContain(id);
+    expect(body.summary.length).toBeGreaterThan(0);
+  });
+
+  test("refuses a parameter the resource never declared", async ({ request }) => {
+    // `tenantId` is the one that matters: it comes from the authenticated
+    // principal, never from a query string a partner controls.
+    const response = await request.get(
+      `${base}/services/order-management/resources/orders?tenantId=someone-else`,
+    );
+    expect(response.status()).toBe(400);
+  });
+
+  test("answers not-found for a resource nobody published", async ({ request }) => {
+    // Unknown and not-yours are the same answer. A 403 would confirm that
+    // something exists, which is the disclosure the audience model prevents.
+    for (const path of [
+      "services/fleet/resources/vehicles",
+      "services/order-management/resources/nope",
+      // The internal id is not an alias for the public name, in either direction.
+      "services/orders/resources/orders.list",
+    ]) {
+      expect((await request.get(`${base}/${path}`)).status(), path).toBe(404);
+    }
+  });
+
+  test("exposes no operation, because none was published", async ({ request }) => {
+    const catalog = await (await request.get(`${base}/services`)).json();
+    expect(catalog.services[0].operations).toEqual([]);
+    expect(
+      (await request.post(`${base}/services/order-management/operations/approve`, { data: {} })).status(),
+    ).toBe(404);
+  });
+});

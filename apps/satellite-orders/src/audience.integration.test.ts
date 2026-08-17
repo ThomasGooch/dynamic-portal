@@ -23,15 +23,25 @@ import { manifest } from "./screens";
 
 const SECRET = "audience-secret";
 
-/** Satellite exposed externally; `orders.detail` stays internal-only. */
+/**
+ * Satellite exposed externally; `orders.detail` held internal-only.
+ *
+ * Both audiences are set *explicitly*. An earlier version set only
+ * `orders.list` and let `orders.detail` inherit whatever the real manifest
+ * said — which was internal, until the day it was not, and the suite silently
+ * stopped testing the case it exists for. A fixture describing a scenario has
+ * to state the whole scenario.
+ */
 function widenedManifest(): Manifest {
   const base = manifest();
   return {
     ...base,
     audience: ["internal", "external"],
-    screens: base.screens.map((s) =>
-      s.id === "orders.list" ? { ...s, audience: ["internal", "external"] as const } : s,
-    ),
+    screens: base.screens.map((s) => ({
+      ...s,
+      audience:
+        s.id === "orders.list" ? (["internal", "external"] as const) : (["internal"] as const),
+    })),
   };
 }
 

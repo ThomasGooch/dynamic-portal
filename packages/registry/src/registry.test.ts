@@ -207,3 +207,122 @@ ${policy}
     expect(withTool("      rbacScopes: []")?.audience).toEqual(["internal"]);
   });
 });
+
+describe("the public projection", () => {
+  const withPublic = (block: string) =>
+    loadRegistry(
+      `- id: orders
+  displayName: Orders
+  baseUrl: http://localhost:4001
+  owner: team
+  audience: [internal, external]
+${block}
+`,
+      {},
+    )[0]?.public;
+
+  it("maps public names onto internal ids", () => {
+    // The decoupling PLAN.md promises, made real. Without a mapping the public
+    // contract *is* the screen ids, and renaming a screen breaks every external
+    // client — which is the coupling the separate versioning exists to avoid.
+    const projection = withPublic(`  public:
+    service: order-management
+    resources:
+      - name: orders
+        screenId: orders.list
+    operations:
+      - name: approve
+        actionId: orders.approve`);
+
+    expect(projection).toEqual({
+      service: "order-management",
+      resources: [{ name: "orders", screenId: "orders.list" }],
+      operations: [{ name: "approve", actionId: "orders.approve" }],
+    });
+  });
+
+  it("is absent unless declared, so nothing is public by accident", () => {
+    expect(
+      loadRegistry(
+        `- id: orders
+  displayName: Orders
+  baseUrl: http://localhost:4001
+  owner: team
+`,
+        {},
+      )[0]?.public,
+    ).toBeUndefined();
+  });
+
+  it("refuses a public block on a satellite that is not externally visible", () => {
+    // Default-deny downwards, the same rule screens and tools already follow.
+    // A public name on an internal-only satellite is a contradiction, and the
+    // safe reading of a contradiction is to reject it.
+    expect(() =>
+      loadRegistry(
+        `- id: orders
+  displayName: Orders
+  baseUrl: http://localhost:4001
+  owner: team
+  public:
+    service: order-management
+    resources:
+      - name: orders
+        screenId: orders.list
+`,
+        {},
+      ),
+    ).toThrow(/external/i);
+  });
+
+  it("refuses a public name that looks like an internal id", () => {
+    // Dotted names are the internal grammar. Keeping the two apart is what
+    // stops a public contract from quietly becoming a mirror of the private one.
+    expect(() =>
+      withPublic(`  public:
+    service: orders.public
+    resources:
+      - name: orders
+        screenId: orders.list`),
+    ).toThrow();
+  });
+
+  it("refuses two resources sharing a public name", () => {
+    expect(() =>
+      withPublic(`  public:
+    service: order-management
+    resources:
+      - name: orders
+        screenId: orders.list
+      - name: orders
+        screenId: orders.detail`),
+    ).toThrow(/orders/);
+  });
+
+  it("refuses two satellites claiming one service name", () => {
+    // The public namespace is flat and permanent; a collision here is two
+    // solutions answering the same url.
+    expect(() =>
+      loadRegistry(
+        `- id: orders
+  displayName: Orders
+  baseUrl: http://localhost:4001
+  owner: team
+  audience: [internal, external]
+  public:
+    service: shared
+    resources: []
+- id: fleet
+  displayName: Fleet
+  baseUrl: http://localhost:4002
+  owner: team
+  audience: [internal, external]
+  public:
+    service: shared
+    resources: []
+`,
+        {},
+      ),
+    ).toThrow(/shared/);
+  });
+});

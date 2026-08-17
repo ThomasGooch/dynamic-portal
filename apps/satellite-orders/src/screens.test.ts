@@ -51,7 +51,25 @@ describe("manifest", () => {
     expect(declared).toEqual(expect.arrayContaining(["orders.list", "orders.detail"]));
   });
 
-  it("declares itself internal-only", () => {
-    expect(manifest().audience).toEqual(["internal"]);
+  it("publishes exactly the two screens a customer may read, and nothing else", () => {
+    // The satellite's half of the bargain. The registry may name whatever it
+    // likes publicly; nothing is reachable until this file agrees. Pinned to an
+    // exact list so widening it is a deliberate change to this test, not a side
+    // effect of editing the one beside it.
+    const declared = manifest();
+    expect(declared.audience).toEqual(["internal", "external"]);
+
+    const external = declared.screens
+      .filter((screen) => screen.audience.includes("external"))
+      .map((screen) => screen.id);
+    expect(external).toEqual(["orders.list", "orders.detail"]);
+  });
+
+  it("keeps every action internal, including the one the registry could publish", () => {
+    // Approving an order is staff work. A customer reading their own orders is
+    // not the same permission, and the audience model is where that is said.
+    for (const action of manifest().actions) {
+      expect(action.audience, action.id).toEqual(["internal"]);
+    }
   });
 });

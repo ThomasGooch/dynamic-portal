@@ -30,6 +30,7 @@ COPY packages/catalog/package.json   packages/catalog/package.json
 COPY packages/registry/package.json  packages/registry/package.json
 COPY packages/mcp-gateway/package.json packages/mcp-gateway/package.json
 COPY packages/agent/package.json packages/agent/package.json
+COPY packages/public-api/package.json packages/public-api/package.json
 COPY apps/satellite-orders/package.json apps/satellite-orders/package.json
 COPY apps/hub/package.json apps/hub/package.json
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \

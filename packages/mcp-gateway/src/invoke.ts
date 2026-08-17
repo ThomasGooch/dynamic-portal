@@ -180,7 +180,7 @@ function failureMessage(tool: ToolDescriptor, failure: Failure): string {
   }
 }
 
-type Checked =
+export type Checked =
   | { readonly ok: true; readonly value: Record<string, unknown> }
   | { readonly ok: false; readonly message: string };
 
@@ -196,7 +196,7 @@ type Checked =
  * Undeclared fields are refused in both. Coercion applies to the type of a
  * declared parameter, never to whether it was declared at all.
  */
-function checkArguments(
+export function checkArguments(
   schema: JsonObjectSchema,
   args: Readonly<Record<string, unknown>>,
   kind: "read" | "write",

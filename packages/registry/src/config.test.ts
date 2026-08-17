@@ -41,12 +41,32 @@ describe("the committed registry", () => {
     expect(ports).toEqual({ orders: "4001", fleet: "4002" });
   });
 
-  it("is entirely internal-only, so nothing is externally reachable by accident", () => {
-    // If this ever fails, someone widened a satellite's audience — which may be
-    // correct, but should be a deliberate, reviewed change rather than a
-    // side effect.
+  it("exposes exactly one satellite externally, and names which", () => {
+    // If this ever fails, someone widened a satellite's audience. That may well
+    // be correct — it was, for `orders` — but it has to be a deliberate change
+    // to this list rather than a side effect of editing the file beside it.
+    const external = registry
+      .filter((satellite) => satellite.audience.includes("external"))
+      .map((satellite) => satellite.id);
+    expect(external).toEqual(["orders"]);
+  });
+
+  it("brokers the external one under public names, never its internal ids", () => {
+    const projection = registry.find((satellite) => satellite.id === "orders")?.public;
+    expect(projection?.service).toBe("order-management");
+    expect(projection?.resources.map((resource) => resource.name)).toEqual(["orders", "order"]);
+    // Nothing is offered as an operation yet, deliberately: external clients
+    // read their orders and staff approve them.
+    expect(projection?.operations).toEqual([]);
+  });
+
+  it("gives no satellite a public projection it has not been widened for", () => {
+    // The registry schema refuses this outright; asserted here because the
+    // committed file is the one that actually ships.
     for (const satellite of registry) {
-      expect(satellite.audience, `${satellite.id}`).toEqual(["internal"]);
+      if (satellite.public !== undefined) {
+        expect(satellite.audience, satellite.id).toContain("external");
+      }
     }
   });
 
@@ -81,7 +101,10 @@ describe("the committed registry", () => {
     ]);
   });
 
-  it("shows an external principal nothing at all today", () => {
-    expect(visibleSatellites(registry, principal({ audience: "external" }))).toEqual([]);
+  it("shows an external principal only the satellite that was widened for them", () => {
+    const visible = visibleSatellites(registry, principal({ audience: "external" })).map(
+      (satellite) => satellite.id,
+    );
+    expect(visible).toEqual(["orders"]);
   });
 });

@@ -19,6 +19,21 @@
     order: 10
   rbacScopes: [orders.read]
   timeoutMs: 3000
+  # Brokered to external clients under names the platform team assigns. The
+  # mapping is the whole point: a satellite team renaming `orders.list` changes
+  # this line, not every partner's integration.
+  #
+  # Declaring a name here is only half of it — the satellite's own manifest has
+  # to mark the screen external too. `orders.approve` is deliberately absent:
+  # the façade supports operations, and nothing is exposed as one yet.
+  audience: [internal, external]
+  public:
+    service: order-management
+    resources:
+      - name: orders
+        screenId: orders.list
+      - name: order
+        screenId: orders.detail
   # Tool policy is the governance file, and it governs *writes*. Screens are
   # agent-readable without an entry here — they are already bounded by audience
   # and scopes, and requiring one per screen would mean adding a screen needed a

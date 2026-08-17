@@ -46,8 +46,27 @@ function principal(over: Record<string, unknown> = {}): string {
 const bearer = (token = principal()) => ({ authorization: `Bearer ${token}` });
 
 const SATELLITES = [
-  { name: "satellite-orders", base: ORDERS, id: "orders", screen: "orders.list", lang: "TypeScript" },
-  { name: "satellite-fleet", base: FLEET, id: "fleet", screen: "fleet.dashboard", lang: "Python" },
+  {
+    name: "satellite-orders",
+    base: ORDERS,
+    id: "orders",
+    screen: "orders.list",
+    lang: "TypeScript",
+    // Widened for the brokered public API, and only this screen. Written per
+    // satellite rather than asserted uniformly, because "everything is
+    // internal" stopped being true the moment external clients were in scope.
+    audience: ["internal", "external"],
+    externalScreen: 200,
+  },
+  {
+    name: "satellite-fleet",
+    base: FLEET,
+    id: "fleet",
+    screen: "fleet.dashboard",
+    lang: "Python",
+    audience: ["internal"],
+    externalScreen: 403,
+  },
 ] as const;
 
 for (const sat of SATELLITES) {
@@ -63,7 +82,7 @@ for (const sat of SATELLITES) {
       expect(res.ok()).toBe(true);
       const manifest = ManifestSchema.parse(await res.json());
       expect(manifest.satelliteId).toBe(sat.id);
-      expect(manifest.audience).toEqual(["internal"]);
+      expect(manifest.audience).toEqual(sat.audience);
     });
 
     test("serves a screen that conforms to the published protocol", async ({ request }) => {
@@ -113,7 +132,10 @@ for (const sat of SATELLITES) {
       const res = await request.get(`${sat.base}/portal/screens/${sat.screen}`, {
         headers: bearer(principal({ audience: "external" })),
       });
-      expect(res.status()).toBe(403);
+      // A satellite that published this screen serves it; one that did not
+      // refuses it. Either way the signature was valid, so this is the
+      // satellite enforcing audience rather than trusting the hub to filter.
+      expect(res.status()).toBe(sat.externalScreen);
     });
   });
 }

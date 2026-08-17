@@ -50,7 +50,14 @@ export {
 } from "./extract";
 
 export {
+  /**
+   * Exported because the public API façade enforces the same rule at its own
+   * edge. Sharing it beats a second implementation of the check that already
+   * had a prototype-chain bug in it once.
+   */
+  checkArguments,
   invokeTool,
+  type Checked,
   type InvokeDeps,
   type ToolFailureReason,
   type ToolResult,

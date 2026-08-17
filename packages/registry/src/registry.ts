@@ -62,6 +62,57 @@ const ToolPolicySchema = z
   })
   .strict();
 
+/**
+ * A name an external client sees.
+ *
+ * Deliberately a different grammar from `IdSchema`: internal ids are dotted
+ * (`orders.list`), public names are not. Keeping the two apart is what stops
+ * the public contract from quietly becoming a mirror of the private one, which
+ * is the whole reason the two are versioned separately.
+ */
+const PublicNameSchema = z
+  .string()
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'public names are lower-kebab, e.g. "order-management"');
+
+/**
+ * What this satellite offers to brokered external clients, and under what
+ * names.
+ *
+ * The mapping is the decoupling PLAN.md promises. Without it the public
+ * contract *is* the screen ids, and a satellite renaming a screen breaks every
+ * external client — the coupling that separate versioning exists to avoid. It
+ * lives in the registry rather than the manifest because the platform team owns
+ * the public contract and satellite teams own their declarations.
+ */
+const PublicProjectionSchema = z
+  .object({
+    service: PublicNameSchema,
+    resources: z
+      .array(z.object({ name: PublicNameSchema, screenId: IdSchema }).strict())
+      .default([]),
+    operations: z
+      .array(z.object({ name: PublicNameSchema, actionId: IdSchema }).strict())
+      .default([]),
+  })
+  .strict()
+  .superRefine((projection, ctx) => {
+    for (const [label, names] of [
+      ["resource", projection.resources.map((entry) => entry.name)],
+      ["operation", projection.operations.map((entry) => entry.name)],
+    ] as const) {
+      const seen = new Set<string>();
+      for (const name of names) {
+        if (seen.has(name)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `two ${label}s share the public name "${name}"`,
+          });
+        }
+        seen.add(name);
+      }
+    }
+  });
+
 export const SatelliteSchema = z
   .object({
     id: IdSchema,
@@ -80,6 +131,8 @@ export const SatelliteSchema = z
     // tool name, so `"  weird key !!"` must be rejected here rather than
     // discovered by whatever consumes the projection.
     tools: z.record(IdSchema, ToolPolicySchema).default({}),
+    /** Absent means this satellite is not brokered to external clients at all. */
+    public: PublicProjectionSchema.optional(),
   })
   .strict()
   .superRefine((satellite, ctx) => {
@@ -88,6 +141,18 @@ export const SatelliteSchema = z
     // still mark a tool ["external"], and a projection that filters on the
     // tool's own audience — the natural reading — would publish it outside the
     // org.
+    if (satellite.public !== undefined && !satellite.audience.includes("external")) {
+      // Default-deny downwards, the same rule screens and tools follow. A
+      // public name on a satellite that is not externally visible is a
+      // contradiction, and the safe reading of a contradiction is to refuse it.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["public"],
+        message:
+          'this satellite declares a public projection but is not marked external; add "external" to its audience or remove the projection',
+      });
+    }
+
     for (const [toolId, tool] of Object.entries(satellite.tools)) {
       if (!isAudienceSubset(tool.audience, satellite.audience)) {
         ctx.addIssue({
@@ -134,6 +199,9 @@ export function loadRegistry(
 
   const satellites: Satellite[] = [];
   const seen = new Set<string>();
+  // The public namespace is flat and, once published, permanent. Two satellites
+  // claiming one service name is two solutions answering the same url.
+  const services = new Map<string, string>();
 
   for (const [index, entry] of raw.entries()) {
     const parsed = SatelliteSchema.safeParse(entry);
@@ -151,6 +219,18 @@ export function loadRegistry(
       );
     }
     seen.add(parsed.data.id);
+
+    const service = parsed.data.public?.service;
+    if (service !== undefined) {
+      const claimed = services.get(service);
+      if (claimed !== undefined) {
+        throw new RegistryError(
+          `registry entry ${index} claims the public service name "${service}", which "${claimed}" already uses`,
+        );
+      }
+      services.set(service, parsed.data.id);
+    }
+
     satellites.push(parsed.data);
   }
 
