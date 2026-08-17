@@ -15,8 +15,16 @@ import type { z } from "zod";
  * **Every builder validates as it builds.** A prop the compiler cannot catch —
  * a `Link.href` that is not http(s), a `Table` whose columns are the wrong
  * shape at runtime because the data came from somewhere untyped — throws where
- * it was written, with the component named. The cost is a Zod parse per node on
- * a screen of a few dozen; the alternative is a stack trace three systems away.
+ * it was written, with the component named. The alternative is a stack trace
+ * three systems away.
+ *
+ * The cost is a Zod parse per node, and an earlier version of this comment
+ * described that as trivial "on a screen of a few dozen" nodes. That is false
+ * for the component that matters: `Table.rows` is unbounded satellite *data*,
+ * so a ten-thousand-row screen validates ten thousand records. The parse result
+ * is discarded rather than returned, so at least nothing is cloned — see below
+ * for why that is safe — but a satellite serving very large tables should build
+ * its screen once and cache it rather than per request.
  *
  * **Children are accepted everywhere and rendered where they mean something.**
  * The catalog does not say which components take children, so neither does
@@ -25,7 +33,13 @@ import type { z } from "zod";
  * have.
  */
 
-export type PropsOf<N extends ComponentName> = z.infer<(typeof COMPONENTS)[N]>;
+/**
+ * What a builder is *given*, which is the schema's input rather than its
+ * output. Identical today because no component declares a default; the day one
+ * does, `z.infer` would start demanding that the author supply the very prop
+ * the default exists to supply.
+ */
+export type PropsOf<N extends ComponentName> = z.input<(typeof COMPONENTS)[N]>;
 
 export class InvalidNodeError extends Error {
   constructor(
@@ -61,9 +75,13 @@ function build<N extends ComponentName>(name: N): Builder<N> {
       );
     }
 
+    // The caller's own object, not the parse output. Zod's `.parse` returns a
+    // deep copy, which for a `Table` means cloning every row on every request
+    // for no benefit — nothing here reads the parsed value. Safe only because
+    // no catalog component declares a default; a test below holds that true.
     return {
       type: name,
-      props: parsed.data as Record<string, unknown>,
+      props: props as Record<string, unknown>,
       ...(children.length > 0 ? { children } : {}),
     };
   };

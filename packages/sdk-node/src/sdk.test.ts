@@ -44,6 +44,28 @@ describe("building a node", () => {
     }
   });
 
+  it("declares no defaults anywhere in the catalog", async () => {
+    // Load-bearing. `build()` returns the caller's props rather than the parse
+    // output, to avoid deep-copying every row of a table on every request. That
+    // is only equivalent while no component fills anything in — the day one
+    // does, a builder would silently stop applying it.
+    const { COMPONENTS, COMPONENT_NAMES } = await import("@portal/catalog");
+    for (const name of COMPONENT_NAMES) {
+      const parsed = COMPONENTS[name].safeParse({});
+      // An empty object either fails (required props) or round-trips to an
+      // empty object. Anything appearing out of nowhere is a default.
+      if (parsed.success) expect(parsed.data, name).toEqual({});
+    }
+  });
+
+  it("does not copy the data it was handed", () => {
+    // A `Table` on a large screen carries thousands of rows; cloning them per
+    // request buys nothing, since nothing reads the parsed value.
+    const rows = [{ id: "ord-1" }];
+    const node = ui.Table({ columns: [{ key: "id", label: "Id" }], rows });
+    expect((node.props as { rows: unknown[] }).rows).toBe(rows);
+  });
+
   it("names a node for a patch to address, without touching its props", () => {
     const node = withId("orders-table", ui.Table({ columns: [{ key: "id", label: "Id" }] }));
     expect(node.id).toBe("orders-table");
@@ -100,6 +122,20 @@ describe("the screen envelope", () => {
   it("refuses a screen the hub would reject", () => {
     expect(() => screen({ id: "", title: "T", ui: ui.Page({}) })).toThrow(InvalidEnvelopeError);
   });
+
+  it("refuses a subtree that never went through a builder", () => {
+    // The last way round the SDK: a helper returning `UiNode`, or a literal
+    // someone wrote in a hurry. `ScreenResponseSchema` checks the tree is a
+    // tree and does not know the component vocabulary, so without the catalog
+    // pass this reached the hub and was refused whole.
+    expect(() =>
+      screen({
+        id: "orders.list",
+        title: "Orders",
+        ui: { type: "Text", props: { txt: "hand written" } },
+      }),
+    ).toThrow(InvalidEnvelopeError);
+  });
 });
 
 describe("the action envelope", () => {
@@ -108,6 +144,16 @@ describe("the action envelope", () => {
       protocol: CURRENT_PROTOCOL_VERSION,
       outcome: "ok",
       toast: { level: "success", message: "Order approved." },
+    });
+  });
+
+  it("lets a success that restates the world say so", () => {
+    // A refresh reloaded a table; nothing was achieved. Hardcoding "success"
+    // would make every such response read as a congratulation, and the
+    // protocol's `info` level unreachable through the SDK.
+    expect(ok({ level: "info", message: "Orders reloaded." }).toast).toEqual({
+      level: "info",
+      message: "Orders reloaded.",
     });
   });
 
@@ -164,6 +210,18 @@ describe("the manifest", () => {
         nav: [{ screenId: "orders.gone", label: "Gone" }],
       }),
     ).toThrow(InvalidEnvelopeError);
+  });
+
+  it("keeps the parse issues on the error rather than only in its message", () => {
+    // A satellite that wants to point at the offending field should not have
+    // to take the message back apart to find it.
+    try {
+      manifest({ satelliteId: "orders", displayName: "Orders", screens: [] , nav: [{ screenId: "gone", label: "Gone" }] });
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(InvalidEnvelopeError);
+      expect((error as InvalidEnvelopeError).issues[0]?.path).toBe("nav.0.screenId");
+    }
   });
 
   it("refuses a screen exposed to an audience its satellite is not", () => {
