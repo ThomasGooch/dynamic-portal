@@ -1,9 +1,6 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import {
-  CURRENT_PROTOCOL_VERSION,
-  type ActionResponse,
-  type Audience,
-} from "@portal/protocol";
+import { CURRENT_PROTOCOL_VERSION, type Audience } from "@portal/protocol";
+import { failed, invalid, ok } from "@portal/sdk-node";
 import {
   InvalidPrincipalError,
   authorize,
@@ -192,12 +189,7 @@ export function createApp({
       const body = (req.body ?? {}) as { id?: unknown };
 
       if (typeof body.id !== "string" || body.id === "") {
-        const response: ActionResponse = {
-          protocol: CURRENT_PROTOCOL_VERSION,
-          outcome: "validation",
-          fieldErrors: { id: "An order id is required." },
-        };
-        res.json(response);
+        res.json(invalid({ id: "An order id is required." }));
         return;
       }
 
@@ -209,12 +201,7 @@ export function createApp({
       }
 
       if (!result.ok) {
-        const response: ActionResponse = {
-          protocol: CURRENT_PROTOCOL_VERSION,
-          outcome: "error",
-          toast: { level: "error", message: "Only pending orders can be approved." },
-        };
-        res.json(response);
+        res.json(failed("Only pending orders can be approved."));
         return;
       }
 
@@ -223,13 +210,12 @@ export function createApp({
       // learn which screen invoked it, so a satellite may only send a patch
       // when every route to the action is on the screen the patch addresses.
       // See `orders.refresh` for the other side of that rule.
-      const response: ActionResponse = {
-        protocol: CURRENT_PROTOCOL_VERSION,
-        outcome: "ok",
-        toast: { level: "success", message: `Order ${body.id} approved.` },
-        navigate: { screenId: "orders.list" },
-      };
-      res.json(response);
+      res.json(
+        ok({
+          message: `Order ${body.id} approved.`,
+          navigate: { screenId: "orders.list" },
+        }),
+      );
     },
   );
 
@@ -241,15 +227,15 @@ export function createApp({
       // A patch rather than a whole screen: the hub replaces one node instead
       // of re-rendering the page, which is what keeps an action cheap. The
       // button that fires this sits beside the table it addresses.
-      const response: ActionResponse = {
-        protocol: CURRENT_PROTOCOL_VERSION,
-        outcome: "ok",
-        toast: { level: "info", message: "Orders reloaded." },
-        patch: [
-          { targetId: "orders-table", ui: ordersTable(repository.list(req.principal!.tenantId)) },
-        ],
-      };
-      res.json(response);
+      res.json(
+        ok({
+          level: "info",
+          message: "Orders reloaded.",
+          patch: [
+            { targetId: "orders-table", ui: ordersTable(repository.list(req.principal!.tenantId)) },
+          ],
+        }),
+      );
     },
   );
 

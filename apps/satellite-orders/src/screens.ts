@@ -1,9 +1,5 @@
-import {
-  CURRENT_PROTOCOL_VERSION,
-  type Manifest,
-  type ScreenResponse,
-  type UiNode,
-} from "@portal/protocol";
+import type { Manifest, ScreenResponse, UiNode } from "@portal/protocol";
+import { manifest as declare, screen, ui, withId } from "@portal/sdk-node";
 import type { Order } from "./repository";
 
 /**
@@ -12,6 +8,11 @@ import type { Order } from "./repository";
  * Note what is absent: any styling. The satellite says "this is a Table with
  * these columns" and "this Badge has tone danger"; how a danger badge looks is
  * the hub's business. That is the whole bargain.
+ *
+ * Written through `@portal/sdk-node` rather than as object literals. The
+ * difference is where a mistake surfaces: `ui.Text({ txt: … })` does not
+ * compile, and a `tone` the catalog does not have throws on this line instead
+ * of arriving at the hub as a screen it refuses whole.
  */
 
 const money = (order: Order): string =>
@@ -19,8 +20,10 @@ const money = (order: Order): string =>
     order.total,
   );
 
-const statusTone = (status: Order["status"]): string =>
-  ({ pending: "warning", approved: "success", shipped: "info", cancelled: "danger" })[status];
+const statusTone = (status: Order["status"]) =>
+  ({ pending: "warning", approved: "success", shipped: "info", cancelled: "danger" })[
+    status
+  ] as "warning" | "success" | "info" | "danger";
 
 /** Rows are shaped for display — tenantId never crosses the wire. */
 function toRow(order: Order): Record<string, unknown> {
@@ -35,8 +38,7 @@ function toRow(order: Order): Record<string, unknown> {
 }
 
 export function manifest(): Manifest {
-  return {
-    protocol: CURRENT_PROTOCOL_VERSION,
+  return declare({
     satelliteId: "orders",
     displayName: "Order Management",
     description: "Track, review, and approve customer orders.",
@@ -82,14 +84,13 @@ export function manifest(): Manifest {
     ],
     nav: [{ screenId: "orders.list", label: "Orders", section: "Operations", order: 10 }],
     healthPath: "/healthz",
-  };
+  });
 }
 
 export function ordersTable(orders: Order[]): UiNode {
-  return {
-    type: "Table",
-    id: "orders-table",
-    props: {
+  return withId(
+    "orders-table",
+    ui.Table({
       columns: [
         { key: "id", label: "Order" },
         { key: "customer", label: "Customer" },
@@ -100,117 +101,94 @@ export function ordersTable(orders: Order[]): UiNode {
       rows: orders.map(toRow),
       rowAction: { screenId: "orders.detail", paramKey: "id" },
       emptyMessage: "No orders yet.",
-    },
-  };
+    }),
+  );
 }
 
 export function listScreen(orders: Order[]): ScreenResponse {
-  const pending = orders.filter((o) => o.status === "pending").length;
-  const blocked = orders.filter((o) => o.blockedByVehicleId).length;
-  return {
-    protocol: CURRENT_PROTOCOL_VERSION,
-    screen: { id: "orders.list", title: "Orders" },
-    ui: {
-      type: "Page",
-      children: [
-        {
-          type: "Grid",
-          props: { columns: 3 },
-          children: [
-            { type: "StatTile", props: { label: "Total orders", value: String(orders.length) } },
-            { type: "StatTile", props: { label: "Pending", value: String(pending), tone: "warning" } },
-            {
-              type: "StatTile",
-              props: {
-                label: "Blocked",
-                value: String(blocked),
-                tone: blocked > 0 ? "danger" : "muted",
-              },
-            },
-          ],
-        },
-        {
-          type: "Section",
-          props: { title: "All orders" },
-          children: [
-            ordersTable(orders),
-            {
-              type: "Stack",
-              props: { direction: "row", gap: "sm", align: "end" },
-              children: [
-                {
-                  type: "Button",
-                  props: {
-                    label: "Refresh",
-                    variant: "secondary",
-                    size: "sm",
-                    // Patches only if the node they address is on the screen
-                    // the user is looking at, and an action does not know which
-                    // screen that is. This button and `orders-table` are on the
-                    // same screen, which is what makes the patch safe to send.
-                    action: { actionId: "orders.refresh" },
-                  },
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-    meta: { ttlSeconds: 15 },
-  };
+  const pending = orders.filter((order) => order.status === "pending").length;
+  const blocked = orders.filter((order) => order.blockedByVehicleId).length;
+
+  return screen({
+    id: "orders.list",
+    title: "Orders",
+    ttlSeconds: 15,
+    ui: ui.Page(
+      {},
+      ui.Grid(
+        { columns: 3 },
+        ui.StatTile({ label: "Total orders", value: String(orders.length) }),
+        ui.StatTile({ label: "Pending", value: String(pending), tone: "warning" }),
+        ui.StatTile({
+          label: "Blocked",
+          value: String(blocked),
+          tone: blocked > 0 ? "danger" : "muted",
+        }),
+      ),
+      ui.Section(
+        { title: "All orders" },
+        ordersTable(orders),
+        ui.Stack(
+          { direction: "row", gap: "sm", align: "end" },
+          ui.Button({
+            label: "Refresh",
+            variant: "secondary",
+            size: "sm",
+            // Patches only if the node they address is on the screen the user
+            // is looking at, and an action does not know which screen that is.
+            // This button and `orders-table` are on the same screen, which is
+            // what makes the patch safe to send.
+            action: { actionId: "orders.refresh" },
+          }),
+        ),
+      ),
+    ),
+  });
 }
 
 export function detailScreen(order: Order): ScreenResponse {
   const canApprove = order.status === "pending";
-  return {
-    protocol: CURRENT_PROTOCOL_VERSION,
-    screen: {
-      id: "orders.detail",
-      title: `Order ${order.id}`,
-      breadcrumbs: [{ label: "Orders", screenId: "orders.list" }, { label: order.id }],
-    },
-    ui: {
-      type: "Page",
-      children: [
-        {
-          type: "Card",
-          children: [
-            {
-              type: "KeyValueList",
-              props: {
-                items: [
-                  { label: "Customer", value: order.customer },
-                  { label: "Total", value: money(order) },
-                  { label: "Status", value: order.status, as: "badge", tone: statusTone(order.status) },
-                  { label: "Placed", value: order.placedAt, as: "date" },
-                  ...(order.blockedByVehicleId
-                    ? [{ label: "Blocked by vehicle", value: order.blockedByVehicleId }]
-                    : []),
-                ],
-              },
-            },
+
+  return screen({
+    id: "orders.detail",
+    title: `Order ${order.id}`,
+    breadcrumbs: [{ label: "Orders", screenId: "orders.list" }, { label: order.id }],
+    ui: ui.Page(
+      {},
+      ui.Card(
+        {},
+        ui.KeyValueList({
+          items: [
+            { label: "Customer", value: order.customer },
+            { label: "Total", value: money(order) },
+            { label: "Status", value: order.status, as: "badge", tone: statusTone(order.status) },
+            { label: "Placed", value: order.placedAt, as: "date" },
+            ...(order.blockedByVehicleId
+              ? [{ label: "Blocked by vehicle", value: order.blockedByVehicleId }]
+              : []),
           ],
-        },
-        {
-          type: "Stack",
-          props: { direction: "row", gap: "sm" },
-          children: [
-            {
-              type: "Button",
-              props: {
-                label: canApprove ? "Approve order" : "Already processed",
-                variant: canApprove ? "primary" : "secondary",
-                disabled: !canApprove,
-                action: { actionId: "orders.approve", payload: { id: order.id } },
-                confirm: canApprove
-                  ? { title: "Approve this order?", body: `${order.id} — ${money(order)}` }
-                  : undefined,
-              },
-            },
-          ],
-        },
-      ],
-    },
-  };
+        }),
+      ),
+      ui.Stack(
+        { direction: "row", gap: "sm" },
+        ui.Button({
+          label: canApprove ? "Approve order" : "Already processed",
+          variant: canApprove ? "primary" : "secondary",
+          disabled: !canApprove,
+          action: { actionId: "orders.approve", payload: { id: order.id } },
+          // Spread rather than set to `undefined`: the catalog is strict, and
+          // an explicitly-undefined optional is a different thing from an
+          // absent one under `exactOptionalPropertyTypes`.
+          ...(canApprove
+            ? {
+                confirm: {
+                  title: "Approve this order?",
+                  body: `${order.id} — ${money(order)}`,
+                },
+              }
+            : {}),
+        }),
+      ),
+    ),
+  });
 }

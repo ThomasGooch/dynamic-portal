@@ -308,6 +308,8 @@ A dedicated platform team makes this viable; it does not make it automatic. The 
 
 ## Library choices (reuse over build)
 
+**The SDK is builders and nothing else — no server, no router, no framework.** A satellite is an ordinary HTTP service in whatever stack its team already runs, and the moment this package has an opinion about that it stops being adoptable by the teams that most need it. What it does have is the compiler: `{ type: "Text", props: { txt: "hi" } }` typed as a `UiNode` compiles clean, because `props` is `Record<string, unknown>`; `ui.Text({ txt: "hi" })` does not. `satellite-orders` is written through it, which is both the proof and the example.
+
 | Need | Use |
 |---|---|
 | JSON-tree renderer | **Ours** — `apps/hub/src/renderer`. See the reversal note below |
@@ -378,7 +380,7 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 13. Outward MCP server — aggregated tools over one governed endpoint *(done)*; `ui://` resources and the MCP Apps path *(deferred with M3's third-party work)*.
 14. MCP→PUP generation — a tools-only satellite gets generated screens.
 15. Third-party MCP path — compliant sandboxed-iframe fallback with foreign-source chrome.
-16. `packages/conformance` — the CLI a satellite team runs against their own service *(done)*; `packages/sdk-node` typed builders *(next)*.
+16. `packages/conformance` and `packages/sdk-node` — the adoption ergonomics that decide whether teams onboard *(done)*.
 
 ---
 

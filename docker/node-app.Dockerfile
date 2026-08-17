@@ -43,6 +43,7 @@ COPY packages/agent/package.json packages/agent/package.json
 COPY packages/public-api/package.json packages/public-api/package.json
 COPY packages/mcp-server/package.json packages/mcp-server/package.json
 COPY packages/conformance/package.json packages/conformance/package.json
+COPY packages/sdk-node/package.json packages/sdk-node/package.json
 COPY apps/satellite-orders/package.json apps/satellite-orders/package.json
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile
