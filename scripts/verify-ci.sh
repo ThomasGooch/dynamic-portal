@@ -37,6 +37,12 @@ pnpm test:unit
 step "node: test - integration"
 pnpm test:integration
 
+step "sdk: regenerate from the catalog and check for drift"
+# The Python SDK is generated from the catalog. Regenerating and diffing is what
+# makes "it cannot drift" a fact rather than an intention: a component added to
+# the catalog without regenerating fails here, not in a satellite six weeks on.
+pnpm sdk:check
+
 step "python: install (--frozen)"
 (cd apps/satellite-fleet && uv sync --frozen)
 
@@ -45,5 +51,10 @@ step "python: test - unit"
 
 step "python: test - integration"
 (cd apps/satellite-fleet && uv run pytest -m integration)
+
+step "python: test - sdk"
+# Run from the satellite because that is where the environment with the SDK
+# installed lives — and running it there also proves the path dependency works.
+(cd apps/satellite-fleet && uv run pytest ../../packages/sdk-python/tests -q)
 
 printf '\n\033[32mOK: CI-equivalent checks passed\033[0m\n'

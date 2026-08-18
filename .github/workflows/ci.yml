@@ -62,6 +62,13 @@ jobs:
       - name: Test — integration
         run: pnpm test:integration
 
+      # The Python SDK's `ui.py` is generated from the catalog, and `--check`
+      # compares without writing. Without this step the "it cannot drift"
+      # guarantee is asserted by a comment and enforced only by whoever
+      # remembers to run scripts/verify-ci.sh locally.
+      - name: SDK — check for drift from the catalog
+        run: pnpm sdk:check
+
   python:
     name: build + test (python)
     runs-on: ubuntu-latest
@@ -88,6 +95,12 @@ jobs:
 
       - name: Test — integration
         run: uv run pytest -m integration
+
+      # Run from the satellite because that is where the environment with the
+      # SDK installed lives — which also proves the editable path dependency
+      # resolves.
+      - name: Test — sdk
+        run: uv run pytest ../../packages/sdk-python/tests -q
 
 # The e2e tier is deliberately not run here: it needs the Docker stack up, and
 # this workflow is scoped to build + test. Adding it later is `pnpm up` followed

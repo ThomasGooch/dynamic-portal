@@ -6,7 +6,14 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "portal-sdk",
 ]
+
+# A path dependency rather than a published package: the SDK is generated from
+# the hub's catalog in this repository, and a version of it that could lag the
+# catalog is the drift the generator exists to prevent.
+[tool.uv.sources]
+portal-sdk = { path = "../../packages/sdk-python", editable = true }
 
 [dependency-groups]
 dev = [

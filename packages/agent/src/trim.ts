@@ -58,21 +58,29 @@ function startsATurn(message: Message): boolean {
  *
  * **What it cannot do.** If a single turn is itself over budget — one tool
  * result carrying thousands of rows — there is no cut that helps, and the
- * oversized turn is returned as it is. Trimming inside a turn would mean
- * editing a `tool_result` whose content grounding cites, and a citation that
- * resolves to a doctored result is worse than a conversation that ends.
+ * newest whole turn is returned still over budget. Trimming inside a turn would
+ * mean editing a `tool_result` whose content grounding cites, and a citation
+ * that resolves to a doctored result is worse than a conversation that ends.
  */
 export function trimConversation(messages: readonly Message[], budget: number): Message[] {
   if (weigh(messages) <= budget) return [...messages];
 
   // Every index a conversation could legally restart from, nearest first.
+  // `smallest` is the tightest legal cut seen so far, kept for the case where
+  // none of them fits.
+  let smallest: readonly Message[] = messages;
   for (let index = 1; index < messages.length; index += 1) {
     const candidate = messages[index];
     if (candidate === undefined || !startsATurn(candidate)) continue;
 
     const kept = messages.slice(index);
     if (weigh(kept) <= budget) return [...kept];
+    smallest = kept;
   }
 
-  return [...messages];
+  // Nothing fits, so some single turn is over budget on its own. There is no
+  // safe cut *inside* that turn — but there is no reason to carry every turn
+  // before it either, and keeping them is what turns "one oversized turn" into
+  // a body large enough for the hub to refuse outright.
+  return [...smallest];
 }

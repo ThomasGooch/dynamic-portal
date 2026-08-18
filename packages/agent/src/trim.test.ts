@@ -85,6 +85,18 @@ describe("trimming a conversation the hub would otherwise refuse", () => {
     expect(trimConversation(huge, 100)).toEqual(huge);
   });
 
+  it("keeps only the newest turn when no cut fits, not the whole conversation", () => {
+    // Two ordinary turns followed by one carrying a tool result larger than the
+    // budget on its own. No cut fits, but returning everything makes the body
+    // three turns bigger than it has to be — and it is the body size that
+    // decides whether the next turn is refused outright.
+    const messages = [...turn(1), ...turn(2), ...turn(3, 5_000)];
+    const trimmed = trimConversation(messages, 1_000);
+
+    expect(trimmed).toEqual(turn(3, 5_000));
+    expect(bytes(trimmed)).toBeLessThan(bytes(messages));
+  });
+
   it("measures bytes rather than characters, so non-ASCII is not undercounted", () => {
     const ascii = [...turn(1), ...turn(2)];
     const wide: Message[] = ascii.map((m) => ({

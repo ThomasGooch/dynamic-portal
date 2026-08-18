@@ -111,7 +111,36 @@ export function withId(id: string, node: UiNode): UiNode {
   return { ...node, id };
 }
 
-/** Ties a value to the tool call that produced it. See PLAN.md on grounding. */
+/**
+ * Ties a value to the tool call that produced it. See PLAN.md on grounding.
+ *
+ * **A prop, unlike `id`.** The catalog declares `source` on each of the four
+ * data-bearing components, grounding reads `props.source` when it decides
+ * whether a number is cited, and every provenance mark the renderer draws
+ * reads the same place. `UiNode` also carries a top-level `source` field, and
+ * this function used to set that one — which nothing anywhere reads. A
+ * satellite following the documented way to cite a tool call got a node with
+ * no mark on screen and no credit from grounding.
+ *
+ * Its test asserted the field the function set rather than the field the
+ * system reads, so it passed throughout. The test below now goes through the
+ * catalog instead.
+ */
 export function withSource(toolCallId: string, node: UiNode): UiNode {
-  return { ...node, source: { toolCallId } };
+  // Only the data-bearing components declare `source`, and every component
+  // schema is strict — so citing a `Text` produces a node the hub refuses.
+  // Refusing here instead names the mistake where it was made, and lists the
+  // components that can carry a citation at all.
+  if (!CITABLE.has(node.type)) {
+    throw new Error(
+      `${node.type} cannot carry a source. Only ${[...CITABLE].sort().join(", ")} declare one, ` +
+        "because only they display data a citation would refer to.",
+    );
+  }
+  return { ...node, props: { ...node.props, source: { toolCallId } } };
 }
+
+/** The components whose schema declares `source`, read from the catalog. */
+const CITABLE: ReadonlySet<string> = new Set(
+  COMPONENT_NAMES.filter((name) => "source" in COMPONENTS[name].shape),
+);

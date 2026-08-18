@@ -1,4 +1,4 @@
-import { validateNested } from "@portal/catalog";
+import { COMPONENTS, validateNested, type ComponentName } from "@portal/catalog";
 import { CURRENT_PROTOCOL_VERSION } from "@portal/protocol";
 import { describe, expect, it } from "vitest";
 import { InvalidEnvelopeError, failed, invalid, manifest, ok, screen } from "./envelopes";
@@ -72,10 +72,34 @@ describe("building a node", () => {
     expect(node.props).not.toHaveProperty("id");
   });
 
-  it("attaches provenance the same way", () => {
-    expect(withSource("call-1", ui.StatTile({ label: "Pending", value: "2" })).source).toEqual({
-      toolCallId: "call-1",
-    });
+  it("attaches provenance where grounding and the renderer actually look", () => {
+    // `props.source`, not the node's top-level `source`. Asserting the latter
+    // is what let this ship wrong: the function and its test agreed with each
+    // other and with nothing else in the system.
+    const node = withSource("call-1", ui.StatTile({ label: "Pending", value: "2" }));
+    expect(node.props).toMatchObject({ source: { toolCallId: "call-1" } });
+    expect(node).not.toHaveProperty("source");
+  });
+
+  it("refuses a component that cannot carry a citation", () => {
+    // Only four components declare `source` and every schema is strict, so
+    // citing a `Text` builds a node the hub rejects. Throwing here names the
+    // mistake at the call site rather than at request time.
+    expect(() => withSource("call-1", ui.Text({ text: "hello" }))).toThrow(
+      /cannot carry a source/,
+    );
+  });
+
+  it("produces a citation the catalog validates, which is the claim that matters", () => {
+    // Through the catalog rather than by inspection: `source` is a declared
+    // prop on every data-bearing component, so a shape the catalog rejects is
+    // a citation the hub would refuse.
+    for (const node of [
+      withSource("call-1", ui.StatTile({ label: "Pending", value: "2" })),
+      withSource("call-1", ui.Table({ columns: [{ key: "id", label: "Id" }] })),
+    ]) {
+      expect(COMPONENTS[node.type as ComponentName].safeParse(node.props).success).toBe(true);
+    }
   });
 
   it("builds trees the catalog accepts, which is the only claim that matters", () => {
