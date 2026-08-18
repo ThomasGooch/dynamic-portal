@@ -47,6 +47,24 @@
       agentVisible: true
       requiresConfirmation: true
       rbacScopes: [orders.write]
+    # Creating and changing an order are agent-reachable and both pause for a
+    # person. The satellite validates every field regardless — this governs
+    # whether a model may *propose* the write, not whether the rules apply.
+    orders.create:
+      agentVisible: true
+      requiresConfirmation: true
+      rbacScopes: [orders.write]
+    orders.update:
+      agentVisible: true
+      requiresConfirmation: true
+      rbacScopes: [orders.write]
+    # Deletion is not offered to a model at all. Confirmation is a person
+    # reading a card; invisibility is the model never raising it. For an
+    # irreversible write the second is the one worth having, and it is a
+    # decision that belongs in this file rather than in a satellite.
+    orders.delete:
+      agentVisible: false
+      rbacScopes: [orders.write]
 
 # No mcpUrl: this satellite ships no MCP server, so the hub generates a shim
 # from its PUP manifest. It is the case that keeps the shim exercised.

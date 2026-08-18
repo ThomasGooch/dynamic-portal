@@ -1,6 +1,7 @@
 import type { Manifest, ScreenResponse, UiNode } from "@portal/protocol";
 import { manifest as declare, screen, ui, withId } from "@portal/sdk-node";
 import type { Order } from "./repository";
+import { CURRENCIES, PRIORITIES, TAGS } from "./draft";
 
 /**
  * The satellite's declaration and its screens.
@@ -60,6 +61,15 @@ export function manifest(): Manifest {
         params: [{ name: "id", required: true, description: "Order id" }],
         audience: ["internal", "external"],
       },
+      // The two form screens stay internal. A customer may read their own
+      // orders through the façade; placing and editing them is staff work.
+      { id: "orders.new", title: "New order", audience: ["internal"] },
+      {
+        id: "orders.edit",
+        title: "Edit order",
+        params: [{ name: "id", required: true, description: "Order id" }],
+        audience: ["internal"],
+      },
     ],
     actions: [
       {
@@ -71,6 +81,69 @@ export function manifest(): Manifest {
         // which is better than a model guessing field names at a write.
         params: [
           { name: "id", type: "string", required: true, description: "The order id to approve." },
+        ],
+        audience: ["internal"],
+      },
+      {
+        // Declared in full so the gateway can describe it to an agent. Every
+        // field the form carries appears here, because a write an agent can
+        // only half-specify is a write it will get wrong.
+        id: "orders.create",
+        title: "Create order",
+        description: "Place a new order for this tenant.",
+        params: [
+          { name: "customer", type: "string", required: true, description: "Who the order is for." },
+          { name: "contactEmail", type: "string", required: true, description: "Where the confirmation goes." },
+          { name: "total", type: "number", required: true, description: "Order total, above zero." },
+          {
+            name: "currency",
+            type: "string",
+            required: true,
+            description: "Currency code.",
+            enum: [...CURRENCIES],
+          },
+          { name: "dueBy", type: "string", required: true, description: "Due date, YYYY-MM-DD, not in the past." },
+          {
+            name: "priority",
+            type: "string",
+            required: true,
+            description: "Standard, express or critical. Critical orders must be expedited.",
+            enum: [...PRIORITIES],
+          },
+          { name: "expedited", type: "boolean", description: "Expedite. Required for critical priority." },
+          { name: "notes", type: "string", description: "Handling notes. Required when labelled hazmat." },
+        ],
+        audience: ["internal"],
+      },
+      {
+        id: "orders.update",
+        title: "Update order",
+        description: "Change a pending or approved order.",
+        params: [
+          { name: "id", type: "string", required: true, description: "The order to change." },
+          { name: "customer", type: "string", required: true, description: "Who the order is for." },
+          { name: "contactEmail", type: "string", required: true, description: "Where the confirmation goes." },
+          { name: "total", type: "number", required: true, description: "Order total, above zero." },
+          { name: "currency", type: "string", required: true, description: "Currency code.", enum: [...CURRENCIES] },
+          { name: "dueBy", type: "string", required: true, description: "Due date, YYYY-MM-DD, not in the past." },
+          {
+            name: "priority",
+            type: "string",
+            required: true,
+            description: "Standard, express or critical.",
+            enum: [...PRIORITIES],
+          },
+          { name: "expedited", type: "boolean", description: "Expedite. Required for critical priority." },
+          { name: "notes", type: "string", description: "Handling notes." },
+        ],
+        audience: ["internal"],
+      },
+      {
+        id: "orders.delete",
+        title: "Delete order",
+        description: "Remove a pending order. Only pending orders can be removed.",
+        params: [
+          { name: "id", type: "string", required: true, description: "The order to remove." },
         ],
         audience: ["internal"],
       },
@@ -130,6 +203,7 @@ export function listScreen(orders: Order[]): ScreenResponse {
         ordersTable(orders),
         ui.Stack(
           { direction: "row", gap: "sm", align: "end" },
+          ui.Link({ label: "New order", screenId: "orders.new" }),
           ui.Button({
             label: "Refresh",
             variant: "secondary",
@@ -188,6 +262,161 @@ export function detailScreen(order: Order): ScreenResponse {
               }
             : {}),
         }),
+        ui.Link({ label: "Edit", screenId: "orders.edit", params: { id: order.id } }),
+        ui.Button({
+          label: "Delete",
+          variant: "danger",
+          // The hub draws its own confirmation, so a destructive action is
+          // never one click. Declared rather than implemented: the dialog is
+          // the shell's, and a satellite drawing its own would be drawing UI
+          // the hub owns.
+          confirm: {
+            title: "Delete this order?",
+            body: `Order ${order.id} will be removed. This cannot be undone.`,
+          },
+          action: { actionId: "orders.delete", payload: { id: order.id } },
+        }),
+      ),
+    ),
+  });
+}
+
+/**
+ * The order form, shared by create and edit.
+ *
+ * One builder for both because the fields are the same and the only
+ * differences are the action it posts to, the values it starts from, and the
+ * label on the button. Two builders would drift: a field added to create and
+ * forgotten on edit is a field a user can set and then never change.
+ *
+ * This is the first screen in the portal that asks anyone to type. Everything
+ * before it was tables, tiles and charts — the easy half of the claim that a
+ * fixed vocabulary can carry an internal application.
+ */
+export function orderForm(options: {
+  readonly actionId: string;
+  readonly submitLabel: string;
+  readonly order?: Order;
+}): UiNode {
+  const order = options.order;
+
+  return ui.Form(
+    { actionId: options.actionId, submitLabel: options.submitLabel },
+    // The id travels with the submission rather than in the URL, so the action
+    // does not have to trust a query parameter it never issued.
+    ...(order ? [ui.Hidden({ name: "id", value: order.id })] : []),
+
+    ui.Grid(
+      { columns: 2 },
+      ui.TextField({
+        name: "customer",
+        label: "Customer",
+        required: true,
+        placeholder: "Who is this order for?",
+        ...(order ? { value: order.customer } : {}),
+      }),
+      ui.TextField({
+        name: "contactEmail",
+        label: "Contact email",
+        required: true,
+        help: "Where the confirmation goes.",
+        ...(order ? { value: order.contactEmail } : {}),
+      }),
+      ui.NumberField({
+        name: "total",
+        label: "Total",
+        required: true,
+        min: 0.01,
+        max: 100000,
+        step: 0.01,
+        ...(order ? { value: order.total } : {}),
+      }),
+      ui.Select({
+        name: "currency",
+        label: "Currency",
+        required: true,
+        options: CURRENCIES.map((code) => ({ label: code, value: code })),
+        value: order?.currency ?? "USD",
+      }),
+      ui.DateField({
+        name: "dueBy",
+        label: "Due by",
+        required: true,
+        ...(order ? { value: order.dueBy } : {}),
+      }),
+      ui.MultiSelect({
+        name: "tags",
+        label: "Labels",
+        help: "Hazmat orders need handling notes.",
+        options: TAGS.map((tag) => ({ label: tag, value: tag })),
+        ...(order ? { value: order.tags } : {}),
+      }),
+    ),
+
+    ui.RadioGroup({
+      name: "priority",
+      label: "Priority",
+      required: true,
+      options: PRIORITIES.map((value) => ({ label: value, value })),
+      value: order?.priority ?? "standard",
+    }),
+
+    ui.Checkbox({
+      name: "expedited",
+      label: "Expedite this order",
+      help: "Critical orders are always expedited.",
+      ...(order ? { checked: order.expedited } : {}),
+    }),
+
+    ui.TextArea({
+      name: "notes",
+      label: "Notes",
+      rows: 3,
+      ...(order?.notes ? { value: order.notes } : {}),
+    }),
+  );
+}
+
+/** `orders.new` — an empty form. */
+export function newScreen(): ScreenResponse {
+  return screen({
+    id: "orders.new",
+    title: "New order",
+    breadcrumbs: [{ label: "Orders", screenId: "orders.list" }, { label: "New order" }],
+    ui: ui.Page(
+      { title: "New order" },
+      ui.Section(
+        { title: "Details" },
+        orderForm({ actionId: "orders.create", submitLabel: "Create order" }),
+      ),
+    ),
+  });
+}
+
+/** `orders.edit` — the same form, filled in. */
+export function editScreen(order: Order): ScreenResponse {
+  return screen({
+    id: "orders.edit",
+    title: `Edit ${order.id}`,
+    breadcrumbs: [
+      { label: "Orders", screenId: "orders.list" },
+      { label: order.id, screenId: "orders.detail" },
+      { label: "Edit" },
+    ],
+    ui: ui.Page(
+      { title: `Edit ${order.id}` },
+      ...(order.status === "pending"
+        ? []
+        : [
+            ui.Alert({
+              level: "warning",
+              title: "This order has moved on",
+              message: `It is ${order.status}. Editing is refused, and the form below is here so you can see what it holds.`,
+            }),
+          ]),
+      ui.Section(
+        { title: "Details" },
+        orderForm({ actionId: "orders.update", submitLabel: "Save changes", order }),
       ),
     ),
   });

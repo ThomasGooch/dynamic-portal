@@ -9,7 +9,8 @@ import {
 } from "@portal/identity";
 import type { Manifest } from "@portal/protocol";
 import type { OrderRepository } from "./repository";
-import { detailScreen, listScreen, manifest, ordersTable } from "./screens";
+import { readDraft } from "./draft";
+import { detailScreen, editScreen, listScreen, manifest, newScreen, ordersTable } from "./screens";
 
 export interface AppOptions {
   repository: OrderRepository;
@@ -44,6 +45,9 @@ interface AuthedRequest extends Request {
  * an ephemeral port and inject a fresh repository — the reason the integration
  * suite can run without a docker-compose dependency.
  */
+/** Today, as a `YYYY-MM-DD` string — what a `DateField` submits. */
+const today = (): string => new Date().toISOString().slice(0, 10);
+
 export function createApp({
   repository,
   principalSecret,
@@ -174,6 +178,21 @@ export function createApp({
           return;
         }
 
+        case "orders.new":
+          res.json(newScreen());
+          return;
+
+        case "orders.edit": {
+          const id = typeof req.query["id"] === "string" ? req.query["id"] : "";
+          const order = repository.get(tenantId, id);
+          if (!order) {
+            res.status(404).json({ error: "order not found" });
+            return;
+          }
+          res.json(editScreen(order));
+          return;
+        }
+
         default:
           res.status(404).json({ error: "unknown screen" });
       }
@@ -213,6 +232,102 @@ export function createApp({
       res.json(
         ok({
           message: `Order ${body.id} approved.`,
+          navigate: { screenId: "orders.list" },
+        }),
+      );
+    },
+  );
+
+  app.post(
+    "/portal/actions/orders.create",
+    authenticate,
+    requireAccess(["orders.write"], forAction("orders.create")),
+    (req: AuthedRequest, res) => {
+      const result = readDraft(req.body, today());
+      if (!result.ok) {
+        // Every message is keyed to the `name` of the input that caused it, so
+        // the hub renders it against that field rather than as a banner.
+        res.json(invalid(result.fieldErrors, "Check the highlighted fields."));
+        return;
+      }
+
+      const order = repository.create(req.principal!.tenantId, result.draft);
+      res.json(
+        ok({
+          message: `Order ${order.id} created.`,
+          navigate: { screenId: "orders.detail", params: { id: order.id } },
+        }),
+      );
+    },
+  );
+
+  app.post(
+    "/portal/actions/orders.update",
+    authenticate,
+    requireAccess(["orders.write"], forAction("orders.update")),
+    (req: AuthedRequest, res) => {
+      const tenantId = req.principal!.tenantId;
+      const body = (req.body ?? {}) as { id?: unknown };
+      const id = typeof body.id === "string" ? body.id : "";
+      if (id === "") {
+        res.json(invalid({ id: "Which order?" }));
+        return;
+      }
+
+      const result = readDraft(req.body, today());
+      if (!result.ok) {
+        res.json(invalid(result.fieldErrors, "Check the highlighted fields."));
+        return;
+      }
+
+      const written = repository.update(tenantId, id, result.draft);
+      if (!written.ok && written.reason === "not-found") {
+        res.status(404).json({ error: "order not found" });
+        return;
+      }
+      if (!written.ok) {
+        res.json(failed("A shipped or cancelled order cannot be changed."));
+        return;
+      }
+
+      res.json(
+        ok({
+          message: `Order ${id} saved.`,
+          navigate: { screenId: "orders.detail", params: { id } },
+        }),
+      );
+    },
+  );
+
+  app.post(
+    "/portal/actions/orders.delete",
+    authenticate,
+    requireAccess(["orders.write"], forAction("orders.delete")),
+    (req: AuthedRequest, res) => {
+      const tenantId = req.principal!.tenantId;
+      const body = (req.body ?? {}) as { id?: unknown };
+      const id = typeof body.id === "string" ? body.id : "";
+      if (id === "") {
+        res.json(invalid({ id: "Which order?" }));
+        return;
+      }
+
+      const result = repository.remove(tenantId, id);
+      if (!result.ok && result.reason === "not-found") {
+        res.status(404).json({ error: "order not found" });
+        return;
+      }
+      if (!result.ok) {
+        // A failure rather than a validation error: there is no field the user
+        // could change to make this allowed.
+        res.json(failed("Only pending orders can be deleted."));
+        return;
+      }
+
+      res.json(
+        ok({
+          level: "info",
+          message: `Order ${id} deleted.`,
           navigate: { screenId: "orders.list" },
         }),
       );

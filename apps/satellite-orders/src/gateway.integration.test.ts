@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AuditEvent, Principal } from "@portal/identity";
@@ -55,9 +56,35 @@ const registryEntry = (baseUrl: string) =>
       agentVisible: true
       requiresConfirmation: true
       rbacScopes: [orders.write]
+    orders.create:
+      agentVisible: true
+      requiresConfirmation: true
+      rbacScopes: [orders.write]
+    orders.update:
+      agentVisible: true
+      requiresConfirmation: true
+      rbacScopes: [orders.write]
+    orders.delete:
+      agentVisible: false
+      rbacScopes: [orders.write]
 `,
     {},
   )[0];
+
+describe("the fixture above", () => {
+  it("declares the same tool policies the committed registry does", () => {
+    // The fixture says it "matches what the satellite actually declares", and
+    // until now nothing checked. It had gone stale — three actions were added
+    // to the real registry and the tests kept asserting the old surface.
+    const committed = loadRegistry(
+      readFileSync(new URL("../../../config/satellites.yaml", import.meta.url), "utf8"),
+      { PORTAL_ORDERS_URL: "http://fixture.test" },
+    ).find((satellite) => satellite.id === "orders");
+
+    expect(committed).toBeDefined();
+    expect(registryEntry("http://fixture.test")?.tools).toEqual(committed?.tools);
+  });
+});
 
 beforeAll(async () => {
   repository = new OrderRepository(seedOrders());
@@ -110,9 +137,61 @@ describe("the surface this satellite actually offers", () => {
     const surface = await surfaceFor(principal());
     expect(surface.tools.map((tool) => tool.name).sort()).toEqual([
       "orders__orders_approve",
+      "orders__orders_create",
       "orders__orders_detail",
+      "orders__orders_edit",
       "orders__orders_list",
+      "orders__orders_new",
+      "orders__orders_update",
     ]);
+  });
+
+  it("projects form screens as reads too, which is a known cost", async () => {
+    // `orders.new` returns an empty form: a tool a model can call and learn
+    // nothing from. It is here because the shim makes every screen a read by
+    // default, and that default is deliberate — requiring a registry entry per
+    // screen would mean adding a screen needed a hub deploy, which is the one
+    // promise this architecture makes loudest.
+    //
+    // Asserted rather than quietly tolerated. At three satellites it is noise;
+    // at twenty it is surface a model pays for on every turn, and the fix is a
+    // screen-level hint in the manifest rather than a registry entry. Recorded
+    // in PLAN.md's known limits.
+    const surface = await surfaceFor(principal());
+    const form = surface.tools.find((tool) => tool.name === "orders__orders_new");
+
+    expect(form).toBeDefined();
+    // It takes nothing and returns a blank form, so a model calling it spends
+    // a turn and learns nothing. Noise rather than a governance hole — but
+    // noise every model pays for on every turn, which is why it is written
+    // down instead of shrugged at.
+    expect(form?.inputSchema.required ?? []).toEqual([]);
+  });
+
+  it("does not offer deletion to a model at all", async () => {
+    // `orders.delete` is `agentVisible: false`, which is a stronger control
+    // than confirmation: confirmation is a person reading a card, invisibility
+    // is the model never raising it. For an irreversible write the second is
+    // the one worth having.
+    const surface = await surfaceFor(principal());
+    expect(surface.byName.has("orders__orders_delete")).toBe(false);
+  });
+
+  it("describes every field of a create, so a model need not guess", async () => {
+    // A write an agent can only half-specify is a write it will get wrong. The
+    // schema comes from the satellite's own declaration, not from the registry.
+    const surface = await surfaceFor(principal());
+    const create = surface.byName.get("orders__orders_create");
+    const properties = Object.keys(create?.inputSchema.properties ?? {}).sort();
+
+    expect(properties).toContain("customer");
+    expect(properties).toContain("dueBy");
+    expect(properties).toContain("priority");
+    expect(create?.inputSchema.required).toContain("contactEmail");
+    // Enumerated so it picks from the list rather than inventing a value.
+    expect(create?.inputSchema.properties?.["priority"]).toMatchObject({
+      enum: ["standard", "express", "critical"],
+    });
   });
 
   it("leaves the write nobody enabled off the surface", async () => {
