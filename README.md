@@ -123,7 +123,7 @@ than a silent empty value.
 | `PORTAL_AUDIT_KEY` | Root secret every tenant's audit digest key is derived from. Required by the hub; there is no unkeyed mode. |
 | `PORTAL_AUDIT_LOG` | Absolute path the audit records are appended to. Required by the hub; writes fail closed, so its storage is on the critical path. |
 | `PORTAL_REGISTRY_PATH` | Where to read the registry. Defaults to `config/satellites.yaml`. |
-| `PORTAL_ORDERS_URL` / `PORTAL_FLEET_URL` | Satellite base URLs. |
+| `PORTAL_ORDERS_URL` / `PORTAL_FLEET_URL` / `PORTAL_DEPOTS_URL` | Satellite base URLs. |
 | `PORTAL_DEV_TENANT` / `PORTAL_DEV_AUDIENCE` | Switch the development session's tenant or audience, for exercising isolation by hand. |
 | `PORTAL_ALLOW_DEV_SESSION` | Lets the development session stub run under `NODE_ENV=production`. Set only by the compose stack. |
 

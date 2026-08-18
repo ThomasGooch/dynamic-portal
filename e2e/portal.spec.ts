@@ -69,8 +69,8 @@ async function compose(...args: string[]): Promise<void> {
   await run("docker", ["compose", ...args], { cwd: new URL("..", import.meta.url).pathname });
 }
 
-test.describe("one shell, two solutions", () => {
-  test("renders a TypeScript and a Python satellite in identical hub markup", async ({ page }) => {
+test.describe("one shell, three solutions", () => {
+  test("renders a TypeScript, a Python and a C# satellite in identical hub markup", async ({ page }) => {
     // The claim this defends: satellites send data, not code, and the hub owns
     // every pixel. Neither of these solutions ships a stylesheet — if this
     // passes, that is why they look the same.
@@ -85,10 +85,12 @@ test.describe("one shell, two solutions", () => {
 
     const orders = await classesOn("/orders");
     const fleet = await classesOn("/fleet");
+    const depots = await classesOn("/depots");
 
     for (const shared of ["r-page", "r-stat", "r-table", "r-badge"]) {
       expect(orders, `orders is missing ${shared}`).toContain(shared);
       expect(fleet, `fleet is missing ${shared}`).toContain(shared);
+      expect(depots, `depots is missing ${shared}`).toContain(shared);
     }
   });
 
@@ -111,7 +113,34 @@ test.describe("one shell, two solutions", () => {
     // not get to name itself in someone else's navigation.
     await expect(nav.getByRole("link", { name: "Order Management" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Fleet Operations" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Depot Operations" })).toBeVisible();
     await expect(nav.getByRole("link", { name: /payroll/i })).toHaveCount(0);
+  });
+});
+
+test.describe("the C# satellite", () => {
+  test("renders real data through the hub, having shipped no stylesheet", async ({ page }) => {
+    await page.goto("/depots/depots.dashboard");
+
+    // Its own figures, from a .NET process the browser never speaks to.
+    await expect(page.getByText("Zürich Central").first()).toBeVisible();
+    await expect(page.locator(".r-stat").first()).toBeVisible();
+  });
+
+  test("shows this tenant's depots and no others", async ({ page }) => {
+    // `Osaka Bay` belongs to globex. The satellite filters by the tenant in the
+    // principal it verified itself — the hub is not what keeps these apart.
+    await page.goto("/depots/depots.dashboard");
+    await expect(page.getByText("Rotterdam North").first()).toBeVisible();
+    await expect(page.getByText("Osaka Bay")).toHaveCount(0);
+  });
+
+  test("serves a screen the hub validated against the same catalog", async ({ request }) => {
+    // A third language emitting the same wire format. If the catalog rejected
+    // anything here the hub would have answered with an error card instead.
+    const response = await request.get("/depots/depots.detail?id=dep-2");
+    expect(response.status()).toBe(200);
+    expect(await response.text()).toContain("Rotterdam North");
   });
 });
 
@@ -466,6 +495,10 @@ test.describe("the hub as an MCP server", () => {
     const names = body.result.tools.map((tool: { name: string }) => tool.name);
     expect(names).toContain("orders__orders_list");
     expect(names).toContain("fleet__fleet_dashboard");
+    // The C# satellite ships no MCP server either; the hub generates one from
+    // its PUP manifest, so a third language reaches an agent having written
+    // nothing for it.
+    expect(names).toContain("depots__depots_dashboard");
 
     const read = body.result.tools.find(
       (tool: { name: string }) => tool.name === "orders__orders_list",
@@ -479,6 +512,8 @@ test.describe("the hub as an MCP server", () => {
     const { body } = await rpc(request, "tools/list");
     const names = body.result.tools.map((tool: { name: string }) => tool.name);
     expect(names).not.toContain("orders__orders_approve");
+    // Same rule, enforced from the registry rather than per satellite.
+    expect(names).not.toContain("depots__depots_close");
   });
 
   test("returns a satellite's real data through a tool call", async ({ request }) => {

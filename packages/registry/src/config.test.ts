@@ -31,14 +31,14 @@ describe("the committed registry", () => {
   });
 
   it("describes the satellites the compose stack actually runs", () => {
-    expect(registry.map((s) => s.id).sort()).toEqual(["fleet", "orders"]);
+    expect(registry.map((s) => s.id).sort()).toEqual(["depots", "fleet", "orders"]);
   });
 
   it("points at the ports docker-compose publishes", () => {
     const ports = Object.fromEntries(
       registry.map((s) => [s.id, new URL(s.baseUrl).port]),
     );
-    expect(ports).toEqual({ orders: "4001", fleet: "4002" });
+    expect(ports).toEqual({ orders: "4001", fleet: "4002", depots: "4003" });
   });
 
   it("exposes exactly one satellite externally, and names which", () => {

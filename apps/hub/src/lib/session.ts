@@ -17,7 +17,7 @@ const DEV_PRINCIPAL: Principal = {
   sub: "dev@acme.example",
   tenantId: "acme",
   audience: "internal",
-  scopes: ["orders.read", "orders.write", "fleet.read"],
+  scopes: ["orders.read", "orders.write", "fleet.read", "depots.read", "depots.write"],
 };
 
 export class SessionUnavailableError extends Error {
