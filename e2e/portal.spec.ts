@@ -158,9 +158,16 @@ test.describe("filling in a form", () => {
     await fill(page, { contactEmail: "not-an-address" });
     await page.getByRole("button", { name: "Create order" }).click();
 
+    // Asserted as *attached to the field*, not merely present on the page: a
+    // banner carrying the same words would satisfy "is this text visible", and
+    // a banner is exactly what this is not. `#field-<name>-error` is the node
+    // the input's own `aria-describedby` points at.
     const field = page.getByLabel("Contact email");
-    await expect(field).toBeVisible();
-    await expect(page.getByText(/does not look like an email/i)).toBeVisible();
+    await expect(field).toHaveAttribute("aria-invalid", "true");
+    await expect(field).toHaveAttribute("aria-describedby", /field-contactEmail-error/);
+    await expect(page.locator("#field-contactEmail-error")).toHaveText(
+      /does not look like an email/i,
+    );
     // Still on the form, with what was typed still there.
     await expect(page.getByLabel("Customer")).toHaveValue("Playwright Industries");
   });
@@ -201,8 +208,15 @@ test.describe("filling in a form", () => {
     await page.getByRole("button", { name: "Delete" }).click();
     // The satellite declared `confirm`; the dialog is the shell's own —
     // `alertdialog`, because it interrupts rather than merely appearing.
-    await expect(page.getByRole("alertdialog")).toBeVisible();
-    await expect(page.getByText(/cannot be undone/i)).toBeVisible();
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(/cannot be undone/i)).toBeVisible();
+
+    // And the confirmation actually carries the action through. Asserting only
+    // that a dialog appeared would pass against a dialog wired to nothing.
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    await expect(page).toHaveURL(/\/orders\/orders\.list$/);
+    await expect(page.locator("table.r-table")).not.toContainText("Delete Me Ltd");
   });
 });
 

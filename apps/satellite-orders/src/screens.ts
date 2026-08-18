@@ -1,4 +1,4 @@
-import type { Manifest, ScreenResponse, UiNode } from "@portal/protocol";
+import type { Audience, Manifest, ScreenResponse, UiNode } from "@portal/protocol";
 import { manifest as declare, screen, ui, withId } from "@portal/sdk-node";
 import type { Order } from "./repository";
 import { CURRENCIES, PRIORITIES, TAGS } from "./draft";
@@ -178,7 +178,18 @@ export function ordersTable(orders: Order[]): UiNode {
   );
 }
 
-export function listScreen(orders: Order[]): ScreenResponse {
+/**
+ * Whether to draw the controls that write.
+ *
+ * An external principal reads its own orders through the façade and may not
+ * place or change them: every write action here declares `audience:
+ * ["internal"]`, so the satellite answers 403. Drawing the buttons anyway
+ * offers a customer three things that fail when clicked — the authorization
+ * was never wrong, the screen was.
+ */
+const canWrite = (audience: Audience): boolean => audience === "internal";
+
+export function listScreen(orders: Order[], audience: Audience = "internal"): ScreenResponse {
   const pending = orders.filter((order) => order.status === "pending").length;
   const blocked = orders.filter((order) => order.blockedByVehicleId).length;
 
@@ -203,7 +214,7 @@ export function listScreen(orders: Order[]): ScreenResponse {
         ordersTable(orders),
         ui.Stack(
           { direction: "row", gap: "sm", align: "end" },
-          ui.Link({ label: "New order", screenId: "orders.new" }),
+          ...(canWrite(audience) ? [ui.Link({ label: "New order", screenId: "orders.new" })] : []),
           ui.Button({
             label: "Refresh",
             variant: "secondary",
@@ -220,7 +231,9 @@ export function listScreen(orders: Order[]): ScreenResponse {
   });
 }
 
-export function detailScreen(order: Order): ScreenResponse {
+export function detailScreen(order: Order, audience: Audience = "internal"): ScreenResponse {
+  // One flag, because approving and deleting are the same rule: a pending
+  // order can still move, and any other order has already moved.
   const canApprove = order.status === "pending";
 
   return screen({
@@ -243,7 +256,10 @@ export function detailScreen(order: Order): ScreenResponse {
           ],
         }),
       ),
-      ui.Stack(
+      // Spread so an external principal gets no action row at all, rather than
+      // an empty one that renders as a stray gap.
+      ...(canWrite(audience)
+        ? [ui.Stack(
         { direction: "row", gap: "sm" },
         ui.Button({
           label: canApprove ? "Approve order" : "Already processed",
@@ -266,17 +282,29 @@ export function detailScreen(order: Order): ScreenResponse {
         ui.Button({
           label: "Delete",
           variant: "danger",
+          // Disabled on the same rule the repository enforces, for the same
+          // reason Approve is: a live button that can only answer "only pending
+          // orders can be deleted" asks the user to discover a rule the screen
+          // already knew. The rule is still enforced server-side — this is the
+          // screen agreeing with it, not replacing it.
+          disabled: !canApprove,
+          action: { actionId: "orders.delete", payload: { id: order.id } },
           // The hub draws its own confirmation, so a destructive action is
           // never one click. Declared rather than implemented: the dialog is
           // the shell's, and a satellite drawing its own would be drawing UI
-          // the hub owns.
-          confirm: {
-            title: "Delete this order?",
-            body: `Order ${order.id} will be removed. This cannot be undone.`,
-          },
-          action: { actionId: "orders.delete", payload: { id: order.id } },
+          // the hub owns. Spread for the same `exactOptionalPropertyTypes`
+          // reason as Approve's.
+          ...(canApprove
+            ? {
+                confirm: {
+                  title: "Delete this order?",
+                  body: `Order ${order.id} will be removed. This cannot be undone.`,
+                },
+              }
+            : {}),
         }),
-      ),
+      )]
+        : []),
     ),
   });
 }
@@ -398,22 +426,38 @@ export function editScreen(order: Order): ScreenResponse {
   return screen({
     id: "orders.edit",
     title: `Edit ${order.id}`,
+    // The order's own crumb carries no `screenId`: `orders.detail` requires an
+    // `id`, and a breadcrumb has nowhere to put one — the schema is `{ label,
+    // screenId }` and nothing else. Declaring the link anyway would name a
+    // destination that answers 404 the day the hub starts honouring it.
     breadcrumbs: [
       { label: "Orders", screenId: "orders.list" },
-      { label: order.id, screenId: "orders.detail" },
+      { label: order.id },
       { label: "Edit" },
     ],
     ui: ui.Page(
       { title: `Edit ${order.id}` },
-      ...(order.status === "pending"
-        ? []
-        : [
+      // Two different warnings, because the repository draws the line at
+      // shipped/cancelled and not at "no longer pending". A single alert saying
+      // "editing is refused" on an approved order was telling the user
+      // something the satellite would then happily do.
+      ...(order.status === "shipped" || order.status === "cancelled"
+        ? [
             ui.Alert({
               level: "warning",
               title: "This order has moved on",
-              message: `It is ${order.status}. Editing is refused, and the form below is here so you can see what it holds.`,
+              message: `It is ${order.status}. Saving is refused, and the form below is here so you can see what it holds.`,
             }),
-          ]),
+          ]
+        : order.status === "approved"
+          ? [
+              ui.Alert({
+                level: "info",
+                title: "This order is approved",
+                message: "Changes are still allowed, and they do not send it back for approval.",
+              }),
+            ]
+          : []),
       ui.Section(
         { title: "Details" },
         orderForm({ actionId: "orders.update", submitLabel: "Save changes", order }),

@@ -109,6 +109,14 @@ describe("the form the hub renders", () => {
     }
   });
 
+  it("is still a tree the catalog accepts once it is filled in", async () => {
+    // The empty form was checked; the filled one was not, and edit mode is
+    // where the values, the `Hidden` id and the alert are added.
+    const response = await screen("orders.edit", "?id=ord-1003");
+    expect(response.status).toBe(200);
+    expect(validateNested(response.body.ui).ok).toBe(true);
+  });
+
   it("comes back filled in when editing", async () => {
     const body = JSON.stringify((await screen("orders.edit", "?id=ord-1001")).body);
     expect(body).toContain("Wile E. Coyote");
@@ -246,8 +254,89 @@ describe("updating an order", () => {
   });
 
   it("validates before it writes", async () => {
-    await post("orders.update", { ...validDraft, id: "ord-1001", contactEmail: "nope" });
-    expect(repository.get("acme", "ord-1001")?.customer).toBe("Wile E. Coyote");
+    // The changed field has to differ from what is stored, or the assertion
+    // holds just as well against an implementation that wrote the whole draft
+    // through — which is what this test used to do.
+    const before = repository.get("acme", "ord-1001");
+    const response = await post("orders.update", {
+      ...validDraft,
+      id: "ord-1001",
+      customer: "Should Not Be Written Ltd",
+      contactEmail: "nope",
+    });
+
+    expect(response.body.outcome).toBe("validation");
+    expect(repository.get("acme", "ord-1001")).toEqual(before);
+  });
+
+  it("judges the cross-field rules against the labels the order will end up with", async () => {
+    // The shape an agent posts: no `tags`, because it has no way to send one.
+    // The order keeps its `hazmat` label, so the rule that says a hazmat order
+    // needs handling notes has to be applied to the label the order still has
+    // rather than to the empty list the payload implies.
+    const hazmat = { ...validDraft, id: "ord-1003", tags: ["hazmat"], notes: "Handle with care." };
+    expect((await post("orders.update", hazmat)).body.outcome).toBe("ok");
+
+    const { tags: _tags, ...withoutTags } = hazmat;
+    const response = await post("orders.update", { ...withoutTags, notes: "" });
+
+    expect(response.body.outcome).toBe("validation");
+    expect(response.body.fieldErrors["notes"]).toMatch(/hazmat/i);
+    expect(repository.get("acme", "ord-1003")?.notes).toBe("Handle with care.");
+  });
+
+  it("clears a note when the box is emptied", async () => {
+    // A field-by-field write, not `Object.assign`: an absent optional would
+    // otherwise leave the old note in place, and the one edit a user cannot
+    // make is the one that removes something.
+    await post("orders.update", { ...validDraft, id: "ord-1003", notes: "Ring the bell." });
+    expect(repository.get("acme", "ord-1003")?.notes).toBe("Ring the bell.");
+
+    await post("orders.update", { ...validDraft, id: "ord-1003", notes: "" });
+    expect(repository.get("acme", "ord-1003")?.notes).toBeUndefined();
+  });
+
+  it("leaves the fields the satellite owns exactly as they were", async () => {
+    const before = repository.get("acme", "ord-1003")!;
+    await post("orders.update", {
+      ...validDraft,
+      id: "ord-1003",
+      // Every reserved field, named in the body on purpose.
+      status: "approved",
+      tenantId: "globex",
+      placedAt: "1999-01-01T00:00:00Z",
+      blockedByVehicleId: "veh-999",
+    });
+
+    const after = repository.get("acme", "ord-1003")!;
+    expect(after.status).toBe(before.status);
+    expect(after.tenantId).toBe(before.tenantId);
+    expect(after.placedAt).toBe(before.placedAt);
+    expect(after.blockedByVehicleId).toBe(before.blockedByVehicleId);
+    expect(after.customer).toBe(validDraft.customer);
+  });
+
+  it("keeps labels a caller had no way to send", async () => {
+    // The agent path, exactly. `ActionParamSchema` has no array type, so `tags`
+    // is undeclarable in the manifest and the shim's `additionalProperties:
+    // false` refuses it — every agent-driven update arrives without one.
+    // Reading absent as empty would strip `hazmat` off an order as a side
+    // effect of editing its customer name, and take the handling-notes rule
+    // with it.
+    const { tags: _unsendable, ...withoutTags } = validDraft;
+    await post("orders.update", { ...withoutTags, id: "ord-1003", customer: "Renamed Ltd" });
+
+    const after = repository.get("acme", "ord-1003");
+    expect(after?.customer).toBe("Renamed Ltd");
+    expect(after?.tags).toEqual(["wholesale", "priority"]);
+  });
+
+  it("still lets the form clear every label, because it sends an empty list", async () => {
+    // The other half: absent is "unchanged", `[]` is "none". An empty
+    // `MultiSelect` posts `[]`, so removing the last label stays a change a
+    // user can make.
+    await post("orders.update", { ...validDraft, id: "ord-1003", tags: [] });
+    expect(repository.get("acme", "ord-1003")?.tags).toEqual([]);
   });
 });
 
@@ -270,5 +359,113 @@ describe("deleting an order", () => {
     const response = await post("orders.delete", { id: "ord-2001" });
     expect(response.status).toBe(404);
     expect(repository.get("globex", "ord-2001")).toBeDefined();
+  });
+
+  it("never hands a deleted order's id to the next one", async () => {
+    // An id derived from the highest one present goes backwards over a delete,
+    // and the replacement then answers to every link, log line and audit entry
+    // that meant the order that was removed.
+    const first = await post("orders.create", validDraft);
+    const reused = first.body.navigate.params["id"] ?? "";
+
+    expect((await post("orders.delete", { id: reused })).body.outcome).toBe("ok");
+
+    const second = await post("orders.create", validDraft);
+    expect(second.body.navigate.params["id"]).not.toBe(reused);
+  });
+});
+
+describe("what the store hands back", () => {
+  it("does not share a mutable array with its caller", async () => {
+    // `{ ...order }` copies the reference, not the array. A screen builder that
+    // sorted `tags` in place would be editing the record it was rendering.
+    const listed = repository.list("acme").find((o) => o.id === "ord-1003")!;
+    listed.tags.push("hazmat");
+
+    expect(repository.get("acme", "ord-1003")?.tags).not.toContain("hazmat");
+  });
+});
+
+describe("values that are not what they look like", () => {
+  it("refuses a total that is only partly a number", async () => {
+    // `Number.parseFloat` reads a prefix, so `"250abc"` becomes 250 and an
+    // order nobody placed is stored as if they had.
+    const response = await post("orders.create", { ...validDraft, total: "250abc" });
+    expect(response.body.outcome).toBe("validation");
+    expect(response.body.fieldErrors["total"]).toBeDefined();
+  });
+
+  it("refuses a total finer than the currency is", async () => {
+    const response = await post("orders.create", { ...validDraft, total: 10.005 });
+    expect(response.body.fieldErrors["total"]).toBeDefined();
+  });
+
+  it("refuses labels that are not labels rather than dropping them", async () => {
+    const response = await post("orders.create", { ...validDraft, tags: ["retail", 7] });
+    expect(response.body.outcome).toBe("validation");
+    expect(response.body.fieldErrors["tags"]).toBeDefined();
+  });
+
+  it("collapses a label repeated in the body", async () => {
+    const response = await post("orders.create", {
+      ...validDraft,
+      tags: ["retail", "retail"],
+      priority: "express",
+    });
+    const created = repository.get("acme", response.body.navigate.params["id"] ?? "");
+    expect(created?.tags).toEqual(["retail"]);
+  });
+
+  it("refuses a checkbox value it cannot read, rather than calling it unticked", async () => {
+    // Silently reading `1` as false would then reject the *priority* of an
+    // order whose real problem is a field the user believes they ticked.
+    const response = await post("orders.create", { ...validDraft, expedited: 1 });
+    expect(response.body.fieldErrors["expedited"]).toBeDefined();
+  });
+
+  it("never lets a cross-field rule overwrite the message already on a field", async () => {
+    // `expedited` is unreadable *and* the priority is critical. The user needs
+    // to be told about the value, not about the consequence.
+    const response = await post("orders.create", {
+      ...validDraft, priority: "critical", expedited: "maybe",
+    });
+    expect(response.body.fieldErrors["expedited"]).not.toMatch(/critical/i);
+  });
+});
+
+
+describe("what an external principal is offered", () => {
+  // The façade lets a customer read their own orders. Every write here is
+  // `audience: ["internal"]`, so the satellite answers 403 — and a screen that
+  // drew the buttons anyway would offer a customer three things that fail when
+  // clicked. The authorization was never wrong; the screen was.
+  const EXTERNAL = signPrincipal(
+    { sub: "buyer@acme.example", tenantId: "acme", audience: "external", scopes: ["orders.read"] },
+    SECRET,
+  );
+
+  it("is shown its orders", async () => {
+    const response = await screen("orders.list", "", EXTERNAL);
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(response.body)).toContain("Wile E. Coyote");
+  });
+
+  it("is offered no control that would answer 403", async () => {
+    const list = JSON.stringify((await screen("orders.list", "", EXTERNAL)).body);
+    const detail = JSON.stringify((await screen("orders.detail", "?id=ord-1001", EXTERNAL)).body);
+
+    for (const action of ["orders.create", "orders.update", "orders.delete", "orders.approve"]) {
+      expect(list, `the list offers ${action}`).not.toContain(action);
+      expect(detail, `the detail offers ${action}`).not.toContain(action);
+    }
+    expect(detail).not.toContain("orders.edit");
+  });
+
+  it("still gets them when internal, so the guard is not simply hiding everything", async () => {
+    // Without this the test above passes against a screen builder that dropped
+    // the buttons for everyone.
+    const detail = JSON.stringify((await screen("orders.detail", "?id=ord-1001")).body);
+    expect(detail).toContain("orders.delete");
+    expect(detail).toContain("orders.edit");
   });
 });
