@@ -71,6 +71,19 @@ playwright/.cache/
 .playwright/
 .last-run.json
 
+# ---- .NET (sdk-csharp) -----------------------------------------------------
+#
+# Build output only. The generated sources are committed on purpose: they are
+# what the drift check compares against, and what a consumer reads to see the
+# surface without running a generator first.
+#
+# Scoped to the one package that produces them. A repo-wide `**/bin/` reads as
+# housekeeping and is really a trap: `bin/` is an ordinary name for committed
+# scripts, and the next person to add `scripts/bin/` would watch `git add`
+# ignore it without saying why.
+packages/sdk-csharp/**/bin/
+packages/sdk-csharp/**/obj/
+
 # ---- Python (satellite-fleet) ----------------------------------------------
 __pycache__/
 *.py[cod]

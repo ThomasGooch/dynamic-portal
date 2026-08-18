@@ -36,6 +36,9 @@
     },
     {
       "path": "./packages/sdk-python"
+    },
+    {
+      "path": "./packages/sdk-csharp"
     }
   ]
 }

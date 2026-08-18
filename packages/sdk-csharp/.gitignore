@@ -1,0 +1,5 @@
+# Build output. The generated *sources* (Ui.g.cs, Protocol.g.cs) are committed
+# deliberately — that is what `pnpm sdk:check` compares against, and what a
+# consumer reads to see the surface without running a generator first.
+bin/
+obj/
