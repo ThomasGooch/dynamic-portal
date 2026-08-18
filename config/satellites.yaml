@@ -60,3 +60,28 @@
     order: 20
   rbacScopes: [fleet.read]
   timeoutMs: 3000
+
+# The C# satellite. Node, Python and C# now, which is the polyglot claim with
+# three data points rather than two.
+#
+# No mcpUrl and no `public` block: it ships no MCP server, so the hub generates
+# a shim from this declaration, and nothing here is brokered outward yet.
+- id: depots
+  displayName: Depot Operations
+  description: Capacity, utilisation and status by depot.
+  baseUrl: ${PORTAL_DEPOTS_URL:-http://localhost:4003}
+  owner: logistics-team
+  nav:
+    section: Operations
+    order: 30
+  rbacScopes: [depots.read]
+  timeoutMs: 3000
+  audience: [internal]
+  tools:
+    # Closing a depot is a mutation, so it is invisible to the agent until a
+    # human names it here and requires confirmation. The satellite checks the
+    # write scope regardless — this governs whether a model may propose it.
+    depots.close:
+      requiresConfirmation: true
+      rbacScopes: [depots.write]
+

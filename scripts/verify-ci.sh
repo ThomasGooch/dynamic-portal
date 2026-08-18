@@ -77,6 +77,15 @@ else
   exit 1
 fi
 
+step "csharp: satellite test"
+if command -v dotnet >/dev/null 2>&1; then
+  (cd apps/satellite-depots && dotnet test -v q --nologo)
+else
+  docker run --rm -v "$PWD/apps/satellite-depots:/src" -v "$PWD/packages:/packages" -w /src \
+    -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 \
+    mcr.microsoft.com/dotnet/sdk:9.0 dotnet test -v q --nologo
+fi
+
 step "csharp: validate every envelope against the hub's schemas"
 # The check a .NET test cannot perform: only the protocol package knows whether
 # what the SDK built is a response the hub actually accepts.

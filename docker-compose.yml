@@ -58,6 +58,30 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # The third satellite, in a third language. Node, Python and C# — sharing no
+  # library but the SDK generated from the hub's own catalog, and each
+  # verifying the hub's principal itself.
+  satellite-depots:
+    build:
+      context: .
+      dockerfile: docker/dotnet-app.Dockerfile
+      args:
+        APP_PATH: apps/satellite-depots
+        PROJECT: Satellite.Depots
+    environment:
+      <<: *satellite-env
+      ASPNETCORE_URLS: http://+:4003
+      PORT: "4003"
+    ports:
+      - "4003:4003"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4003/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
   # The hub. Waits for both satellites to be healthy — not because it cannot
   # start without them (an unwell satellite degrades to a scoped card, and there
   # is an e2e test for exactly that), but so `pnpm up` reaches a state where the
@@ -96,12 +120,15 @@ services:
       # overridden here — one reviewed file, two environments.
       PORTAL_ORDERS_URL: http://satellite-orders:4001
       PORTAL_FLEET_URL: http://satellite-fleet:4002
+      PORTAL_DEPOTS_URL: http://satellite-depots:4003
     ports:
       - "3000:3000"
     depends_on:
       satellite-orders:
         condition: service_healthy
       satellite-fleet:
+        condition: service_healthy
+      satellite-depots:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/"]
