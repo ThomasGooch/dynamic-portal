@@ -26,7 +26,9 @@
     "conformance": "tsx packages/conformance/src/cli.ts",
     "sdk:python": "pnpm --filter @portal/sdk-python generate",
     "test:sdk-python": "cd apps/satellite-fleet && uv run pytest ../../packages/sdk-python/tests",
-    "sdk:check": "pnpm --filter @portal/sdk-python check"
+    "sdk:check": "pnpm --filter @portal/sdk-python check && pnpm --filter @portal/sdk-csharp check",
+    "sdk:csharp": "pnpm --filter @portal/sdk-csharp generate",
+    "sdk:csharp:validate": "pnpm --filter @portal/sdk-csharp validate"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

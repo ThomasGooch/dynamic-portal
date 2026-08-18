@@ -107,3 +107,42 @@ jobs:
 # by `pnpm test:e2e`, with a `pnpm down` in an always() step. It is also the
 # only tier that checks the Python satellite against the TypeScript schemas,
 # so that cross-language guarantee is currently local-only.
+
+  # The C# SDK. A separate job because it needs a .NET toolchain the other one
+  # has no use for, and because its most valuable step is the last rather than
+  # the tests: `validate` builds one of every envelope in C# and parses it with
+  # the hub's own schemas. A .NET test can only confirm the SDK produced what
+  # the SDK intended — nothing inside a test project can ask the protocol
+  # whether that is a response the hub accepts, and the Python SDK shipped an
+  # envelope the hub rejected outright for exactly that reason.
+  csharp:
+    name: build + test (csharp)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Check the generated SDK is not stale
+        run: pnpm --filter @portal/sdk-csharp check
+
+      - name: Test
+        run: dotnet test -v q --nologo
+        working-directory: packages/sdk-csharp
+
+      - name: Validate every envelope against the hub's schemas
+        run: pnpm sdk:csharp:validate

@@ -40,3 +40,8 @@ playwright-report
 **/.ruff_cache/
 **/.mypy_cache/
 **/*.egg-info/
+
+# .NET build output. The hub image does COPY . ., so without these a local
+# dotnet build rides into it — and obj/ holds absolute host paths.
+**/bin/
+**/obj/

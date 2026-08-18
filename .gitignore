@@ -71,6 +71,14 @@ playwright/.cache/
 .playwright/
 .last-run.json
 
+# ---- .NET (sdk-csharp) -----------------------------------------------------
+#
+# Build output only. The generated sources are committed on purpose: they are
+# what the drift check compares against, and what a consumer reads to see the
+# surface without running a generator first.
+**/bin/
+**/obj/
+
 # ---- Python (satellite-fleet) ----------------------------------------------
 __pycache__/
 *.py[cod]

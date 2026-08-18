@@ -57,4 +57,23 @@ step "python: test - sdk"
 # installed lives — and running it there also proves the path dependency works.
 (cd apps/satellite-fleet && uv run pytest ../../packages/sdk-python/tests -q)
 
+step "csharp: test"
+# Through Docker unless a .NET SDK is on PATH. The repository is Docker-based,
+# and this keeps a ~1GB toolchain off a laptop that would only need it here.
+if command -v dotnet >/dev/null 2>&1; then
+  (cd packages/sdk-csharp && dotnet test -v q --nologo)
+elif command -v docker >/dev/null 2>&1; then
+  docker run --rm -v "$PWD/packages/sdk-csharp:/src" -w /src \
+    -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 \
+    mcr.microsoft.com/dotnet/sdk:9.0 dotnet test -v q --nologo
+else
+  printf '\n\033[31mNeither dotnet nor docker is available; the C# SDK cannot be tested.\033[0m\n'
+  exit 1
+fi
+
+step "csharp: validate every envelope against the hub's schemas"
+# The check a .NET test cannot perform: only the protocol package knows whether
+# what the SDK built is a response the hub actually accepts.
+pnpm sdk:csharp:validate
+
 printf '\n\033[32mOK: CI-equivalent checks passed\033[0m\n'

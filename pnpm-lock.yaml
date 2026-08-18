@@ -251,6 +251,22 @@ importers:
         specifier: ^3.24.0
         version: 3.25.76
 
+  packages/sdk-csharp:
+    dependencies:
+      '@portal/catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@portal/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      zod-to-json-schema:
+        specifier: 3.25.2
+        version: 3.25.2(zod@3.25.76)
+    devDependencies:
+      tsx:
+        specifier: 4.20.3
+        version: 4.20.3
+
   packages/sdk-node:
     dependencies:
       '@portal/catalog':
