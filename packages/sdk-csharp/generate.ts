@@ -177,6 +177,32 @@ function enumValues(schema: JsonSchemaNode): readonly (string | number)[] | unde
   return undefined;
 }
 
+/**
+ * Refuses a container whose elements are a generated enum.
+ *
+ * `ToWire()` is applied by looking the *prop's own* type up in `enums`, and
+ * neither a list nor a record is in there — so a `z.array(Tone)` would compile
+ * and then put `[3]` on the wire instead of `["success"]`. The catalog has no
+ * such prop today and is additive-only, so this refuses loudly rather than
+ * waiting to be discovered as a rejected envelope.
+ *
+ * Both containers, not just lists: a `z.record(z.string(), Tone)` reaches the
+ * wire the same way and by the same route.
+ */
+function refuseEnumElements(
+  component: string,
+  prop: string,
+  element: string,
+  container: "list" | "record",
+): void {
+  if (!enums.has(element)) return;
+  throw new Error(
+    `${component}.${prop} is a ${container} of ${element}; the emitter cannot convert ` +
+      "enum elements to their wire strings. Teach `assignments` to map the " +
+      "element before adding this prop to the catalog.",
+  );
+}
+
 /** A prop's C# type. Anything not expressible precisely becomes `object`. */
 function annotate(component: string, prop: string, schema: JsonSchemaNode): string {
   const values = enumValues(schema);
@@ -196,18 +222,7 @@ function annotate(component: string, prop: string, schema: JsonSchemaNode): stri
     case "array": {
       if (schema.items === undefined) return "IReadOnlyList<object>";
       const element = annotate(component, prop, schema.items);
-      if (enums.has(element)) {
-        // `ToWire()` is applied by looking the *prop's* type up in `enums`, and
-        // a list is not in there — so a `z.array(Tone)` would compile and then
-        // put `[3]` on the wire instead of `["success"]`. The catalog has no
-        // such prop today and is additive-only, so this refuses loudly rather
-        // than waiting to be discovered as a rejected envelope.
-        throw new Error(
-          `${component}.${prop} is a list of ${element}; the emitter cannot convert ` +
-            "enum elements to their wire strings. Teach `assignments` to map the " +
-            "element before adding this prop to the catalog.",
-        );
-      }
+      refuseEnumElements(component, prop, element, "list");
       return `IReadOnlyList<${element}>`;
     }
     case "object": {
@@ -220,6 +235,7 @@ function annotate(component: string, prop: string, schema: JsonSchemaNode): stri
         schema.properties === undefined && typeof values === "object" && values.type !== undefined
           ? annotate(component, prop, values)
           : "object?";
+      refuseEnumElements(component, prop, valueType, "record");
       return `IReadOnlyDictionary<string, ${valueType}>`;
     }
     default:
@@ -235,17 +251,23 @@ function emit(name: string): { readonly code: string; readonly citable: boolean 
     (a, b) => Number(required.has(b)) - Number(required.has(a)),
   );
 
+  // Annotated once and reused: `annotate` registers generated enums as a side
+  // effect, so calling it twice per prop asks the emitter to re-derive — and
+  // re-register — every enum in the catalog for no gain.
+  const typed = ordered.map((prop) => ({
+    prop,
+    type: annotate(name, prop, properties[prop] as JsonSchemaNode),
+  }));
+
   // `?` on every optional prop: value types and enums need it to be nullable at
   // all, and reference types need it for the compiler to police the difference.
-  const params = ordered.map((prop) => {
-    const type = annotate(name, prop, properties[prop] as JsonSchemaNode);
-    return required.has(prop)
+  const params = typed.map(({ prop, type }) =>
+    required.has(prop)
       ? `${type} ${paramName(prop)}`
-      : `${type}? ${paramName(prop)} = null`;
-  });
+      : `${type}? ${paramName(prop)} = null`,
+  );
 
-  const assignments = ordered.map((prop) => {
-    const type = annotate(name, prop, properties[prop] as JsonSchemaNode);
+  const assignments = typed.map(({ prop, type }) => {
     const value = enums.has(type)
       ? required.has(prop)
         ? `${paramName(prop)}.ToWire()`

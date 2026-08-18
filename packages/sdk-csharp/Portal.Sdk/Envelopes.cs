@@ -15,6 +15,57 @@ namespace Portal.Sdk;
 /// </remarks>
 public static class Envelopes
 {
+    /// <summary>An audience list on the wire, refusing the empty one.</summary>
+    /// <remarks>
+    /// The protocol's audience list is <c>.nonempty()</c>, so an empty one is
+    /// not "declare nothing and stay closed" — it is a manifest the hub rejects
+    /// whole, taking the satellite's screens and actions down with it. Like a
+    /// negative TTL it is nearly always computed rather than typed (a filter
+    /// over roles that matched none of them), so the empty list that reaches
+    /// here is not one anybody wrote, and the rejection should name the
+    /// audience rather than the manifest that happens to contain it.
+    ///
+    /// Shared by all three callers because default-deny is checked in three
+    /// places and drifting in one of them is how it stops holding.
+    /// </remarks>
+    private static List<string> Wire(IReadOnlyList<Audience> audience)
+    {
+        if (audience.Count == 0)
+        {
+            throw new ArgumentException(
+                "audience must not be empty; the hub rejects the manifest outright rather than "
+                    + "reading it as default-deny. Declare [Audience.Internal] explicitly.",
+                nameof(audience));
+        }
+
+        return audience.Select(value => value.ToWire()).ToList();
+    }
+
+    /// <summary>A toast, refusing a message that would render blank.</summary>
+    /// <remarks>
+    /// The protocol's toast message is <c>.min(1)</c>, so an empty one is a
+    /// rejected envelope — and were it accepted it would pop an empty box at
+    /// the caller, which is worse than saying nothing. Whitespace counts as
+    /// empty for the same reason: it is what an interpolated field that turned
+    /// out to be blank looks like.
+    /// </remarks>
+    private static Dictionary<string, object?> Toast(ToastLevel level, string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            throw new ArgumentException(
+                "a toast needs something to say: the protocol requires a non-empty message and "
+                    + "the hub rejects the envelope without one. Omit the toast instead.",
+                nameof(message));
+        }
+
+        return new Dictionary<string, object?>
+        {
+            ["level"] = level.ToWire(),
+            ["message"] = message,
+        };
+    }
+
     /// <summary>A <c>GET /portal/screens/{id}</c> response.</summary>
     public static IReadOnlyDictionary<string, object?> Screen(
         string screenId,
@@ -72,19 +123,24 @@ public static class Envelopes
         IReadOnlyList<IReadOnlyDictionary<string, object?>>? patch = null,
         IReadOnlyDictionary<string, object?>? navigate = null)
     {
+        // A level with nothing to attach it to is silently discarded below,
+        // which reads at the call site as an error toast that was requested and
+        // never appeared. Saying so here costs a caller who meant `Failed` one
+        // exception; staying quiet costs them the report.
+        if (message is null && level != ToastLevel.Success)
+        {
+            throw new ArgumentException(
+                $"a toast level of {level.ToWire()} with no message shows nothing, because the "
+                    + "toast is only built when there is something to say. Pass a message.",
+                nameof(level));
+        }
+
         var body = new Dictionary<string, object?>
         {
             ["protocol"] = Protocol.Version,
             ["outcome"] = ActionOutcome.Ok.ToWire(),
         };
-        if (message is not null)
-        {
-            body["toast"] = new Dictionary<string, object?>
-            {
-                ["level"] = level.ToWire(),
-                ["message"] = message,
-            };
-        }
+        if (message is not null) body["toast"] = Toast(level, message);
         if (patch is not null) body["patch"] = patch;
         if (navigate is not null) body["navigate"] = navigate;
         return body;
@@ -115,14 +171,7 @@ public static class Envelopes
             ["outcome"] = ActionOutcome.Validation.ToWire(),
             ["fieldErrors"] = fieldErrors,
         };
-        if (message is not null)
-        {
-            body["toast"] = new Dictionary<string, object?>
-            {
-                ["level"] = ToastLevel.Warning.ToWire(),
-                ["message"] = message,
-            };
-        }
+        if (message is not null) body["toast"] = Toast(ToastLevel.Warning, message);
         return body;
     }
 
@@ -132,11 +181,7 @@ public static class Envelopes
         {
             ["protocol"] = Protocol.Version,
             ["outcome"] = ActionOutcome.Error.ToWire(),
-            ["toast"] = new Dictionary<string, object?>
-            {
-                ["level"] = ToastLevel.Error.ToWire(),
-                ["message"] = message,
-            },
+            ["toast"] = Toast(ToastLevel.Error, message),
         };
 
     /// <summary>Replaces one named node. Pair with <see cref="Node.WithId"/>.</summary>
@@ -184,7 +229,7 @@ public static class Envelopes
             ["protocol"] = Protocol.Version,
             ["satelliteId"] = satelliteId,
             ["displayName"] = displayName,
-            ["audience"] = audience.Select(value => value.ToWire()).ToList(),
+            ["audience"] = Wire(audience),
             ["screens"] = screens,
             ["actions"] = actions ?? [],
         };
@@ -207,7 +252,7 @@ public static class Envelopes
         {
             ["id"] = screenId,
             ["title"] = title,
-            ["audience"] = audience.Select(value => value.ToWire()).ToList(),
+            ["audience"] = Wire(audience),
         };
         if (description is not null) entry["description"] = description;
         if (parameters is not null) entry["params"] = parameters;
@@ -231,7 +276,7 @@ public static class Envelopes
         var entry = new Dictionary<string, object?>
         {
             ["id"] = actionId,
-            ["audience"] = audience.Select(value => value.ToWire()).ToList(),
+            ["audience"] = Wire(audience),
         };
         if (title is not null) entry["title"] = title;
         if (description is not null) entry["description"] = description;

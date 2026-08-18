@@ -278,6 +278,44 @@ public class EnvelopeShapes
     }
 
     [Fact]
+    public void RefusesAnAudienceThatDeclaresNobody()
+    {
+        // The protocol's audience list is `.nonempty()`, so an empty one is not
+        // default-deny — it is a manifest the hub rejects whole. Checked on all
+        // three, because the check only holds where it is applied.
+        Assert.Throws<ArgumentException>(
+            () => Envelopes.Manifest("depots", "Depots", [], screens: []));
+        Assert.Throws<ArgumentException>(
+            () => Envelopes.ScreenDescriptor("depots.dashboard", "Depots", []));
+        Assert.Throws<ArgumentException>(
+            () => Envelopes.ActionDescriptor("depots.rename", []));
+    }
+
+    [Fact]
+    public void RefusesAToastWithNothingToSay()
+    {
+        // `message` is `.min(1)` in the protocol, and a blank toast would pop an
+        // empty box at the caller even if the hub let it through.
+        Assert.Throws<ArgumentException>(() => Envelopes.Failed("   "));
+        Assert.Throws<ArgumentException>(() => Envelopes.Ok(message: ""));
+        Assert.Throws<ArgumentException>(
+            () => Envelopes.Invalid(new Dictionary<string, string> { ["name"] = "Taken" }, message: ""));
+    }
+
+    [Fact]
+    public void RefusesAToastLevelThatWouldBeSilentlyDropped()
+    {
+        // The toast is only built when there is a message, so a level on its own
+        // vanishes — which reads at the call site as a report that was asked for
+        // and never arrived.
+        Assert.Throws<ArgumentException>(() => Envelopes.Ok(level: ToastLevel.Error));
+
+        // The default level with no message is the ordinary "it worked" case and
+        // stays legal.
+        Assert.False(Json(Envelopes.Ok()).TryGetProperty("toast", out _));
+    }
+
+    [Fact]
     public void AudiencesReachTheWireAsStrings()
     {
         var json = Json(Envelopes.Manifest(

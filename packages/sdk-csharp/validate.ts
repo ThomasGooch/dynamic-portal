@@ -90,8 +90,32 @@ function check(name: string, result: { success: boolean; error?: unknown }): voi
   process.stdout.write(`  ${name}: REJECTED\n${JSON.stringify(result.error, null, 2)}\n`);
 }
 
-const screen = payload["screen"] as { ui: unknown };
-const actions = payload["actions"] as Record<string, unknown>;
+/**
+ * Checked rather than asserted.
+ *
+ * These two casts are the only place this file trusts the probe. A probe that
+ * stopped emitting one of them would throw a TypeError from somewhere further
+ * down, which is precisely the unhelpful failure the rest of this script goes
+ * to trouble to avoid producing.
+ */
+function required<T>(key: string, guard: (value: unknown) => value is T): T {
+  const value = payload[key];
+  if (!guard(value)) {
+    process.stderr.write(
+      `the probe emitted no usable "${key}". It builds the envelopes this ` +
+        "script checks, so a missing one means the check silently covered less " +
+        "than it reports.\n",
+    );
+    process.exit(1);
+  }
+  return value;
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const screen = required("screen", (value): value is { ui: unknown } => isObject(value) && "ui" in value);
+const actions = required("actions", isObject);
 
 check("manifest", ManifestSchema.safeParse(payload["manifest"]));
 check("screen", ScreenResponseSchema.safeParse(screen));
