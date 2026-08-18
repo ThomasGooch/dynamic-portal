@@ -84,11 +84,29 @@ jobs:
         with:
           enable-cache: true
 
+      # Node lives in this job too, because the envelope validation below is a
+      # Node script that drives a Python probe: it needs the uv environment to
+      # build the envelopes and the Zod schemas to judge them, and this is the
+      # only job with the former. Must precede setup-node so its pnpm cache can
+      # resolve the store path.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
       # --frozen fails rather than silently re-resolving, so CI cannot drift
       # from the committed uv.lock — the same guarantee --frozen-lockfile gives
       # on the pnpm side.
       - name: Install
         run: uv sync --frozen
+
+      # From the repository root: this job's default working directory is the
+      # satellite, which is not a pnpm workspace package.
+      - name: Install — node
+        working-directory: .
+        run: pnpm install --frozen-lockfile
 
       - name: Test — unit
         run: uv run pytest -m "not integration"
@@ -101,6 +119,10 @@ jobs:
       # resolves.
       - name: Test — sdk
         run: uv run pytest ../../packages/sdk-python/tests -q
+
+      - name: Validate every Python envelope against the hub's schemas
+        working-directory: .
+        run: pnpm sdk:python:validate
 
 # The e2e tier is deliberately not run here: it needs the Docker stack up, and
 # this workflow is scoped to build + test. Adding it later is `pnpm up` followed

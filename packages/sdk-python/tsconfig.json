@@ -3,12 +3,21 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "./dist",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "noEmit": false
   },
-  "include": ["generate.ts"],
+  "include": [
+    "generate.ts",
+    "validate.ts"
+  ],
   "references": [
-    { "path": "../protocol" },
-    { "path": "../catalog" }
+    {
+      "path": "../protocol"
+    },
+    {
+      "path": "../catalog"
+    }
   ]
 }

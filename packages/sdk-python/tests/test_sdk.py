@@ -160,3 +160,85 @@ class TestEnvelopes:
             env.manifest(  # type: ignore[call-arg]
                 satellite_id="fleet", display_name="Fleet", screens=[]
             )
+
+
+class TestGuards:
+    """Envelopes the protocol refuses, refused where they are written."""
+
+    def test_an_empty_audience_is_not_default_deny(self) -> None:
+        # `AudienceListSchema` is `.nonempty()`, so an empty list makes the hub
+        # reject the whole manifest — taking every screen and action with it.
+        with pytest.raises(ValueError, match="must not be empty"):
+            env.manifest(
+                satellite_id="depots", display_name="Depots", audience=[], screens=[]
+            )
+        with pytest.raises(ValueError, match="must not be empty"):
+            env.screen_descriptor("depots.dashboard", "Depots", audience=[])
+
+    def test_a_toast_needs_something_to_say(self) -> None:
+        # `ToastSchema.message` is `.min(1)`.
+        with pytest.raises(ValueError, match="needs a message"):
+            env.failed("")
+        with pytest.raises(ValueError, match="needs a message"):
+            env.ok(message="   ")
+
+    def test_a_level_without_a_message_shows_nothing(self) -> None:
+        # `level` is only read when there is a message, so this asks for a
+        # report and silently gets none.
+        with pytest.raises(ValueError, match="no effect without a message"):
+            env.ok(level="error")
+        # The default with no message stays legal.
+        assert "toast" not in env.ok()
+
+    def test_an_empty_choice_list_is_not_a_choice(self) -> None:
+        with pytest.raises(ValueError, match="must not be empty"):
+            env.action_param("reason", "string", choices=[])
+
+    def test_choices_belong_only_to_a_string_parameter(self) -> None:
+        # `ActionParamSchema` refuses this: the choices are strings, so on a
+        # number they describe a parameter no value can satisfy.
+        with pytest.raises(ValueError, match="only meaningful on a string"):
+            env.action_param("quantity", "number", choices=["1", "2"])
+        with pytest.raises(ValueError, match="only meaningful on a string"):
+            env.action_param("force", "boolean", choices=["yes"])
+
+    def test_an_action_declares_an_audience_too(self) -> None:
+        # The manifest-wide guard is worth nothing if a descriptor can slip an
+        # empty list past it — the hub rejects the whole manifest either way.
+        with pytest.raises(ValueError, match="must not be empty"):
+            env.action_descriptor("depots.close", audience=[])
+
+
+class TestActionDeclarations:
+    def test_an_action_parameter_states_its_type(self) -> None:
+        # The MCP gateway turns these into a tool's input schema; a parameter
+        # with no type is one a model cannot fill in.
+        assert env.action_param("id", "string", required=True) == {
+            "name": "id",
+            "type": "string",
+            "required": True,
+        }
+
+    def test_choices_reach_the_wire_as_enum(self) -> None:
+        entry = env.action_param("reason", "string", choices=["maintenance"])
+        assert entry["enum"] == ["maintenance"]
+
+    def test_an_action_descriptor_carries_its_params(self) -> None:
+        descriptor = env.action_descriptor(
+            "depots.close",
+            audience=["internal"],
+            title="Close depot",
+            params=[env.action_param("id", "string", required=True)],
+        )
+        assert descriptor["id"] == "depots.close"
+        assert descriptor["params"][0]["name"] == "id"
+
+    def test_navigate_can_leave_the_current_satellite(self) -> None:
+        # Without satelliteId the hub resolves against the current satellite,
+        # which cannot express "now go to the order this shipment belongs to".
+        assert env.navigate("orders.detail", {"id": "1"}, satellite_id="orders") == {
+            "screenId": "orders.detail",
+            "satelliteId": "orders",
+            "params": {"id": "1"},
+        }
+        assert "satelliteId" not in env.navigate("depots.detail")
