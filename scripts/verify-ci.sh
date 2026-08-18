@@ -57,6 +57,12 @@ step "python: test - sdk"
 # installed lives — and running it there also proves the path dependency works.
 (cd apps/satellite-fleet && uv run pytest ../../packages/sdk-python/tests -q)
 
+step "python: validate every envelope against the hub's schemas"
+# The check a pytest process cannot perform: only the protocol package knows
+# whether what the SDK built is a response the hub actually accepts, and the
+# schemas are Zod. This SDK shipped a rejected toast for exactly that reason.
+pnpm sdk:python:validate
+
 step "csharp: test"
 # Through Docker unless a .NET SDK is on PATH. The repository is Docker-based,
 # and this keeps a ~1GB toolchain off a laptop that would only need it here.

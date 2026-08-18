@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "generate": "tsx generate.ts",
-    "check": "tsx generate.ts --check"
+    "check": "tsx generate.ts --check",
+    "validate": "tsx validate.ts"
   },
   "dependencies": {
     "@portal/catalog": "workspace:*",

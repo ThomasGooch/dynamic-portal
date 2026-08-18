@@ -14,7 +14,7 @@ is how a toast went out carrying ``danger`` — a component tone the hub refuses
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from .node import Node
 from .protocol import PROTOCOL, Audience, ToastLevel
@@ -23,6 +23,8 @@ __all__ = [
     "PROTOCOL",
     "Audience",
     "ToastLevel",
+    "action_descriptor",
+    "action_param",
     "crumb",
     "failed",
     "invalid",
@@ -70,6 +72,36 @@ def crumb(label: str, screen_id: str | None = None) -> dict[str, Any]:
     return {"label": label} if screen_id is None else {"label": label, "screenId": screen_id}
 
 
+def _toast(level: ToastLevel, message: str) -> dict[str, Any]:
+    """A toast, or a refusal.
+
+    ``ToastSchema.message`` is ``.min(1)``, so an empty or blank message is an
+    envelope the hub rejects outright — and a toast nobody can read is not a
+    message anyway.
+    """
+    if not message.strip():
+        raise ValueError(
+            "a toast needs a message; the hub rejects an empty one, and a "
+            "notification with nothing in it tells the reader nothing."
+        )
+    return {"level": level, "message": message}
+
+
+def _audience(audience: list[Audience]) -> list[Audience]:
+    """Refuses an empty audience list.
+
+    Empty is not default-deny. ``AudienceListSchema`` is ``.nonempty()``, so an
+    empty list makes the hub reject the whole manifest — taking every screen
+    and action with it. Declare ``["internal"]`` explicitly.
+    """
+    if not audience:
+        raise ValueError(
+            'audience must not be empty; declare ["internal"] explicitly. An '
+            "empty list is not default-deny — the hub refuses the manifest."
+        )
+    return audience
+
+
 def ok(
     *,
     message: str | None = None,
@@ -83,9 +115,18 @@ def ok(
     screen; ``navigate`` sends the user elsewhere. An action that only needs
     to say "done" says only that.
     """
+    if message is None and level != "success":
+        # The level is only read when there is a message, so this asks for a
+        # report and silently gets none — with nothing at the call site to say
+        # so. The default level with no message stays legal.
+        raise ValueError(
+            f'level="{level}" has no effect without a message: an action that '
+            "says nothing shows no toast. Pass a message, or drop the level."
+        )
+
     body: dict[str, Any] = {"protocol": PROTOCOL, "outcome": "ok"}
     if message is not None:
-        body["toast"] = {"level": level, "message": message}
+        body["toast"] = _toast(level, message)
     if patch is not None:
         body["patch"] = patch
     if navigate is not None:
@@ -115,7 +156,7 @@ def invalid(field_errors: dict[str, str], *, message: str | None = None) -> dict
         "fieldErrors": field_errors,
     }
     if message is not None:
-        body["toast"] = {"level": "warning", "message": message}
+        body["toast"] = _toast("warning", message)
     return body
 
 
@@ -124,7 +165,7 @@ def failed(message: str) -> dict[str, Any]:
     return {
         "protocol": PROTOCOL,
         "outcome": "error",
-        "toast": {"level": "error", "message": message},
+        "toast": _toast("error", message),
     }
 
 
@@ -133,9 +174,93 @@ def patch(target_id: str, ui: Node) -> dict[str, Any]:
     return {"targetId": target_id, "ui": ui}
 
 
-def navigate(screen_id: str, params: dict[str, str] | None = None) -> dict[str, Any]:
-    """Sends the user to another screen after an action."""
-    return {"screenId": screen_id} if params is None else {"screenId": screen_id, "params": params}
+def navigate(
+    screen_id: str,
+    params: dict[str, str] | None = None,
+    *,
+    satellite_id: str | None = None,
+) -> dict[str, Any]:
+    """Sends the user to another screen after an action.
+
+    ``satellite_id`` is what lets this leave the satellite that handled the
+    action. Omitted, the hub resolves the screen against the current one —
+    right for the common case, and unable to express "now go to the order this
+    shipment belongs to".
+    """
+    body: dict[str, Any] = {"screenId": screen_id}
+    if satellite_id is not None:
+        body["satelliteId"] = satellite_id
+    if params is not None:
+        body["params"] = params
+    return body
+
+
+ParamType = Literal["string", "number", "boolean"]
+
+
+def action_param(
+    name: str,
+    param_type: ParamType,
+    *,
+    required: bool = False,
+    description: str | None = None,
+    choices: list[str] | None = None,
+) -> dict[str, Any]:
+    """One entry in an action's ``params``.
+
+    Distinct from :func:`param`, which describes a *screen* parameter and has
+    no type. An action parameter must state one: the MCP gateway turns these
+    into a tool's input schema, and a parameter with no type is one a model
+    cannot fill in.
+
+    ``choices`` becomes ``enum`` on the wire — an agent picks from the list
+    rather than inventing a value.
+    """
+    entry: dict[str, Any] = {"name": name, "type": param_type, "required": required}
+    if description is not None:
+        entry["description"] = description
+    if choices is not None:
+        if not choices:
+            raise ValueError(
+                "choices must not be empty; the hub rejects an empty enum, and "
+                "a list of no options is not a choice. Omit it instead."
+            )
+        if param_type != "string":
+            # `ActionParamSchema` refuses this: the choices are strings, so on a
+            # number or a boolean they describe a parameter no value can
+            # satisfy — an action that reads as callable and is not one.
+            raise ValueError(
+                f'choices are only meaningful on a string parameter, not '
+                f'{param_type}: the values are strings, so a {param_type} '
+                "parameter could never match one. Drop the choices, or make "
+                'the parameter a "string".'
+            )
+        entry["enum"] = choices
+    return entry
+
+
+def action_descriptor(
+    action_id: str,
+    *,
+    audience: list[Audience],
+    title: str | None = None,
+    description: str | None = None,
+    params: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """One entry in a manifest's ``actions``.
+
+    An action stays uncallable by the gateway until it declares what it takes,
+    so ``params`` is how an agent reaches it at all. Build them with
+    :func:`action_param`, not :func:`param`.
+    """
+    entry: dict[str, Any] = {"id": action_id, "audience": _audience(audience)}
+    if title is not None:
+        entry["title"] = title
+    if description is not None:
+        entry["description"] = description
+    if params is not None:
+        entry["params"] = params
+    return entry
 
 
 def manifest(
@@ -161,7 +286,7 @@ def manifest(
         "protocol": PROTOCOL,
         "satelliteId": satellite_id,
         "displayName": display_name,
-        "audience": audience,
+        "audience": _audience(audience),
         "screens": screens,
         "actions": actions if actions is not None else [],
     }
@@ -185,7 +310,7 @@ def screen_descriptor(
     params: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """One entry in a manifest's ``screens``."""
-    entry: dict[str, Any] = {"id": screen_id, "title": title, "audience": audience}
+    entry: dict[str, Any] = {"id": screen_id, "title": title, "audience": _audience(audience)}
     if description is not None:
         entry["description"] = description
     if params is not None:
@@ -194,7 +319,13 @@ def screen_descriptor(
 
 
 def param(name: str, *, required: bool = False, description: str | None = None) -> dict[str, Any]:
-    """A screen or action parameter."""
+    """A *screen* parameter.
+
+    Not an action parameter, despite what this said before ``action_param``
+    existed. ``ActionParamSchema`` is ``.strict()`` and requires ``type``, so
+    putting one of these in an action's ``params`` gets the whole manifest
+    rejected — every screen and action with it. Use :func:`action_param`.
+    """
     entry: dict[str, Any] = {"name": name, "required": required}
     if description is not None:
         entry["description"] = description

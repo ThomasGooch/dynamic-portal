@@ -28,7 +28,8 @@
     "test:sdk-python": "cd apps/satellite-fleet && uv run pytest ../../packages/sdk-python/tests",
     "sdk:check": "pnpm --filter @portal/sdk-python check && pnpm --filter @portal/sdk-csharp check",
     "sdk:csharp": "pnpm --filter @portal/sdk-csharp generate",
-    "sdk:csharp:validate": "pnpm --filter @portal/sdk-csharp validate"
+    "sdk:csharp:validate": "pnpm --filter @portal/sdk-csharp validate",
+    "sdk:python:validate": "pnpm --filter @portal/sdk-python validate"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
