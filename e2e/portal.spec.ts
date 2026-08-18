@@ -833,6 +833,18 @@ test.describe("the assistant, switched on", () => {
   });
 
   test("composes a grounded screen the hub fills in", async ({ request }) => {
+    // `render_screen` is a 34-variant `oneOf` and every data-bearing node has
+    // to cite a tool call that grounding then verifies. A 7B model on a laptop
+    // does not do that — it answers in prose instead of calling the tool — so
+    // this is the one assistant test that still needs the hosted model.
+    //
+    // Skipped rather than deleted or left red: the other six pass locally, and
+    // a suite that is red by design teaches everyone to ignore it.
+    test.skip(
+      process.env["PORTAL_MODEL_PROVIDER"] === "ollama",
+      "screen composition needs the hosted model; the local one answers in prose",
+    );
+
     test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
 
     const response = await request.post("/api/agent", {

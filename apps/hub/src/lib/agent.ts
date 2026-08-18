@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Principal } from "@portal/identity";
-import { anthropicClient, type ModelClient } from "@portal/agent";
+import { anthropicClient, ollamaClient, type ModelClient } from "@portal/agent";
 import {
   buildSurface,
   invokeTool,
@@ -181,7 +181,40 @@ export function agentInvoker(principal: Principal, surface: ToolSurface): AgentI
   };
 }
 
+/**
+ * Which model answers, and why the default is the paid one.
+ *
+ * `PORTAL_MODEL_PROVIDER=ollama` points the agent at a model on this machine.
+ * That exists because testing the assistant against a metered API turned a
+ * regression suite into a bill, which is a poor incentive to test the agent at
+ * all.
+ *
+ * The default stays Anthropic deliberately. PLAN.md picks `claude-opus-5`
+ * because it is zero-data-retention eligible and regulated data reaches the
+ * model through tool results — a compliance decision before a capability one.
+ * A local model answers that question differently and nobody has reviewed it,
+ * so it turns on by choice and never by omission.
+ */
 export function modelClient(): ModelClient {
+  if (process.env["PORTAL_MODEL_PROVIDER"] === "ollama") {
+    // Empty is absent. Compose writes `PORTAL_OLLAMA_MODEL: ${VAR:-}` for
+    // every optional setting, so an unset variable arrives as "" rather than
+    // undefined — and `??` only catches null. That sent `model: ""` to Ollama,
+    // which rejected it in three milliseconds while the hub reported only that
+    // the assistant "could not complete that request".
+    const set = (name: string): string | undefined => {
+      const value = process.env[name];
+      return value === undefined || value === "" ? undefined : value;
+    };
+
+    const baseUrl = set("PORTAL_OLLAMA_URL");
+    const model = set("PORTAL_OLLAMA_MODEL");
+    return ollamaClient({
+      ...(baseUrl === undefined ? {} : { baseUrl }),
+      ...(model === undefined ? {} : { model }),
+    });
+  }
+
   const apiKey = process.env["ANTHROPIC_API_KEY"];
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is required to run the agent");
   return anthropicClient({ apiKey });
