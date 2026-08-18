@@ -168,6 +168,22 @@ describe("the surface this satellite actually offers", () => {
     expect(form?.inputSchema.required ?? []).toEqual([]);
   });
 
+  it("lets an agent send a list, which it previously could not express", async () => {
+    // Until `string[]` existed, `tags` could not be declared at all: the form
+    // offered a MultiSelect and the agent surface had no way to carry one. The
+    // two projections of one action did not have the same reach, and the gap
+    // was load-bearing — the hazmat rule was judged against a list the caller
+    // never sent.
+    const surface = await surfaceFor(principal());
+    const create = surface.byName.get("orders__orders_create");
+    const tags = create?.inputSchema.properties?.["tags"];
+
+    expect(tags).toMatchObject({ type: "array", items: { type: "string" } });
+    // The choices constrain each entry, not the list. A model reading them as
+    // constraining the array would think one value was the whole answer.
+    expect(tags).toMatchObject({ items: { enum: expect.arrayContaining(["hazmat"]) } });
+  });
+
   it("does not offer deletion to a model at all", async () => {
     // `orders.delete` is `agentVisible: false`, which is a stronger control
     // than confirmation: confirmation is a person reading a card, invisibility

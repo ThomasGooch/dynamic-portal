@@ -309,6 +309,10 @@ export function createApp({
       }
 
       const result = readDraft(
+        // `tags` is declared `string[]` now, so an agent *can* send it — but an
+        // omission still has to mean "leave them alone" rather than "clear
+        // them", or a caller updating one field would silently drop the labels
+        // and, with them, the rule that hazmat needs handling notes.
         body["tags"] === undefined ? { ...body, tags: existing.tags } : body,
         today(),
       );

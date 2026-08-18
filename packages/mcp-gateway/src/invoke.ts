@@ -247,6 +247,34 @@ export function checkArguments(
       continue;
     }
 
+    if (property.type === "array") {
+      /**
+       * A list of strings, checked element by element.
+       *
+       * `typeof [] === "object"`, so the branch below would have accepted any
+       * object at all here — including `{}` — and passed it to a satellite as
+       * a list. Every entry is checked because a single bad one is the whole
+       * point: `["retail", 7]` is not a list of strings, and silently keeping
+       * the good entries would change what the caller asked for.
+       */
+      if (!Array.isArray(value)) {
+        return { ok: false, message: `"${name}" must be a list.` };
+      }
+      for (const entry of value) {
+        if (typeof entry !== "string") {
+          return { ok: false, message: `"${name}" must be a list of text values.` };
+        }
+        if (property.items.enum !== undefined && !property.items.enum.includes(entry)) {
+          return {
+            ok: false,
+            message: `"${name}" may only contain: ${property.items.enum.join(", ")}.`,
+          };
+        }
+      }
+      out[name] = [...value];
+      continue;
+    }
+
     if (property.type === "number") {
       if (typeof value !== "number" || !Number.isFinite(value)) {
         return { ok: false, message: `"${name}" must be a number.` };

@@ -43,7 +43,8 @@ export interface PublicResourceParam {
 
 export interface PublicOperationParam {
   readonly name: string;
-  readonly type: "string" | "number" | "boolean";
+  /** `string[]` mirrors the internal declaration; see `ActionParamSchema`. */
+  readonly type: "string" | "number" | "boolean" | "string[]";
   readonly required: boolean;
   readonly description?: string;
   readonly enum?: readonly string[];

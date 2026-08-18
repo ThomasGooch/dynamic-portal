@@ -90,7 +90,23 @@ export const ScreenDescriptorSchema = z
 export const ActionParamSchema = z
   .object({
     name: z.string().min(1),
-    type: z.enum(["string", "number", "boolean"]),
+    /**
+     * `string[]` is here because a form could express something the agent
+     * surface could not.
+     *
+     * `MultiSelect` puts a list of strings on a screen, and until this existed
+     * an action carrying one had no way to declare it — so an agent calling
+     * that action simply omitted the field, and the satellite had to guess
+     * whether "absent" meant "unchanged" or "cleared". In `orders` it meant a
+     * model could strip the handling notes off a hazmat order and pass
+     * validation, because the rule was judged against a list the caller never
+     * sent.
+     *
+     * Deliberately not a general array type. A list of strings is what the
+     * catalog's `MultiSelect` produces; anything richer invites nesting, and
+     * nesting is what keeps a schema out of strict structured outputs.
+     */
+    type: z.enum(["string", "number", "boolean", "string[]"]),
     required: z.boolean().default(false),
     description: z.string().optional(),
     /** Enumerated choices, so an agent picks from a list rather than inventing one. */
@@ -101,7 +117,10 @@ export const ActionParamSchema = z
     // The choices are strings. Attached to a number they would describe a
     // parameter that no value can satisfy, which reads as a callable action
     // and is not one.
-    if (param.enum !== undefined && param.type !== "string") {
+    // Choices are strings, so they describe a string or the elements of a
+    // string list. On a number they would describe a parameter no value can
+    // satisfy, which reads as callable and is not.
+    if (param.enum !== undefined && param.type !== "string" && param.type !== "string[]") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["enum"],

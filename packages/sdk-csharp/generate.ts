@@ -42,13 +42,30 @@ const jsonSchema = (schema: unknown): JsonSchemaNode =>
     $refStrategy: "none",
   }) as JsonSchemaNode;
 
-/** `stat-tile`/`from` → `StatTile`/`From`. C# members are PascalCase. */
+/**
+ * `stat-tile`/`from` → `StatTile`/`From`. C# members are PascalCase.
+ *
+ * `[]` is spelled out rather than stripped. Dropping it turned the protocol's
+ * `string[]` into `String`, which collided with the existing `String` member
+ * and generated an enum whose `ToWire` mapped every plain string parameter to
+ * `"string[]"` — a silent type change on every action in the portal. It
+ * compiled, because a duplicate enum member is only an error in C# when both
+ * names are identical *and* the file is read, and nothing read it.
+ *
+ * The rule is deliberately loud: a protocol value this cannot name distinctly
+ * should fail here rather than emit something plausible.
+ */
 function pascal(name: string): string {
-  return name
+  const parts = name
+    .replace(/\[\]$/, " list")
     .split(/[^a-zA-Z0-9]+/)
     .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join("");
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1));
+
+  if (parts.length === 0) {
+    throw new Error(`cannot name the protocol value ${JSON.stringify(name)} in C#`);
+  }
+  return parts.join("");
 }
 
 /** C# keywords that cannot be parameter names without an `@` prefix. */
@@ -291,6 +308,29 @@ ${assignments.join("\n")}
   };
 }
 
+/**
+ * Every member of a generated enum must be distinctly named.
+ *
+ * `string[]` and `string` both pascal-cased to `String` once, and the result
+ * compiled while mapping every plain string parameter to `"string[]"` — a
+ * silent type change on every action in the portal. A generator that emits a
+ * plausible wrong answer is worse than one that stops.
+ */
+function distinct(values: readonly string[], what: string): readonly string[] {
+  const seen = new Map<string, string>();
+  for (const value of values) {
+    const name = pascal(value);
+    const claimed = seen.get(name);
+    if (claimed !== undefined) {
+      throw new Error(
+        `${what}: ${JSON.stringify(value)} and ${JSON.stringify(claimed)} both name the C# member ${name}`,
+      );
+    }
+    seen.set(name, value);
+  }
+  return values;
+}
+
 const components = COMPONENT_NAMES.map(emit);
 
 const enumBlocks = [...enums.entries()]
@@ -387,7 +427,7 @@ ${COMPONENT_NAMES.filter((_, index) => components[index]?.citable === true)
 /// <summary>Toast levels. Note <c>Error</c>, not <c>Danger</c> — that is a component tone.</summary>
 public enum ToastLevel
 {
-${(jsonSchema(ToastSchema).properties?.["level"]?.enum ?? [])
+${distinct((jsonSchema(ToastSchema).properties?.["level"]?.enum ?? []).map(String), "level")
   .map((value) => `    /// <summary>The protocol value <c>${String(value)}</c>.</summary>\n    ${pascal(String(value))},`)
   .join("\n\n")}
 }
@@ -395,7 +435,7 @@ ${(jsonSchema(ToastSchema).properties?.["level"]?.enum ?? [])
 /// <summary>What an action reports back.</summary>
 public enum ActionOutcome
 {
-${(jsonSchema(ActionResponseSchema).properties?.["outcome"]?.enum ?? [])
+${distinct((jsonSchema(ActionResponseSchema).properties?.["outcome"]?.enum ?? []).map(String), "outcome")
   .map((value) => `    /// <summary>The protocol value <c>${String(value)}</c>.</summary>\n    ${pascal(String(value))},`)
   .join("\n\n")}
 }
@@ -409,7 +449,7 @@ ${(jsonSchema(ActionResponseSchema).properties?.["outcome"]?.enum ?? [])
 /// </remarks>
 public enum ParamType
 {
-${(jsonSchema(ActionParamSchema).properties?.["type"]?.enum ?? [])
+${distinct((jsonSchema(ActionParamSchema).properties?.["type"]?.enum ?? []).map(String), "type")
   .map((value) => `    /// <summary>The protocol value <c>${String(value)}</c>.</summary>\n    ${pascal(String(value))},`)
   .join("\n\n")}
 }
@@ -417,7 +457,7 @@ ${(jsonSchema(ActionParamSchema).properties?.["type"]?.enum ?? [])
 /// <summary>Who a satellite, screen or action is visible to. Default-deny.</summary>
 public enum Audience
 {
-${(jsonSchema(AudienceSchema).enum ?? [])
+${distinct((jsonSchema(AudienceSchema).enum ?? []).map(String), "AudienceSchema")
   .map((value) => `    /// <summary>The protocol value <c>${String(value)}</c>.</summary>\n    ${pascal(String(value))},`)
   .join("\n\n")}
 }
@@ -429,7 +469,7 @@ public static partial class WireValues
     public static string ToWire(this ToastLevel value) =>
         value switch
         {
-${(jsonSchema(ToastSchema).properties?.["level"]?.enum ?? [])
+${distinct((jsonSchema(ToastSchema).properties?.["level"]?.enum ?? []).map(String), "level")
   .map((value) => `            ToastLevel.${pascal(String(value))} => ${JSON.stringify(String(value))},`)
   .join("\n")}
             _ => throw new ArgumentOutOfRangeException(nameof(value)),
@@ -439,7 +479,7 @@ ${(jsonSchema(ToastSchema).properties?.["level"]?.enum ?? [])
     public static string ToWire(this ActionOutcome value) =>
         value switch
         {
-${(jsonSchema(ActionResponseSchema).properties?.["outcome"]?.enum ?? [])
+${distinct((jsonSchema(ActionResponseSchema).properties?.["outcome"]?.enum ?? []).map(String), "outcome")
   .map((value) => `            ActionOutcome.${pascal(String(value))} => ${JSON.stringify(String(value))},`)
   .join("\n")}
             _ => throw new ArgumentOutOfRangeException(nameof(value)),
@@ -449,7 +489,7 @@ ${(jsonSchema(ActionResponseSchema).properties?.["outcome"]?.enum ?? [])
     public static string ToWire(this ParamType value) =>
         value switch
         {
-${(jsonSchema(ActionParamSchema).properties?.["type"]?.enum ?? [])
+${distinct((jsonSchema(ActionParamSchema).properties?.["type"]?.enum ?? []).map(String), "type")
   .map((value) => `            ParamType.${pascal(String(value))} => ${JSON.stringify(String(value))},`)
   .join("\n")}
             _ => throw new ArgumentOutOfRangeException(nameof(value)),
@@ -459,7 +499,7 @@ ${(jsonSchema(ActionParamSchema).properties?.["type"]?.enum ?? [])
     public static string ToWire(this Audience value) =>
         value switch
         {
-${(jsonSchema(AudienceSchema).enum ?? [])
+${distinct((jsonSchema(AudienceSchema).enum ?? []).map(String), "AudienceSchema")
   .map((value) => `            Audience.${pascal(String(value))} => ${JSON.stringify(String(value))},`)
   .join("\n")}
             _ => throw new ArgumentOutOfRangeException(nameof(value)),
