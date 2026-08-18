@@ -51,4 +51,6 @@ export {
   type RunInput,
 } from "./loop";
 
+export { conversationBudget, trimConversation } from "./trim";
+
 export { AGENT_MODEL, anthropicClient, type AnthropicClientOptions } from "./anthropic";
