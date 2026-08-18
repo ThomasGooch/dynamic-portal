@@ -82,7 +82,7 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # The hub. Waits for both satellites to be healthy — not because it cannot
+  # The hub. Waits for every satellite to be healthy — not because it cannot
   # start without them (an unwell satellite degrades to a scoped card, and there
   # is an e2e test for exactly that), but so `pnpm up` reaches a state where the
   # whole stack is demonstrably working rather than half of it.

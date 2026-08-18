@@ -27,8 +27,15 @@ RUN dotnet publish "/src/${APP_PATH}/src/${PROJECT}/${PROJECT}.csproj" \
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 ARG PROJECT
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
-    DOTNET_NOLOGO=1 \
-    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
+    DOTNET_NOLOGO=1
+# `ASPNETCORE_FORWARDEDHEADERS_ENABLED` is deliberately not set. It installs the
+# forwarded-headers middleware with `KnownProxies` and `KnownNetworks` cleared,
+# so `X-Forwarded-For` and `X-Forwarded-Proto` are believed from whoever sends
+# them — and compose publishes the satellite's port on the host, so that is
+# anyone. Nothing here reads the remote address or the scheme, so the setting
+# bought nothing and would have quietly become load-bearing the first time
+# something logged a client IP. Turn it on with an explicit
+# `UseForwardedHeaders` that names the proxy, or not at all.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*

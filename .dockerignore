@@ -48,5 +48,13 @@ playwright-report
 # rule is: `bin/` is an ordinary name for a committed script directory, and an
 # unscoped `**/bin/` silently drops one from the build context, where the
 # failure shows up as a missing file at runtime rather than at build time.
+#
+# Every .NET project needs its own pair, and forgetting one is quiet: the
+# satellite image does `COPY ${APP_PATH}`, and `scripts/verify-ci.sh` runs
+# `dotnet test` in `apps/satellite-depots` on the way to the build — so the
+# obj/ it leaves behind, full of absolute host paths, would ride into the
+# image on the very next `pnpm up`.
 packages/sdk-csharp/**/bin/
 packages/sdk-csharp/**/obj/
+apps/satellite-depots/**/bin/
+apps/satellite-depots/**/obj/

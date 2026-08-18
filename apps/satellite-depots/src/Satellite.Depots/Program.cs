@@ -26,7 +26,9 @@ var repository = app.Services.GetRequiredService<DepotRepository>();
 
 const string ReadScope = "depots.read";
 const string WriteScope = "depots.write";
-string[] declaredAudience = ["internal"];
+// Read from the manifest rather than restated, so the check at the door cannot
+// drift from the declaration the hub was handed.
+var declaredAudience = Screens.DeclaredAudience.Select(a => a.ToWire()).ToHashSet();
 
 app.MapGet("/healthz", () => Results.Json(new { status = "ok", protocol = Protocol.Version }));
 
@@ -98,7 +100,10 @@ app.MapPost("/portal/actions/{actionId}", async (HttpContext context, string act
                 Envelopes.Invalid(
                     new Dictionary<string, string>
                     {
-                        ["id"] = $"{depot.Name} still holds {depot.UsedPallets:N0} pallets. Move them first.",
+                        ["id"] = string.Format(
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            "{0} still holds {1:N0} pallets. Move them first.",
+                            depot.Name, depot.UsedPallets),
                     }),
                 PortalJson.Options);
         }
@@ -109,12 +114,17 @@ app.MapPost("/portal/actions/{actionId}", async (HttpContext context, string act
             return Results.Json(Envelopes.Failed("No such depot."), PortalJson.Options);
         }
 
-        // The satellite says what should now be true; the hub applies it. No
-        // satellite JavaScript is involved in re-rendering the table.
+        // Navigate rather than patch. `depots-table` lives on the dashboard,
+        // but the only route to this action is the form on `depots.detail`,
+        // which has no such node — the hub's `applyPatches` would refuse it and
+        // pair a success toast with a screen that never changed. An action does
+        // not learn which screen invoked it, so a satellite may only send a
+        // patch when *every* route to it is on the screen the patch addresses.
+        // Same rule as `orders.approve`.
         return Results.Json(
             Envelopes.Ok(
                 message: $"{closed.Name} is closed.",
-                patch: [Envelopes.Patch("depots-table", Screens.DepotsTable(repository.List(principal.TenantId)))]),
+                navigate: Envelopes.Navigate("depots.dashboard")),
             PortalJson.Options);
     }));
 
@@ -134,6 +144,13 @@ static async Task<Dictionary<string, string>> ReadParamsAsync(HttpContext contex
         }
         return values;
     }
+
+    // `ReadFromJsonAsync` throws `InvalidOperationException` — not a
+    // `JsonException` — when the content type is absent or not a JSON one, so
+    // catching only the latter turned a `text/plain` or bodyless POST into an
+    // unhandled 500 instead of the validation envelope below. Checking first
+    // keeps the common path exception-free.
+    if (!context.Request.HasJsonContentType()) return values;
 
     try
     {

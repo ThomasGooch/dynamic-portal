@@ -28,6 +28,7 @@ import { CATALOG_VERSION, validateNested } from "@portal/catalog";
 
 const ORDERS = process.env["PORTAL_ORDERS_URL"] ?? "http://127.0.0.1:4001";
 const FLEET = process.env["PORTAL_FLEET_URL"] ?? "http://127.0.0.1:4002";
+const DEPOTS = process.env["PORTAL_DEPOTS_URL"] ?? "http://127.0.0.1:4003";
 const SECRET = process.env["PORTAL_PRINCIPAL_SECRET"] ?? "dev-only-not-a-real-secret";
 
 /** Mints a principal the same way the hub's token exchange will. */
@@ -324,7 +325,7 @@ test.describe("the agent-facing projection of the same declarations", () => {
 
 test.describe("the conformance kit, against the deployed satellites", () => {
   // The adoption story, run for real. A satellite team's first contact with
-  // this platform is this command, so it is tested against both satellites —
+  // this platform is this command, so it is tested against every satellite —
   // including the Python one, which shares no code with the kit and is still on
   // protocol 1.0.
   const run = async (base: string, scopes: string) => {
@@ -348,6 +349,17 @@ test.describe("the conformance kit, against the deployed satellites", () => {
 
   test("passes the Python satellite, which shares no code with the kit", async () => {
     const report = await run(FLEET, "fleet.read");
+    const failures = report.results.filter((result) => result.status === "fail");
+    expect(failures.map((f) => `${f.name}: ${f.detail}`)).toEqual([]);
+    expect(report.ok).toBe(true);
+  });
+
+  test("passes the C# satellite, which the kit judged before this test existed", async () => {
+    // Run by hand, this is what caught the depots manifest requiring a bearer
+    // token while every one of that satellite's own tests passed — because all
+    // of them sent one. Left un-automated, the next satellite to make the same
+    // mistake would reach main the same way.
+    const report = await run(DEPOTS, "depots.read");
     const failures = report.results.filter((result) => result.status === "fail");
     expect(failures.map((f) => `${f.name}: ${f.detail}`)).toEqual([]);
     expect(report.ok).toBe(true);

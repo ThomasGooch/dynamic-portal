@@ -78,9 +78,12 @@
   timeoutMs: 3000
   audience: [internal]
   tools:
-    # Closing a depot is a mutation, so it is invisible to the agent until a
-    # human names it here and requires confirmation. The satellite checks the
-    # write scope regardless — this governs whether a model may propose it.
+    # Closing a depot is a mutation, so the shim defaults it to agent-invisible
+    # and it stays that way: `agentVisible: true` is deliberately absent, and
+    # adding it is the one-line decision a human makes to let a model propose
+    # this. The entry exists so the confirmation requirement and the write scope
+    # are already stated when someone does. The satellite checks the write scope
+    # regardless — none of this is what keeps the data safe.
     depots.close:
       requiresConfirmation: true
       rbacScopes: [depots.write]

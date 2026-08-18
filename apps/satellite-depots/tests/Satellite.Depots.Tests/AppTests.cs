@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
@@ -177,10 +178,17 @@ public class TenantIsolation(DepotsApp app) : IClassFixture<DepotsApp>
     public async Task WillNotCloseAnotherTenantsDepot()
     {
         var response = await app.ClientFor(DepotsApp.Globex("depots.read", "depots.write"))
-            .PostAsJsonAsync("/portal/actions/depots.close", new { id = "dep-4", reason = "maintenance" });
+            .PostAsJsonAsync("/portal/actions/depots.close", new { id = "dep-5", reason = "maintenance" });
 
         var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
         Assert.Equal("error", body.GetProperty("outcome").GetString());
+
+        // Refusing and not-mutating are separate claims: a handler that wrote
+        // first and checked the tenant afterwards would pass the assertion
+        // above and still have closed acme's depot.
+        var acme = await (await app.ClientFor(DepotsApp.Acme())
+            .GetAsync("/portal/screens/depots.detail?id=dep-5")).Content.ReadAsStringAsync();
+        Assert.Contains("\"value\":\"open\"", acme.Replace(" ", ""));
     }
 }
 
@@ -213,16 +221,38 @@ public class TheActionRoundTrip(DepotsApp app) : IClassFixture<DepotsApp>
     }
 
     [Fact]
-    public async Task ClosesAnEmptyDepotAndPatchesTheTable()
+    public async Task ClosesADepotAndSendsTheCallerBackToTheDashboard()
     {
-        // The hypermedia claim: the satellite says what should now be true and
-        // the hub applies it. No satellite JavaScript is involved.
-        var body = await Post(
-            app.ClientFor(DepotsApp.Acme("depots.read", "depots.write")),
-            new { id = "dep-4", reason = "lease-ended" });
+        // Navigate, not patch: the form that reaches this action lives only on
+        // `depots.detail`, which has no `depots-table` node, so a patch
+        // addressing one would be refused by the hub and pair a success toast
+        // with a screen that never changed.
+        var client = app.ClientFor(DepotsApp.Acme("depots.read", "depots.write"));
+        var body = await Post(client, new { id = "dep-5", reason = "lease-ended" });
 
         Assert.Equal("ok", body.GetProperty("outcome").GetString());
-        Assert.Equal("depots-table", body.GetProperty("patch")[0].GetProperty("targetId").GetString());
-        Assert.Equal("Table", body.GetProperty("patch")[0].GetProperty("ui").GetProperty("type").GetString());
+        Assert.False(body.TryGetProperty("patch", out _));
+        Assert.Equal("depots.dashboard", body.GetProperty("navigate").GetProperty("screenId").GetString());
+
+        // And it actually persisted. Asserting only on the envelope would pass
+        // against a repository whose write silently went nowhere.
+        var detail = await (await client.GetAsync("/portal/screens/depots.detail?id=dep-5"))
+            .Content.ReadAsStringAsync();
+        Assert.Contains("\"value\":\"closed\"", detail.Replace(" ", ""));
+    }
+
+    [Fact]
+    public async Task AnswersAnUnreadableBodyWithFieldErrorsRatherThan500()
+    {
+        // `ReadFromJsonAsync` throws `InvalidOperationException` when there is
+        // no JSON content type, which escaped the handler's `JsonException`
+        // catch as a 500. `express.json()` in the orders satellite degrades to
+        // `{}` here, so a 500 was also a cross-language divergence.
+        var response = await app.ClientFor(DepotsApp.Acme("depots.read", "depots.write"))
+            .PostAsync("/portal/actions/depots.close", new StringContent("id=dep-4", Encoding.UTF8, "text/plain"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal("validation", body.GetProperty("outcome").GetString());
     }
 }

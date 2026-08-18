@@ -1,3 +1,4 @@
+using System.Globalization;
 using Portal.Sdk;
 
 namespace Satellite.Depots;
@@ -16,6 +17,13 @@ namespace Satellite.Depots;
 /// </remarks>
 public static class Screens
 {
+    /// <summary>
+    /// The audience this satellite declares, read by the manifest and by the
+    /// request path. One list, so the check at the door cannot drift from the
+    /// declaration the hub was given.
+    /// </summary>
+    public static readonly IReadOnlyList<Audience> DeclaredAudience = [Audience.Internal];
+
     private static readonly Dictionary<string, Tone> StatusTone = new()
     {
         ["open"] = Tone.Success,
@@ -23,26 +31,32 @@ public static class Screens
         ["closed"] = Tone.Muted,
     };
 
+    // A status the map does not know is a data problem, not a reason to 500 the
+    // whole screen: indexing threw `KeyNotFoundException` for anything outside
+    // the three seeded values.
+    private static Tone ToneFor(string status) =>
+        StatusTone.TryGetValue(status, out var tone) ? tone : Tone.Muted;
+
     public static IReadOnlyDictionary<string, object?> Manifest() =>
         Envelopes.Manifest(
             satelliteId: "depots",
             displayName: "Depot Operations",
             description: "Capacity, utilisation and status by depot.",
-            audience: [Audience.Internal],
+            audience: DeclaredAudience,
             screens:
             [
                 Envelopes.ScreenDescriptor(
-                    "depots.dashboard", "Depots", [Audience.Internal],
+                    "depots.dashboard", "Depots", DeclaredAudience,
                     description: "Capacity overview for the current tenant."),
                 Envelopes.ScreenDescriptor(
-                    "depots.detail", "Depot detail", [Audience.Internal],
+                    "depots.detail", "Depot detail", DeclaredAudience,
                     parameters: [Envelopes.Param("id", required: true, description: "Depot id")]),
             ],
             actions:
             [
                 Envelopes.ActionDescriptor(
                     "depots.close",
-                    [Audience.Internal],
+                    DeclaredAudience,
                     title: "Close depot",
                     description: "Take a depot out of service. Existing stock must be moved first.",
                     parameters:
@@ -64,9 +78,9 @@ public static class Screens
         ["name"] = depot.Name,
         ["region"] = depot.Region,
         ["status"] = depot.Status,
-        ["statusTone"] = StatusTone[depot.Status].ToWire(),
+        ["statusTone"] = ToneFor(depot.Status).ToWire(),
         ["utilisation"] = $"{depot.UtilisationPercent}%",
-        ["capacity"] = depot.CapacityPallets.ToString("N0"),
+        ["capacity"] = depot.CapacityPallets.ToString("N0", CultureInfo.InvariantCulture),
     };
 
     public static Node DepotsTable(IReadOnlyList<Depot> depots) =>
@@ -151,13 +165,15 @@ public static class Screens
                         new Dictionary<string, object?>
                         {
                             ["label"] = "Status", ["value"] = depot.Status,
-                            ["as"] = "badge", ["tone"] = StatusTone[depot.Status].ToWire(),
+                            ["as"] = "badge", ["tone"] = ToneFor(depot.Status).ToWire(),
                         },
                         new Dictionary<string, object?>
                         {
                             ["label"] = "Utilisation",
-                            ["value"] = $"{depot.UsedPallets:N0} of {depot.CapacityPallets:N0} pallets "
-                                + $"({depot.UtilisationPercent}%)",
+                            ["value"] = string.Format(
+                                CultureInfo.InvariantCulture,
+                                "{0:N0} of {1:N0} pallets ({2}%)",
+                                depot.UsedPallets, depot.CapacityPallets, depot.UtilisationPercent),
                         },
                     ])),
                 Ui.Section(title: "Actions").With(

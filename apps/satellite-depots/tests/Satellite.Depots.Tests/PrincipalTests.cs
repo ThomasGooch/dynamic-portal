@@ -64,6 +64,27 @@ public class VerifyingAPrincipal
             () => Principals.Verify($"{payload}.{signature}", Secret));
         Assert.Contains("admin", error.Message);
     }
+
+    [Fact]
+    public void RefusesARepeatedClaim()
+    {
+        // `TryGetProperty` returns the first occurrence; `JSON.parse` and
+        // `json.loads` keep the last. Resolving it either way would make one
+        // signed token mean two different tenants across the three satellites.
+        var payload = System.Convert.ToBase64String(
+                System.Text.Encoding.UTF8.GetBytes(
+                    """{"sub":"a","tenantId":"acme","tenantId":"globex","audience":"internal","scopes":["depots.read"]}"""))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        using var hmac = new System.Security.Cryptography.HMACSHA256(
+            System.Text.Encoding.UTF8.GetBytes(Secret));
+        var signature = System.Convert.ToBase64String(
+                hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(payload)))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        var error = Assert.Throws<InvalidPrincipalException>(
+            () => Principals.Verify($"{payload}.{signature}", Secret));
+        Assert.Contains("tenantId", error.Message);
+    }
 }
 
 public class TheCrossLanguageContract

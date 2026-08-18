@@ -14,8 +14,8 @@ namespace Satellite.Depots;
 /// cross-tenant disclosure. That is only true if the satellite actually checks
 /// the signature.
 ///
-/// The wire format is shared with the TypeScript satellite
-/// (<c>apps/satellite-orders/src/principal.ts</c>) and the Python one
+/// The wire format is shared with the TypeScript implementation
+/// (<c>packages/identity/src/principal.ts</c>) and the Python one
 /// (<c>apps/satellite-fleet/src/satellite_fleet/principal.py</c>):
 /// base64url(JSON) <c>.</c> base64url(HMAC-SHA256).
 ///
@@ -125,14 +125,38 @@ public static class Principals
             throw new InvalidPrincipalException("payload is not an object");
         }
 
-        var unknown = decoded.EnumerateObject()
-            .Select(property => property.Name)
-            .Where(name => !Claims.Contains(name))
-            .Order()
-            .ToList();
+        // Ordinal throughout: these names are wire tokens, not text for a reader, and
+        // the default comparer would order them by the server's culture — Python's
+        // `sorted()` and this would then disagree on the same message.
+        var unknown = new SortedSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var duplicated = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var property in decoded.EnumerateObject())
+        {
+            if (!Claims.Contains(property.Name)) unknown.Add(property.Name);
+            if (!seen.Add(property.Name)) duplicated.Add(property.Name);
+        }
         if (unknown.Count > 0)
         {
             throw new InvalidPrincipalException($"unknown claim(s): {string.Join(", ", unknown)}");
+        }
+
+        // A repeated claim is refused rather than resolved.
+        //
+        // Not because the three languages disagree — measured, they do not:
+        // `TryGetProperty`, `JSON.parse` and `json.loads` all keep the *last*
+        // occurrence, so a payload with two `tenantId` claims reads the same
+        // everywhere today. This is deliberate extra strictness, and it is
+        // worth being clear that it is: nothing that mints these can produce a
+        // duplicate, because every implementation serialises from a map, so a
+        // token carrying one did not come from the hub.
+        //
+        // The cost is a real if benign divergence — orders and fleet would
+        // accept such a token and this refuses it. Fail-closed, and worth
+        // porting to the other two rather than dropping here.
+        if (duplicated.Count > 0)
+        {
+            throw new InvalidPrincipalException($"duplicate claim(s): {string.Join(", ", duplicated)}");
         }
 
         var sub = Text(decoded, "sub");
