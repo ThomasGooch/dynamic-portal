@@ -5,6 +5,7 @@ import { visibleSatellites } from "@portal/registry";
 import type { AgentApiResult } from "@/lib/agentApi";
 import { agentInvoker, buildAgentSurface, isAgentEnabled, modelClient } from "@/lib/agent";
 import { auditConfig } from "@/lib/audit";
+import { MAX_PAYLOAD_BYTES, readBounded } from "@/lib/http";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 
@@ -58,8 +59,33 @@ export async function POST(request: Request): Promise<Response> {
     approvals?: unknown;
     declinePending?: unknown;
   };
+  /**
+   * Counted before it is buffered, like every other route that takes a body.
+   *
+   * This one was the exception, and the conversation is the worst place to have
+   * made it: the history arrives as client input on every turn, and the
+   * signature that decides whether to trust it can only be checked *after* the
+   * parse. So the cost of an arbitrarily large body was paid before the hub had
+   * any reason to believe the body was its own.
+   *
+   * The same 256 KB every other route uses. A screen composition — the largest
+   * turn this portal produces — measures about 5 KB, so the ceiling is roughly
+   * forty times the real thing, and reusing the constant beats inventing a
+   * second number that would drift from it.
+   */
+  const raw = await readBounded(request, MAX_PAYLOAD_BYTES);
+  if (raw === null) {
+    return json(
+      {
+        ok: false,
+        message: "This conversation has grown too large to continue. Start a new one.",
+      },
+      413,
+    );
+  }
+
   try {
-    body = (await request.json()) as typeof body;
+    body = JSON.parse(raw) as typeof body;
   } catch {
     return json({ ok: false, message: "The portal could not read that request." }, 400);
   }

@@ -63,12 +63,18 @@ export function AgentPanel() {
       if (result.ok) {
         setMessages([...result.messages]);
         setSignature(result.signature);
-      } else if (response.status === 400) {
-        // The hub refused the conversation — it did not verify, or it is no
-        // longer one the API would accept. Keeping it would wedge the panel:
-        // every later turn posts the same rejected history and is rejected the
-        // same way, with no way out but a reload. The hub's message says to
-        // start a new one, so this is the panel actually doing that.
+      } else if (response.status === 400 || response.status === 413) {
+        // The hub refused the conversation — it did not verify, it is no longer
+        // one the API would accept, or it has outgrown the body limit. Keeping
+        // it would wedge the panel: every later turn posts the same rejected
+        // history and is rejected the same way, with no way out but a reload.
+        // The hub's message says to start a new one, so this is the panel
+        // actually doing that.
+        //
+        // 413 is here because the history is the one thing that only ever
+        // grows, so it is the one refusal a user can reach without doing
+        // anything wrong. Answering it by keeping the conversation that caused
+        // it would be a dead end of the panel's own making.
         setMessages([]);
         setSignature("");
       }
