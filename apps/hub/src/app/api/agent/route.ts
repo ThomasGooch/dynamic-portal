@@ -1,10 +1,11 @@
 import { flatToKeyed, keyedToNested } from "@portal/catalog";
-import { runAgent, type Message } from "@portal/agent";
+import { conversationBudget, runAgent, trimConversation, type Message } from "@portal/agent";
 import { signConversation, verifyConversation } from "@portal/identity";
 import { visibleSatellites } from "@portal/registry";
 import type { AgentApiResult } from "@/lib/agentApi";
 import { agentInvoker, buildAgentSurface, isAgentEnabled, modelClient } from "@/lib/agent";
 import { auditConfig } from "@/lib/audit";
+import { MAX_PAYLOAD_BYTES, readBounded } from "@/lib/http";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 
@@ -51,18 +52,65 @@ export async function POST(request: Request): Promise<Response> {
     return json({ ok: false, message: "The assistant is not enabled for this account." }, 404);
   }
 
-  let body: {
+  /**
+   * Counted before it is buffered, like every other route that takes a body.
+   *
+   * This one was the exception, and the conversation is the worst place to have
+   * made it: the history arrives as client input on every turn, and the
+   * signature that decides whether to trust it can only be checked *after* the
+   * parse. So the cost of an arbitrarily large body was paid before the hub had
+   * any reason to believe the body was its own.
+   *
+   * The same 256 KB every other route uses. Reusing the constant beats a second
+   * number that would drift from it — but note what the cap applies to. Every
+   * other route bounds a single submission. This one bounds a conversation,
+   * which accumulates: a turn measures around 5 KB against a live stack, so the
+   * ceiling is not "forty times the real thing" but roughly forty turns of it,
+   * and fewer when a tool returns a few hundred rows.
+   *
+   * That is why the trim below exists. A cap on something that only grows is a
+   * cliff unless something keeps the growth inside it, and raising the number
+   * would only move the cliff further out.
+   */
+  const raw = await readBounded(request, MAX_PAYLOAD_BYTES);
+  if (raw === null) {
+    return json(
+      {
+        ok: false,
+        message: "This conversation has grown too large to continue. Start a new one.",
+      },
+      413,
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = raw === "" ? {} : JSON.parse(raw);
+  } catch {
+    return json({ ok: false, message: "The portal could not read that request." }, 400);
+  }
+
+  /**
+   * An object, specifically — the same guard the action route and the public
+   * façade apply after their own `readBounded`.
+   *
+   * `JSON.parse("null")` is a *successful* parse that yields `null`, so the
+   * catch above never sees it and `body.history` throws a line later where
+   * nothing catches. An uncaught throw here is a 500 whose body is not the JSON
+   * envelope every caller parses, so the browser reports "could not reach the
+   * assistant" for a request the hub understood perfectly well and should
+   * simply have refused.
+   */
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return json({ ok: false, message: "The portal could not read that request." }, 400);
+  }
+  const body = parsed as {
     history?: unknown;
     signature?: unknown;
     ask?: unknown;
     approvals?: unknown;
     declinePending?: unknown;
   };
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    return json({ ok: false, message: "The portal could not read that request." }, 400);
-  }
 
   let rootKey: string;
   try {
@@ -83,6 +131,22 @@ export async function POST(request: Request): Promise<Response> {
    * messages alone verifies for every colleague in that tenant.
    */
   const sign = (messages: readonly Message[]) => signConversation(principal, messages, rootKey);
+
+  /**
+   * Trimmed before it is signed, so the hub never issues a conversation it will
+   * refuse.
+   *
+   * The history only ever grows and the body it returns in is capped, which
+   * without this leaves the hub handing out a signed conversation and rejecting
+   * that same conversation on the next turn — a session wiped mid-sentence for
+   * a user who did nothing wrong. Raising the cap would only move the cliff;
+   * the fix is to stop walking off it. The signature covers what actually left,
+   * so a trimmed history verifies exactly as an untrimmed one does.
+   */
+  const issue = (messages: readonly Message[]) => {
+    const kept = trimConversation(messages, conversationBudget(MAX_PAYLOAD_BYTES));
+    return { messages: kept, signature: sign(kept) };
+  };
 
   /**
    * The conversation is the hub's state, and between turns it lives in the
@@ -163,8 +227,7 @@ export async function POST(request: Request): Promise<Response> {
           ui: keyedToNested(flatToKeyed(outcome.spec)),
           citations: outcome.citations,
           allowedSatelliteIds: allowed,
-          messages: outcome.messages,
-          signature: sign(outcome.messages),
+          ...issue(outcome.messages),
         },
         200,
       );
@@ -176,8 +239,7 @@ export async function POST(request: Request): Promise<Response> {
           ok: true,
           kind: "confirm",
           pending: outcome.pending,
-          messages: outcome.messages,
-          signature: sign(outcome.messages),
+          ...issue(outcome.messages),
         },
         200,
       );
@@ -189,8 +251,7 @@ export async function POST(request: Request): Promise<Response> {
           ok: true,
           kind: "answer",
           text: outcome.text,
-          messages: outcome.messages,
-          signature: sign(outcome.messages),
+          ...issue(outcome.messages),
         },
         200,
       );

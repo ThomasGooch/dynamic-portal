@@ -716,6 +716,29 @@ test.describe("the assistant, switched on", () => {
     expect(JSON.stringify(body.ui)).toMatch(/"rows":\s*\[\s*\{/);
   });
 
+  test("refuses a conversation too large to read", async ({ request }) => {
+    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+
+    // Every other route that accepts a body counts it before buffering it. This
+    // one did not, so a client could hand the hub an arbitrarily large history
+    // and have it parsed — and, since verification happens after parsing, the
+    // cost was paid before the signature was even looked at.
+    //
+    // Refused on `content-length` here; the streaming path underneath is what
+    // covers a chunked sender who declares nothing.
+    const huge = {
+      history: [
+        { role: "user", content: [{ type: "text", text: "x".repeat(300 * 1024) }] },
+      ],
+      signature: "0".repeat(64),
+      ask: "anything",
+    };
+
+    const response = await request.post("/api/agent", { data: huge });
+    expect(response.status()).toBe(413);
+    expect((await response.json()).message).toMatch(/too large/i);
+  });
+
   test("refuses a conversation it did not sign", async ({ request }) => {
     test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
 
