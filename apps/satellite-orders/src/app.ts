@@ -9,7 +9,8 @@ import {
 } from "@portal/identity";
 import type { Manifest } from "@portal/protocol";
 import type { OrderRepository } from "./repository";
-import { detailScreen, listScreen, manifest, ordersTable } from "./screens";
+import { readDraft } from "./draft";
+import { detailScreen, editScreen, listScreen, manifest, newScreen, ordersTable } from "./screens";
 
 export interface AppOptions {
   repository: OrderRepository;
@@ -36,6 +37,16 @@ export interface AppOptions {
 interface AuthedRequest extends Request {
   principal?: Principal | undefined;
 }
+
+/**
+ * Today, as a `YYYY-MM-DD` string — what a `DateField` submits.
+ *
+ * UTC, which is the satellite's own day and not necessarily the user's: west of
+ * UTC in the evening the browser offers a date this call already considers
+ * past. Left as it is because the protocol carries no timezone for the
+ * satellite to prefer, and noted so the next reader does not read it as one.
+ */
+const today = (): string => new Date().toISOString().slice(0, 10);
 
 /**
  * The satellite's HTTP surface: three PUP endpoints plus health.
@@ -158,7 +169,7 @@ export function createApp({
 
       switch (req.params.screenId) {
         case "orders.list":
-          res.json(listScreen(repository.list(tenantId)));
+          res.json(listScreen(repository.list(tenantId), req.principal!.audience));
           return;
 
         case "orders.detail": {
@@ -170,7 +181,22 @@ export function createApp({
             res.status(404).json({ error: "order not found" });
             return;
           }
-          res.json(detailScreen(order));
+          res.json(detailScreen(order, req.principal!.audience));
+          return;
+        }
+
+        case "orders.new":
+          res.json(newScreen());
+          return;
+
+        case "orders.edit": {
+          const id = typeof req.query["id"] === "string" ? req.query["id"] : "";
+          const order = repository.get(tenantId, id);
+          if (!order) {
+            res.status(404).json({ error: "order not found" });
+            return;
+          }
+          res.json(editScreen(order));
           return;
         }
 
@@ -213,6 +239,136 @@ export function createApp({
       res.json(
         ok({
           message: `Order ${body.id} approved.`,
+          navigate: { screenId: "orders.list" },
+        }),
+      );
+    },
+  );
+
+  app.post(
+    "/portal/actions/orders.create",
+    authenticate,
+    requireAccess(["orders.write"], forAction("orders.create")),
+    (req: AuthedRequest, res) => {
+      const result = readDraft(req.body, today());
+      if (!result.ok) {
+        // Every message is keyed to the `name` of the input that caused it, so
+        // the hub renders it against that field rather than as a banner.
+        res.json(invalid(result.fieldErrors, "Check the highlighted fields."));
+        return;
+      }
+
+      const order = repository.create(req.principal!.tenantId, result.draft);
+      res.json(
+        ok({
+          message: `Order ${order.id} created.`,
+          navigate: { screenId: "orders.detail", params: { id: order.id } },
+        }),
+      );
+    },
+  );
+
+  app.post(
+    "/portal/actions/orders.update",
+    authenticate,
+    requireAccess(["orders.write"], forAction("orders.update")),
+    (req: AuthedRequest, res) => {
+      const tenantId = req.principal!.tenantId;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const id = typeof body["id"] === "string" ? body["id"] : "";
+      if (id === "") {
+        // `failed`, not `invalid`. The id rides in a `Hidden` field, which
+        // renders no error text, and `invalid` with no message carries no toast
+        // either — so keying this to `id` would answer a save with a screen
+        // that visibly did nothing. There is also no field the user could
+        // change to fix it: a submission without an id is a bug, not a typo.
+        res.json(failed("That form did not say which order to save."));
+        return;
+      }
+
+      /**
+       * The order as it stands, read before validating rather than after.
+       *
+       * `tags` is the reason. An agent cannot send it — `ActionParamSchema` has
+       * no array type — so an update from one arrives with the field absent,
+       * meaning "leave the labels as they are". The cross-field rules then have
+       * to be judged against the labels the order will *actually* carry once
+       * saved, not against the empty list the payload implies: otherwise an
+       * agent updating a hazmat order and clearing its notes passes validation,
+       * the repository keeps the `hazmat` label, and the rule that says such an
+       * order needs handling notes is left broken by a write that never
+       * mentioned either field.
+       *
+       * Looking it up first leaks nothing new: 404 already answers an id this
+       * tenant cannot see, exactly as it does for a valid payload.
+       */
+      const existing = repository.get(tenantId, id);
+      if (!existing) {
+        res.status(404).json({ error: "order not found" });
+        return;
+      }
+
+      const result = readDraft(
+        body["tags"] === undefined ? { ...body, tags: existing.tags } : body,
+        today(),
+      );
+      if (!result.ok) {
+        res.json(invalid(result.fieldErrors, "Check the highlighted fields."));
+        return;
+      }
+
+      const written = repository.update(tenantId, id, result.draft);
+      if (!written.ok && written.reason === "not-found") {
+        // Removed between the read above and this write. Still a 404, and still
+        // the same 404 another tenant's id gets.
+        res.status(404).json({ error: "order not found" });
+        return;
+      }
+      if (!written.ok) {
+        res.json(failed("A shipped or cancelled order cannot be changed."));
+        return;
+      }
+
+      res.json(
+        ok({
+          message: `Order ${id} saved.`,
+          navigate: { screenId: "orders.detail", params: { id } },
+        }),
+      );
+    },
+  );
+
+  app.post(
+    "/portal/actions/orders.delete",
+    authenticate,
+    requireAccess(["orders.write"], forAction("orders.delete")),
+    (req: AuthedRequest, res) => {
+      const tenantId = req.principal!.tenantId;
+      const body = (req.body ?? {}) as { id?: unknown };
+      const id = typeof body.id === "string" ? body.id : "";
+      if (id === "") {
+        // As in `orders.update`: nothing renders a field error for `id`, and
+        // there is no field to correct.
+        res.json(failed("That request did not say which order to delete."));
+        return;
+      }
+
+      const result = repository.remove(tenantId, id);
+      if (!result.ok && result.reason === "not-found") {
+        res.status(404).json({ error: "order not found" });
+        return;
+      }
+      if (!result.ok) {
+        // A failure rather than a validation error: there is no field the user
+        // could change to make this allowed.
+        res.json(failed("Only pending orders can be deleted."));
+        return;
+      }
+
+      res.json(
+        ok({
+          level: "info",
+          message: `Order ${id} deleted.`,
           navigate: { screenId: "orders.list" },
         }),
       );

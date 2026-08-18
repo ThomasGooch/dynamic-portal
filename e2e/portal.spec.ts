@@ -118,6 +118,108 @@ test.describe("one shell, three solutions", () => {
   });
 });
 
+test.describe("filling in a form", () => {
+  // The half of the claim that was never tested. Everything before this was
+  // tables, tiles and charts — nobody had typed into this portal.
+  const future = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+
+  async function fill(page: import("@playwright/test").Page, over: Record<string, string> = {}) {
+    await page.goto("/orders/orders.new");
+    await page.getByLabel("Customer").fill(over["customer"] ?? "Playwright Industries");
+    await page.getByLabel("Contact email").fill(over["contactEmail"] ?? "buyer@playwright.test");
+    await page.getByLabel("Total").fill(over["total"] ?? "250.75");
+    await page.getByLabel("Due by").fill(over["dueBy"] ?? future);
+  }
+
+  test("renders every input the catalog offers for this form", async ({ page }) => {
+    await page.goto("/orders/orders.new");
+
+    await expect(page.getByLabel("Customer")).toBeVisible();
+    await expect(page.getByLabel("Total")).toHaveAttribute("type", "number");
+    await expect(page.getByLabel("Due by")).toHaveAttribute("type", "date");
+    await expect(page.getByLabel("Expedite this order")).toHaveAttribute("type", "checkbox");
+    await expect(page.getByRole("radio", { name: "critical" })).toBeVisible();
+    await expect(page.getByLabel("Notes")).toBeVisible();
+  });
+
+  test("creates an order and lands on the one it created", async ({ page }) => {
+    await fill(page);
+    await page.getByRole("button", { name: "Create order" }).click();
+
+    // The satellite chose the destination; the hub obeyed it.
+    await expect(page).toHaveURL(/orders\.detail/);
+    await expect(page.getByText("Playwright Industries")).toBeVisible();
+  });
+
+  test("puts a server-side error on the field that caused it", async ({ page }) => {
+    // Not a banner. The satellite keys each message to an input's `name`, and
+    // the hub matches on that — a message keyed to a field that does not exist
+    // would render nowhere.
+    await fill(page, { contactEmail: "not-an-address" });
+    await page.getByRole("button", { name: "Create order" }).click();
+
+    // Asserted as *attached to the field*, not merely present on the page: a
+    // banner carrying the same words would satisfy "is this text visible", and
+    // a banner is exactly what this is not. `#field-<name>-error` is the node
+    // the input's own `aria-describedby` points at.
+    const field = page.getByLabel("Contact email");
+    await expect(field).toHaveAttribute("aria-invalid", "true");
+    await expect(field).toHaveAttribute("aria-describedby", /field-contactEmail-error/);
+    await expect(page.locator("#field-contactEmail-error")).toHaveText(
+      /does not look like an email/i,
+    );
+    // Still on the form, with what was typed still there.
+    await expect(page.getByLabel("Customer")).toHaveValue("Playwright Industries");
+  });
+
+  test("enforces a rule no single field could express", async ({ page }) => {
+    // Critical priority requires expediting. Neither input can say that alone,
+    // and every real form has rules like it.
+    await fill(page);
+    await page.getByRole("radio", { name: "critical" }).check();
+    await page.getByRole("button", { name: "Create order" }).click();
+
+    await expect(page.getByText(/critical orders are expedited/i)).toBeVisible();
+  });
+
+  test("comes back filled in when editing, and saves a change", async ({ page }) => {
+    await page.goto("/orders/orders.list");
+    await page.getByRole("link", { name: "New order" }).click();
+    await page.getByLabel("Customer").fill("Edit Me Ltd");
+    await page.getByLabel("Contact email").fill("edit@playwright.test");
+    await page.getByLabel("Total").fill("99");
+    await page.getByLabel("Due by").fill(future);
+    await page.getByRole("button", { name: "Create order" }).click();
+    await expect(page).toHaveURL(/orders\.detail/);
+
+    await page.getByRole("link", { name: "Edit" }).click();
+    await expect(page.getByLabel("Customer")).toHaveValue("Edit Me Ltd");
+
+    await page.getByLabel("Customer").fill("Edited Ltd");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText("Edited Ltd")).toBeVisible();
+  });
+
+  test("asks before deleting, and the hub draws the asking", async ({ page }) => {
+    await fill(page, { customer: "Delete Me Ltd" });
+    await page.getByRole("button", { name: "Create order" }).click();
+    await expect(page).toHaveURL(/orders\.detail/);
+
+    await page.getByRole("button", { name: "Delete" }).click();
+    // The satellite declared `confirm`; the dialog is the shell's own —
+    // `alertdialog`, because it interrupts rather than merely appearing.
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(/cannot be undone/i)).toBeVisible();
+
+    // And the confirmation actually carries the action through. Asserting only
+    // that a dialog appeared would pass against a dialog wired to nothing.
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    await expect(page).toHaveURL(/\/orders\/orders\.list$/);
+    await expect(page.locator("table.r-table")).not.toContainText("Delete Me Ltd");
+  });
+});
+
 test.describe("the C# satellite", () => {
   test("renders real data through the hub, having shipped no stylesheet", async ({ page }) => {
     await page.goto("/depots/depots.dashboard");
