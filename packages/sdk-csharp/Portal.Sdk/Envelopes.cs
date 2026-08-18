@@ -24,6 +24,21 @@ public static class Envelopes
         int? ttlSeconds = null,
         string? etag = null)
     {
+        // `meta.ttlSeconds` is a non-negative int in the protocol, and C#'s
+        // `int` cannot say so. Caught here rather than at the hub because a
+        // negative TTL is nearly always a computed value — `expiry - now` on a
+        // clock that has already passed it — so the number that reaches the
+        // wire is not one anybody typed, and the rejection names the envelope
+        // rather than the arithmetic that produced it.
+        if (ttlSeconds is < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(ttlSeconds),
+                ttlSeconds,
+                "ttlSeconds is how long the screen stays fresh, so it cannot be negative; "
+                    + "the hub rejects the envelope outright. Pass null for no cache hint.");
+        }
+
         var descriptor = new Dictionary<string, object?> { ["id"] = screenId, ["title"] = title };
         if (breadcrumbs is not null) descriptor["breadcrumbs"] = breadcrumbs;
 
@@ -129,11 +144,19 @@ public static class Envelopes
         new Dictionary<string, object?> { ["targetId"] = targetId, ["ui"] = ui };
 
     /// <summary>Sends the caller to another screen after an action.</summary>
+    /// <remarks>
+    /// <paramref name="satelliteId"/> is what makes this able to leave the
+    /// satellite that handled the action. Omitted, the hub resolves the screen
+    /// against the current one, which is right for the common case and cannot
+    /// express "now go to the order this shipment belongs to".
+    /// </remarks>
     public static IReadOnlyDictionary<string, object?> Navigate(
         string screenId,
-        IReadOnlyDictionary<string, string>? parameters = null)
+        IReadOnlyDictionary<string, string>? parameters = null,
+        string? satelliteId = null)
     {
         var body = new Dictionary<string, object?> { ["screenId"] = screenId };
+        if (satelliteId is not null) body["satelliteId"] = satelliteId;
         if (parameters is not null) body["params"] = parameters;
         return body;
     }
@@ -191,7 +214,38 @@ public static class Envelopes
         return entry;
     }
 
-    /// <summary>A screen or action parameter.</summary>
+    /// <summary>One entry in a manifest's <c>actions</c>.</summary>
+    /// <remarks>
+    /// An action stays uncallable by the gateway until it declares what it
+    /// takes, so <paramref name="parameters"/> is how an agent can reach it at
+    /// all. Build the entries with <see cref="ActionParam"/>, not
+    /// <see cref="Param"/> — an action parameter must state its type.
+    /// </remarks>
+    public static IReadOnlyDictionary<string, object?> ActionDescriptor(
+        string actionId,
+        IReadOnlyList<Audience> audience,
+        string? title = null,
+        string? description = null,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>>? parameters = null)
+    {
+        var entry = new Dictionary<string, object?>
+        {
+            ["id"] = actionId,
+            ["audience"] = audience.Select(value => value.ToWire()).ToList(),
+        };
+        if (title is not null) entry["title"] = title;
+        if (description is not null) entry["description"] = description;
+        if (parameters is not null) entry["params"] = parameters;
+        return entry;
+    }
+
+    /// <summary>A screen parameter. For an action, use <see cref="ActionParam"/>.</summary>
+    /// <remarks>
+    /// Screens only. A screen param arrives in a query string and is therefore
+    /// always a string, so the schema has no <c>type</c> and this does not send
+    /// one — which is exactly why an action cannot use it: the hub requires a
+    /// type there and rejects the whole manifest without it.
+    /// </remarks>
     public static IReadOnlyDictionary<string, object?> Param(
         string name,
         bool required = false,
@@ -199,6 +253,44 @@ public static class Envelopes
     {
         var entry = new Dictionary<string, object?> { ["name"] = name, ["required"] = required };
         if (description is not null) entry["description"] = description;
+        return entry;
+    }
+
+    /// <summary>An action parameter, which must say what type it carries.</summary>
+    /// <remarks>
+    /// <paramref name="choices"/> lets an agent pick from a list rather than
+    /// invent a value. The hub only accepts choices on a string parameter —
+    /// attached to a number they describe a parameter no value can satisfy —
+    /// so this refuses that combination here rather than at request time.
+    /// </remarks>
+    public static IReadOnlyDictionary<string, object?> ActionParam(
+        string name,
+        ParamType type,
+        bool required = false,
+        string? description = null,
+        IReadOnlyList<string>? choices = null)
+    {
+        if (choices is not null && type != ParamType.String)
+        {
+            throw new ArgumentException(
+                $"enumerated choices are only meaningful on a string parameter, not {type.ToWire()}",
+                nameof(choices));
+        }
+        if (choices is not null && choices.Count == 0)
+        {
+            throw new ArgumentException(
+                "an empty choice list describes a parameter no value can satisfy; omit it instead",
+                nameof(choices));
+        }
+
+        var entry = new Dictionary<string, object?>
+        {
+            ["name"] = name,
+            ["type"] = type.ToWire(),
+            ["required"] = required,
+        };
+        if (description is not null) entry["description"] = description;
+        if (choices is not null) entry["enum"] = choices;
         return entry;
     }
 

@@ -43,5 +43,10 @@ playwright-report
 
 # .NET build output. The hub image does COPY . ., so without these a local
 # dotnet build rides into it — and obj/ holds absolute host paths.
-**/bin/
-**/obj/
+#
+# Scoped to the package that produces them, for the same reason the .gitignore
+# rule is: `bin/` is an ordinary name for a committed script directory, and an
+# unscoped `**/bin/` silently drops one from the build context, where the
+# failure shows up as a missing file at runtime rather than at build time.
+packages/sdk-csharp/**/bin/
+packages/sdk-csharp/**/obj/

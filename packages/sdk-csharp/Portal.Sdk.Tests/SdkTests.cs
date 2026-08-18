@@ -70,8 +70,10 @@ public class BuildingNodes
     [Fact]
     public void KeywordPropsKeepTheirWireName()
     {
-        // `DateRange.from` is a C# keyword. The verbatim identifier lets the
-        // parameter keep the name, and the payload must still say "from".
+        // `from` is only a contextual keyword, so it needs no `@` at all — but
+        // `Checkbox.checked` and `Link.params` are reserved and do. Either way
+        // the generator's job is that the wire name survives, so this asserts
+        // the payload still says "from" rather than a renamed parameter.
         var json = Json(Ui.DateRange(name: "window", label: "Window", from: "2026-01-01"));
         Assert.Equal("2026-01-01", json.GetProperty("props").GetProperty("from").GetString());
     }
@@ -186,6 +188,93 @@ public class EnvelopeShapes
             30,
             Json(Envelopes.Screen("s", "S", Ui.Page(), ttlSeconds: 30))
                 .GetProperty("meta").GetProperty("ttlSeconds").GetInt32());
+    }
+
+    [Fact]
+    public void RefusesATtlThatHasAlreadyExpired()
+    {
+        // The protocol says non-negative and C#'s `int` cannot. A negative TTL
+        // is almost always `expiry - now` against a clock that already passed
+        // it, so failing here names the envelope instead of leaving a hub
+        // rejection to be traced back to the subtraction.
+        var error = Assert.Throws<ArgumentOutOfRangeException>(
+            () => Envelopes.Screen("s", "S", Ui.Page(), ttlSeconds: -1));
+        Assert.Equal("ttlSeconds", error.ParamName);
+
+        // Zero is a real value — "fresh now, stale immediately" — not an error.
+        Assert.Equal(
+            0,
+            Json(Envelopes.Screen("s", "S", Ui.Page(), ttlSeconds: 0))
+                .GetProperty("meta").GetProperty("ttlSeconds").GetInt32());
+    }
+
+    [Fact]
+    public void ANumericEnumReachesTheWireAsANumber()
+    {
+        // `Heading.level` is the catalog's `1 | 2 | 3 | 4`. It reached C# as an
+        // unconstrained `double` at first, so `level: 2.5` compiled and the hub
+        // rejected the screen. It is an enum now, and the wire form has to stay
+        // a JSON number — quoting it would be rejected just as fast.
+        var props = Json(Ui.Heading(text: "Depots", level: HeadingLevel.Level2))
+            .GetProperty("props");
+
+        Assert.Equal(JsonValueKind.Number, props.GetProperty("level").ValueKind);
+        Assert.Equal(2, props.GetProperty("level").GetInt32());
+    }
+
+    [Fact]
+    public void AnActionParameterStatesItsType()
+    {
+        // An action payload is JSON, where 2 and "2" are different values, so
+        // the hub requires a type and rejects the whole manifest without one.
+        var json = Json(Envelopes.ActionParam("capacity", ParamType.Number));
+
+        Assert.Equal("number", json.GetProperty("type").GetString());
+        Assert.False(json.GetProperty("required").GetBoolean());
+    }
+
+    [Fact]
+    public void AScreenParameterDoesNotStateOne()
+    {
+        // Deliberate, not an omission: a screen param arrives in a query string
+        // and is always a string, and the schema is strict, so sending a type
+        // here would be rejected.
+        Assert.False(Json(Envelopes.Param("page")).TryGetProperty("type", out _));
+    }
+
+    [Fact]
+    public void RefusesChoicesOnAParameterNoStringCanSatisfy()
+    {
+        // Choices are strings. On a number they describe a parameter no value
+        // satisfies, which reads as a callable action and is not one.
+        Assert.Throws<ArgumentException>(
+            () => Envelopes.ActionParam("qty", ParamType.Number, choices: ["1", "2"]));
+    }
+
+    [Fact]
+    public void AnActionDescriptorCarriesItsAudienceAndParams()
+    {
+        var json = Json(Envelopes.ActionDescriptor(
+            "depots.rename",
+            [Audience.Internal],
+            parameters: [Envelopes.ActionParam("depotId", ParamType.String, required: true)]));
+
+        Assert.Equal("depots.rename", json.GetProperty("id").GetString());
+        Assert.Equal("internal", json.GetProperty("audience")[0].GetString());
+        Assert.Equal("string", json.GetProperty("params")[0].GetProperty("type").GetString());
+        Assert.False(json.TryGetProperty("title", out _));
+    }
+
+    [Fact]
+    public void NavigationCanLeaveTheSatelliteThatHandledTheAction()
+    {
+        // Without `satelliteId` the hub resolves against the current satellite,
+        // so "now go to the order this shipment belongs to" is unreachable.
+        Assert.False(Json(Envelopes.Navigate("depots.dashboard")).TryGetProperty("satelliteId", out _));
+        Assert.Equal(
+            "orders",
+            Json(Envelopes.Navigate("orders.detail", satelliteId: "orders"))
+                .GetProperty("satelliteId").GetString());
     }
 
     [Fact]

@@ -34,10 +34,10 @@ public enum AlertLevel
     Error,
 }
 
-/// <summary>Converts generated enums to the strings the wire format uses.</summary>
+/// <summary>Converts generated enums to the values the wire format uses.</summary>
 public static partial class WireValues
 {
-    /// <summary>The catalog string for a <see cref="AlertLevel"/>.</summary>
+    /// <summary>The catalog value for a <see cref="AlertLevel"/>.</summary>
     public static string ToWire(this AlertLevel value) =>
         value switch
         {
@@ -62,10 +62,10 @@ public enum Align
     End,
 }
 
-/// <summary>Converts generated enums to the strings the wire format uses.</summary>
+/// <summary>Converts generated enums to the values the wire format uses.</summary>
 public static partial class WireValues
 {
-    /// <summary>The catalog string for a <see cref="Align"/>.</summary>
+    /// <summary>The catalog value for a <see cref="Align"/>.</summary>
     public static string ToWire(this Align value) =>
         value switch
         {
@@ -92,10 +92,10 @@ public enum ButtonVariant
     Ghost,
 }
 
-/// <summary>Converts generated enums to the strings the wire format uses.</summary>
+/// <summary>Converts generated enums to the values the wire format uses.</summary>
 public static partial class WireValues
 {
-    /// <summary>The catalog string for a <see cref="ButtonVariant"/>.</summary>
+    /// <summary>The catalog value for a <see cref="ButtonVariant"/>.</summary>
     public static string ToWire(this ButtonVariant value) =>
         value switch
         {
@@ -123,10 +123,10 @@ public enum ChartKind
     Donut,
 }
 
-/// <summary>Converts generated enums to the strings the wire format uses.</summary>
+/// <summary>Converts generated enums to the values the wire format uses.</summary>
 public static partial class WireValues
 {
-    /// <summary>The catalog string for a <see cref="ChartKind"/>.</summary>
+    /// <summary>The catalog value for a <see cref="ChartKind"/>.</summary>
     public static string ToWire(this ChartKind value) =>
         value switch
         {
@@ -157,10 +157,10 @@ public enum Gap
     Lg,
 }
 
-/// <summary>Converts generated enums to the strings the wire format uses.</summary>
+/// <summary>Converts generated enums to the values the wire format uses.</summary>
 public static partial class WireValues
 {
-    /// <summary>The catalog string for a <see cref="Gap"/>.</summary>
+    /// <summary>The catalog value for a <see cref="Gap"/>.</summary>
     public static string ToWire(this Gap value) =>
         value switch
         {
@@ -169,6 +169,37 @@ public static partial class WireValues
             Gap.Sm => "sm",
             Gap.Md => "md",
             Gap.Lg => "lg",
+            _ => throw new ArgumentOutOfRangeException(nameof(value)),
+        };
+}
+
+/// <summary>Values the catalog accepts for this prop.</summary>
+public enum HeadingLevel
+{
+    /// <summary>The catalog value <c>1</c>.</summary>
+    Level1,
+
+    /// <summary>The catalog value <c>2</c>.</summary>
+    Level2,
+
+    /// <summary>The catalog value <c>3</c>.</summary>
+    Level3,
+
+    /// <summary>The catalog value <c>4</c>.</summary>
+    Level4,
+}
+
+/// <summary>Converts generated enums to the values the wire format uses.</summary>
+public static partial class WireValues
+{
+    /// <summary>The catalog value for a <see cref="HeadingLevel"/>.</summary>
+    public static int ToWire(this HeadingLevel value) =>
+        value switch
+        {
+            HeadingLevel.Level1 => 1,
+            HeadingLevel.Level2 => 2,
+            HeadingLevel.Level3 => 3,
+            HeadingLevel.Level4 => 4,
             _ => throw new ArgumentOutOfRangeException(nameof(value)),
         };
 }
@@ -186,10 +217,10 @@ public enum Size
     Lg,
 }
 
-/// <summary>Converts generated enums to the strings the wire format uses.</summary>
+/// <summary>Converts generated enums to the values the wire format uses.</summary>
 public static partial class WireValues
 {
-    /// <summary>The catalog string for a <see cref="Size"/>.</summary>
+    /// <summary>The catalog value for a <see cref="Size"/>.</summary>
     public static string ToWire(this Size value) =>
         value switch
         {
@@ -210,10 +241,10 @@ public enum StackDirection
     Column,
 }
 
-/// <summary>Converts generated enums to the strings the wire format uses.</summary>
+/// <summary>Converts generated enums to the values the wire format uses.</summary>
 public static partial class WireValues
 {
-    /// <summary>The catalog string for a <see cref="StackDirection"/>.</summary>
+    /// <summary>The catalog value for a <see cref="StackDirection"/>.</summary>
     public static string ToWire(this StackDirection value) =>
         value switch
         {
@@ -245,10 +276,10 @@ public enum Tone
     Danger,
 }
 
-/// <summary>Converts generated enums to the strings the wire format uses.</summary>
+/// <summary>Converts generated enums to the values the wire format uses.</summary>
 public static partial class WireValues
 {
-    /// <summary>The catalog string for a <see cref="Tone"/>.</summary>
+    /// <summary>The catalog value for a <see cref="Tone"/>.</summary>
     public static string ToWire(this Tone value) =>
         value switch
         {
@@ -348,13 +379,13 @@ public static class Ui
             });
 
     /// <summary>Heading.</summary>
-    public static Node Heading(string text, double? level = null) =>
+    public static Node Heading(string text, HeadingLevel? level = null) =>
         NodeBuilder.Build(
             "Heading",
             new Dictionary<string, object?>
             {
             ["text"] = text,
-            ["level"] = level,
+            ["level"] = level?.ToWire(),
             });
 
     /// <summary>Text.</summary>
@@ -664,7 +695,7 @@ public static class Ui
             });
 
     /// <summary>Link.</summary>
-    public static Node Link(string label, string? screenId = null, string? satelliteId = null, IReadOnlyDictionary<string, object?>? @params = null, string? href = null) =>
+    public static Node Link(string label, string? screenId = null, string? satelliteId = null, IReadOnlyDictionary<string, string>? @params = null, string? href = null) =>
         NodeBuilder.Build(
             "Link",
             new Dictionary<string, object?>

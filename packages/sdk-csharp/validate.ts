@@ -7,7 +7,9 @@ import {
   ScreenResponseSchema,
   UiNodeSchema,
 } from "@portal/protocol";
-import { validateNested } from "@portal/catalog";
+import { COMPONENTS, COMPONENT_NAMES, validateNested } from "@portal/catalog";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import type { UiNode } from "@portal/protocol";
 
 /**
  * Does what the C# SDK builds actually satisfy the hub?
@@ -62,11 +64,18 @@ function probe(): Record<string, unknown> {
         { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
       );
 
-  // `dotnet run` may print build noise before the payload; the document starts
-  // at the first brace.
-  const start = output.indexOf("{");
-  if (start === -1) throw new Error(`the probe printed no JSON:\n${output}`);
-  return JSON.parse(output.slice(start)) as Record<string, unknown>;
+  // `dotnet run` may print build noise before the payload. The probe writes the
+  // document with one `Console.WriteLine`, and the serialiser does not indent,
+  // so it is exactly the last line beginning with `{` — whereas the *first* `{`
+  // anywhere in the output belongs to whichever MSBuild or NuGet line happened
+  // to mention one, and takes the parse down with it.
+  const line = output
+    .split("\n")
+    .map((candidate) => candidate.trim())
+    .reverse()
+    .find((candidate) => candidate.startsWith("{"));
+  if (line === undefined) throw new Error(`the probe printed no JSON:\n${output}`);
+  return JSON.parse(line) as Record<string, unknown>;
 }
 
 const payload = probe();
@@ -105,8 +114,93 @@ if (parsedUi.success) {
   check("screen.ui against the catalog", ui.ok ? { success: true } : { success: false, error: ui });
 }
 
+/**
+ * Is the probe still building one of everything?
+ *
+ * Valid is not the same as covered. Every check above passes on a probe that
+ * builds three components and one envelope, which is what this check used to
+ * be, and a wrong enum string — the bug the whole exercise exists to catch —
+ * only surfaces for a value something actually sends. So the coverage the
+ * comments claim is measured rather than asserted: a component added to the
+ * catalog, or an enum value never exercised, fails here until the probe
+ * catches up.
+ */
+function walk(node: UiNode, visit: (node: UiNode) => void): void {
+  visit(node);
+  for (const child of node.children ?? []) walk(child, visit);
+}
+
+const seenProps = new Map<string, Map<string, Set<unknown>>>();
+if (parsedUi.success) {
+  walk(parsedUi.data, (node) => {
+    let byProp = seenProps.get(node.type);
+    if (byProp === undefined) {
+      byProp = new Map();
+      seenProps.set(node.type, byProp);
+    }
+    for (const [prop, value] of Object.entries(node.props ?? {})) {
+      let values = byProp.get(prop);
+      if (values === undefined) {
+        values = new Set();
+        byProp.set(prop, values);
+      }
+      values.add(value);
+    }
+  });
+}
+
+const gaps: string[] = [];
+
+/**
+ * Enum values are pooled by value set, not by prop.
+ *
+ * `Tone` is one generated C# enum shared by every prop that uses those six
+ * values, so one `ToWire` is what has to be right; demanding all six on each
+ * of the five components that take a tone would ask the probe to build thirty
+ * nodes to prove one switch statement.
+ */
+const enumSites = new Map<
+  string,
+  { readonly values: readonly unknown[]; readonly sites: string[]; readonly seen: Set<unknown> }
+>();
+
+for (const name of COMPONENT_NAMES) {
+  if (!seenProps.has(name)) {
+    gaps.push(`${name} is in the catalog but the probe never builds it`);
+  }
+
+  const schema = zodToJsonSchema(COMPONENTS[name], {
+    target: "jsonSchema7",
+    $refStrategy: "none",
+  }) as { properties?: Record<string, { enum?: readonly unknown[] }> };
+
+  for (const [prop, definition] of Object.entries(schema.properties ?? {})) {
+    if (definition.enum === undefined) continue;
+    const key = definition.enum.map(String).join("\u0000");
+    let site = enumSites.get(key);
+    if (site === undefined) {
+      site = { values: definition.enum, sites: [], seen: new Set() };
+      enumSites.set(key, site);
+    }
+    site.sites.push(`${name}.${prop}`);
+    for (const value of seenProps.get(name)?.get(prop) ?? []) site.seen.add(value);
+  }
+}
+
+for (const { values, sites, seen } of enumSites.values()) {
+  const where = sites.length === 1 ? sites[0] : `${sites[0]} (and ${sites.length - 1} more)`;
+  for (const value of values) {
+    if (!seen.has(value)) gaps.push(`${where} never sends ${JSON.stringify(value)}`);
+  }
+}
+
+check(
+  `coverage: all ${COMPONENT_NAMES.length} components and every enum value`,
+  gaps.length === 0 ? { success: true } : { success: false, error: gaps },
+);
+
 if (failures > 0) {
-  process.stderr.write(`\n${failures} envelope(s) the hub would refuse.\n`);
+  process.stderr.write(`\n${failures} check(s) failed.\n`);
   process.exit(1);
 }
 process.stdout.write("\n  every envelope the C# SDK builds is one the hub accepts\n");

@@ -55,6 +55,25 @@ public enum ActionOutcome
     Validation,
 }
 
+/// <summary>The type an action parameter carries. Screens take strings only.</summary>
+/// <remarks>
+/// A screen param arrives in a query string and is therefore always a string.
+/// An action payload is JSON, where <c>{"quantity": 2}</c> and
+/// <c>{"quantity": "2"}</c> are different values, so an action must say which
+/// it expects — and the hub rejects an action parameter that does not.
+/// </remarks>
+public enum ParamType
+{
+    /// <summary>The protocol value <c>string</c>.</summary>
+    String,
+
+    /// <summary>The protocol value <c>number</c>.</summary>
+    Number,
+
+    /// <summary>The protocol value <c>boolean</c>.</summary>
+    Boolean,
+}
+
 /// <summary>Who a satellite, screen or action is visible to. Default-deny.</summary>
 public enum Audience
 {
@@ -86,6 +105,16 @@ public static partial class WireValues
             ActionOutcome.Ok => "ok",
             ActionOutcome.Error => "error",
             ActionOutcome.Validation => "validation",
+            _ => throw new ArgumentOutOfRangeException(nameof(value)),
+        };
+
+    /// <summary>The protocol string for a <see cref="ParamType"/>.</summary>
+    public static string ToWire(this ParamType value) =>
+        value switch
+        {
+            ParamType.String => "string",
+            ParamType.Number => "number",
+            ParamType.Boolean => "boolean",
             _ => throw new ArgumentOutOfRangeException(nameof(value)),
         };
 
