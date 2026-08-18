@@ -81,6 +81,13 @@ services:
       # run this portal rather than a broken one — every deterministic screen
       # behaves identically either way.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # The kill switches, both off by default. Passed through because a control
+      # that cannot be exercised in the stack it governs is a control nobody has
+      # tested: `PORTAL_AGENT=off docker compose up` silently did nothing before
+      # this line existed, and the assistant-off run it was supposed to produce
+      # was really only ever a run with no API key.
+      PORTAL_AGENT: ${PORTAL_AGENT:-}
+      PORTAL_AGENT_DISABLED_TENANTS: ${PORTAL_AGENT_DISABLED_TENANTS:-}
       PORTAL_AUDIT_KEY: ${PORTAL_AUDIT_KEY:-dev-only-not-a-real-audit-key}
       PORTAL_AUDIT_LOG: /tmp/portal-audit.jsonl
       PORT: "3000"
