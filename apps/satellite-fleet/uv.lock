@@ -196,6 +196,11 @@ wheels = [
 ]
 
 [[package]]
+name = "portal-sdk"
+version = "0.1.0"
+source = { editable = "../../packages/sdk-python" }
+
+[[package]]
 name = "pydantic"
 version = "2.13.4"
 source = { registry = "https://pypi.org/simple" }
@@ -407,6 +412,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "portal-sdk" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -419,6 +425,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "portal-sdk", editable = "../../packages/sdk-python" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
 

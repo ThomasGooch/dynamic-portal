@@ -1,0 +1,16 @@
+[project]
+name = "portal-sdk"
+version = "0.1.0"
+description = "Typed builders for Portal UI screens, generated from the hub's catalog"
+# Matches the oldest Python any satellite here runs. An SDK that demands a
+# newer runtime than its consumers is an adoption barrier, which is the
+# opposite of the point.
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["portal_sdk"]

@@ -23,3 +23,15 @@ playwright-report
 # Docs are not needed in the build context
 *.md
 !README.md
+
+# Python build and cache artefacts. The Python image copies `packages/sdk-python`
+# wholesale for the editable path dependency, so a local `__pycache__` or `.venv`
+# would ride into the image — stale bytecode compiled against a different
+# interpreter, and a virtualenv holding absolute host paths.
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/

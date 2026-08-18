@@ -1,18 +1,31 @@
 """The satellite's declaration and its screens.
 
 Note what is absent: any styling. This satellite says "this is a Chart of type
-bar" and "this StatTile has tone warning"; what a warning tone looks like is the
-hub's business. Written in Python against a protocol defined in TypeScript,
-which is the point — the contract is the wire format, not a shared library.
+bar" and "this StatTile has tone warning"; what a warning tone looks like is
+the hub's business.
+
+Written in Python against a protocol defined in TypeScript — and, since the
+SDK arrived, against builders *generated* from that TypeScript. The contract is
+still the wire format rather than a shared library: `portal_sdk` is a
+convenience that produces the same JSON this module used to assemble by hand,
+and a satellite that would rather write dicts still can.
+
+What changed with the port: a misspelled component or prop is now a `TypeError`
+here, naming the component, instead of a rejected response from the hub at
+request time in an environment this process cannot see.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from portal_sdk import envelopes as env
+from portal_sdk import ui, with_id
+
 from .repository import Vehicle
 
-PROTOCOL = "1.0"
+#: Re-exported so the health endpoint can report it without importing the SDK.
+PROTOCOL = env.PROTOCOL
 
 _STATUS_TONE = {
     "active": "success",
@@ -26,39 +39,29 @@ def manifest() -> dict[str, Any]:
     # No mcpUrl: this satellite deliberately ships no MCP server, so the hub
     # must generate a shim from this declaration. It is the case that proves
     # "most satellites, not all" is actually handled.
-    return {
-        "protocol": PROTOCOL,
-        "satelliteId": "fleet",
-        "displayName": "Fleet Operations",
-        "description": "Vehicle status, utilisation and maintenance.",
-        "audience": ["internal"],
-        "screens": [
-            {
-                "id": "fleet.dashboard",
-                "title": "Fleet",
-                "description": "Status overview for the current tenant.",
-                "audience": ["internal"],
-            },
-            {
-                "id": "fleet.detail",
-                "title": "Vehicle detail",
-                "params": [
-                    {"name": "id", "required": True, "description": "Vehicle id"}
-                ],
-                "audience": ["internal"],
-            },
+    return env.manifest(
+        satellite_id="fleet",
+        display_name="Fleet Operations",
+        description="Vehicle status, utilisation and maintenance.",
+        audience=["internal"],
+        screens=[
+            env.screen_descriptor(
+                "fleet.dashboard",
+                "Fleet",
+                description="Status overview for the current tenant.",
+                audience=["internal"],
+            ),
+            env.screen_descriptor(
+                "fleet.detail",
+                "Vehicle detail",
+                audience=["internal"],
+                params=[env.param("id", required=True, description="Vehicle id")],
+            ),
         ],
-        "actions": [],
-        "nav": [
-            {
-                "screenId": "fleet.dashboard",
-                "label": "Fleet",
-                "section": "Operations",
-                "order": 20,
-            }
-        ],
-        "healthPath": "/healthz",
-    }
+        actions=[],
+        nav=[env.nav_entry("fleet.dashboard", "Fleet", section="Operations", order=20)],
+        health_path="/healthz",
+    )
 
 
 def _row(vehicle: Vehicle) -> dict[str, Any]:
@@ -75,127 +78,89 @@ def _row(vehicle: Vehicle) -> dict[str, Any]:
 
 
 def vehicles_table(vehicles: list[Vehicle]) -> dict[str, Any]:
-    return {
-        "type": "Table",
-        "id": "fleet-table",
-        "props": {
-            "columns": [
+    return with_id(
+        "fleet-table",
+        ui.table(
+            columns=[
                 {"key": "registration", "label": "Registration"},
                 {"key": "model", "label": "Model"},
                 {"key": "status", "label": "Status", "as": "badge", "toneKey": "statusTone"},
                 {"key": "odometerKm", "label": "Odometer (km)", "align": "end"},
                 {"key": "depot", "label": "Depot"},
             ],
-            "rows": [_row(v) for v in vehicles],
-            "rowAction": {"screenId": "fleet.detail", "paramKey": "id"},
-            "emptyMessage": "No vehicles assigned.",
-        },
-    }
+            rows=[_row(v) for v in vehicles],
+            rowAction={"screenId": "fleet.detail", "paramKey": "id"},
+            emptyMessage="No vehicles assigned.",
+        ),
+    )
 
 
 def dashboard_screen(vehicles: list[Vehicle], summary: dict[str, int]) -> dict[str, Any]:
     in_maintenance = summary.get("maintenance", 0)
-    return {
-        "protocol": PROTOCOL,
-        "screen": {"id": "fleet.dashboard", "title": "Fleet"},
-        "ui": {
-            "type": "Page",
-            "children": [
-                {
-                    "type": "Grid",
-                    "props": {"columns": 3},
-                    "children": [
-                        {
-                            "type": "StatTile",
-                            "props": {"label": "Vehicles", "value": str(len(vehicles))},
-                        },
-                        {
-                            "type": "StatTile",
-                            "props": {
-                                "label": "In maintenance",
-                                "value": str(in_maintenance),
-                                "tone": "warning" if in_maintenance else "muted",
-                            },
-                        },
-                        {
-                            "type": "StatTile",
-                            "props": {
-                                "label": "Active",
-                                "value": str(summary.get("active", 0)),
-                                "tone": "success",
-                            },
-                        },
-                    ],
-                },
-                {
-                    "type": "Section",
-                    "props": {"title": "Status breakdown"},
-                    "children": [
-                        {
-                            "type": "Chart",
-                            "id": "fleet-status-chart",
-                            "props": {
-                                "kind": "bar",
-                                "xKey": "status",
-                                "series": [{"key": "count", "label": "Vehicles"}],
-                                "data": [
-                                    {"status": status, "count": count}
-                                    for status, count in sorted(summary.items())
-                                ],
-                            },
-                        }
-                    ],
-                },
-                {
-                    "type": "Section",
-                    "props": {"title": "All vehicles"},
-                    "children": [vehicles_table(vehicles)],
-                },
-            ],
-        },
-        "meta": {"ttlSeconds": 30},
-    }
+
+    return env.screen(
+        "fleet.dashboard",
+        "Fleet",
+        ui.page(
+            ui.grid(
+                ui.stat_tile(label="Vehicles", value=str(len(vehicles))),
+                ui.stat_tile(
+                    label="In maintenance",
+                    value=str(in_maintenance),
+                    tone="warning" if in_maintenance else "muted",
+                ),
+                ui.stat_tile(
+                    label="Active",
+                    value=str(summary.get("active", 0)),
+                    tone="success",
+                ),
+                columns=3,
+            ),
+            ui.section(
+                with_id(
+                    "fleet-status-chart",
+                    ui.chart(
+                        kind="bar",
+                        xKey="status",
+                        series=[{"key": "count", "label": "Vehicles"}],
+                        data=[
+                            {"status": status, "count": count}
+                            for status, count in sorted(summary.items())
+                        ],
+                    ),
+                ),
+                title="Status breakdown",
+            ),
+            ui.section(vehicles_table(vehicles), title="All vehicles"),
+        ),
+        ttl_seconds=30,
+    )
 
 
 def detail_screen(vehicle: Vehicle) -> dict[str, Any]:
-    return {
-        "protocol": PROTOCOL,
-        "screen": {
-            "id": "fleet.detail",
-            "title": f"Vehicle {vehicle.registration}",
-            "breadcrumbs": [
-                {"label": "Fleet", "screenId": "fleet.dashboard"},
-                {"label": vehicle.registration},
-            ],
-        },
-        "ui": {
-            "type": "Page",
-            "children": [
-                {
-                    "type": "Card",
-                    "children": [
+    return env.screen(
+        "fleet.detail",
+        f"Vehicle {vehicle.registration}",
+        ui.page(
+            ui.card(
+                ui.key_value_list(
+                    items=[
+                        {"label": "Registration", "value": vehicle.registration},
+                        {"label": "Model", "value": vehicle.model},
                         {
-                            "type": "KeyValueList",
-                            "props": {
-                                "items": [
-                                    {"label": "Registration", "value": vehicle.registration},
-                                    {"label": "Model", "value": vehicle.model},
-                                    {
-                                        "label": "Status",
-                                        "value": vehicle.status,
-                                        "as": "badge",
-                                        "tone": _STATUS_TONE[vehicle.status],
-                                    },
-                                    {
-                                        "label": "Odometer",
-                                        "value": f"{vehicle.odometer_km:,} km",
-                                    },
-                                    {"label": "Depot", "value": vehicle.depot},
-                                ]
-                            },
-                        }
-                    ],
-                }
-            ],
-        },
-    }
+                            "label": "Status",
+                            "value": vehicle.status,
+                            "as": "badge",
+                            "tone": _STATUS_TONE[vehicle.status],
+                        },
+                        {"label": "Odometer", "value": f"{vehicle.odometer_km:,} km"},
+                        {"label": "Depot", "value": vehicle.depot},
+                    ]
+                )
+            )
+        ),
+        breadcrumbs=[
+            env.crumb("Fleet", "fleet.dashboard"),
+            env.crumb(vehicle.registration),
+        ],
+    )

@@ -111,7 +111,21 @@ export function withId(id: string, node: UiNode): UiNode {
   return { ...node, id };
 }
 
-/** Ties a value to the tool call that produced it. See PLAN.md on grounding. */
+/**
+ * Ties a value to the tool call that produced it. See PLAN.md on grounding.
+ *
+ * **A prop, unlike `id`.** The catalog declares `source` on each of the four
+ * data-bearing components, grounding reads `props.source` when it decides
+ * whether a number is cited, and every provenance mark the renderer draws
+ * reads the same place. `UiNode` also carries a top-level `source` field, and
+ * this function used to set that one — which nothing anywhere reads. A
+ * satellite following the documented way to cite a tool call got a node with
+ * no mark on screen and no credit from grounding.
+ *
+ * Its test asserted the field the function set rather than the field the
+ * system reads, so it passed throughout. The test below now goes through the
+ * catalog instead.
+ */
 export function withSource(toolCallId: string, node: UiNode): UiNode {
-  return { ...node, source: { toolCallId } };
+  return { ...node, props: { ...node.props, source: { toolCallId } } };
 }

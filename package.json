@@ -23,7 +23,10 @@
     "stack:test": "docker compose build test && docker compose run --rm test",
     "test:py": "cd apps/satellite-fleet && uv run pytest",
     "verify:ci": "bash scripts/verify-ci.sh",
-    "conformance": "tsx packages/conformance/src/cli.ts"
+    "conformance": "tsx packages/conformance/src/cli.ts",
+    "sdk:python": "pnpm --filter @portal/sdk-python generate",
+    "test:sdk-python": "cd apps/satellite-fleet && uv run pytest ../../packages/sdk-python/tests",
+    "sdk:check": "pnpm --filter @portal/sdk-python check"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
