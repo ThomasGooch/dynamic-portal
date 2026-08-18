@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
+from .protocol import CITABLE
+
 
 class Source(TypedDict):
     toolCallId: str
@@ -67,5 +69,11 @@ def with_source(tool_call_id: str, node: Node) -> Node:
     satellite composing on an agent's behalf has to say where a figure came
     from.
     """
+    if node["type"] not in CITABLE:
+        raise ValueError(
+            f"{node['type']} cannot carry a source. Only "
+            f"{', '.join(sorted(CITABLE))} declare one, because only they "
+            "display data a citation would refer to."
+        )
     props = {**node.get("props", {}), "source": {"toolCallId": tool_call_id}}
     return {**node, "props": props}

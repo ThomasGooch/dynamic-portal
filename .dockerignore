@@ -28,10 +28,15 @@ playwright-report
 # wholesale for the editable path dependency, so a local `__pycache__` or `.venv`
 # would ride into the image — stale bytecode compiled against a different
 # interpreter, and a virtualenv holding absolute host paths.
-__pycache__/
-*.py[cod]
-.venv/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-*.egg-info/
+#
+# `**/` on every one of them: .dockerignore is not .gitignore. A bare
+# `__pycache__/` is matched against the whole relative path, so it excludes only
+# a directory at the context root — `packages/sdk-python/portal_sdk/__pycache__`
+# would sail straight through it.
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/*.egg-info/

@@ -127,5 +127,20 @@ export function withId(id: string, node: UiNode): UiNode {
  * catalog instead.
  */
 export function withSource(toolCallId: string, node: UiNode): UiNode {
+  // Only the data-bearing components declare `source`, and every component
+  // schema is strict — so citing a `Text` produces a node the hub refuses.
+  // Refusing here instead names the mistake where it was made, and lists the
+  // components that can carry a citation at all.
+  if (!CITABLE.has(node.type)) {
+    throw new Error(
+      `${node.type} cannot carry a source. Only ${[...CITABLE].sort().join(", ")} declare one, ` +
+        "because only they display data a citation would refer to.",
+    );
+  }
   return { ...node, props: { ...node.props, source: { toolCallId } } };
 }
+
+/** The components whose schema declares `source`, read from the catalog. */
+const CITABLE: ReadonlySet<string> = new Set(
+  COMPONENT_NAMES.filter((name) => "source" in COMPONENTS[name].shape),
+);

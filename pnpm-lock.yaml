@@ -268,6 +268,9 @@ importers:
       '@portal/catalog':
         specifier: workspace:*
         version: link:../catalog
+      '@portal/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       zod-to-json-schema:
         specifier: 3.25.2
         version: 3.25.2(zod@3.25.76)

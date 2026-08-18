@@ -130,7 +130,10 @@ export function AgentPanel() {
     event.preventDefault();
     const asked = question.trim();
     if (asked === "" || busy) return;
-    setQuestion("");
+    // Cleared only when it is actually going to be sent. `send` refuses an
+    // oversized ask with "shorten it and try again", which a user cannot do if
+    // the box has already been emptied out from under them.
+    if (byteLength(asked) <= MAX_ASK_BYTES) setQuestion("");
     // The pending call, if there is one, is dropped by the *hub*: the signature
     // covers the conversation the hub issued, so a history shortened here would
     // no longer verify against it.

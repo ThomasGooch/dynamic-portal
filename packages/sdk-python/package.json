@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@portal/catalog": "workspace:*",
-    "zod-to-json-schema": "3.25.2"
+    "zod-to-json-schema": "3.25.2",
+    "@portal/protocol": "workspace:*"
   },
   "devDependencies": {
     "tsx": "4.20.3"

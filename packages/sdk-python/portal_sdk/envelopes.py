@@ -5,23 +5,38 @@ builders make a valid *tree*, and these make a valid envelope around it. A
 satellite using both never assembles a response by hand, which is where the
 protocol version, the key names and the outcome vocabulary go wrong.
 
-Hand-written rather than generated: these track the *protocol*, which changes
-on its own schedule, while ``ui`` tracks the catalog.
+The *shapes* here are hand-written, because they track the protocol's envelope
+structure. The *vocabulary* is not: levels, outcomes, audiences and the version
+come from :mod:`portal_sdk.protocol`, which is generated. Retyping them by hand
+is how a toast went out carrying ``danger`` — a component tone the hub refuses
+— and a mistake no satellite here could catch, because none ships an action.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from .node import Node
+from .protocol import PROTOCOL, Audience, ToastLevel
 
-#: The version this SDK emits. The hub supports the current major minus two,
-#: so a satellite pinned to an older minor keeps working — but there is no
-#: reason to emit one.
-PROTOCOL = "1.1"
+__all__ = [
+    "PROTOCOL",
+    "Audience",
+    "ToastLevel",
+    "crumb",
+    "failed",
+    "invalid",
+    "manifest",
+    "nav_entry",
+    "navigate",
+    "ok",
+    "param",
+    "patch",
+    "screen",
+    "screen_descriptor",
+]
 
-Audience = Literal["internal", "external"]
-ToastLevel = Literal["success", "info", "warning", "danger"]
+
 
 
 def screen(
@@ -83,7 +98,17 @@ def invalid(field_errors: dict[str, str], *, message: str | None = None) -> dict
 
     Distinct from :func:`failed` deliberately: this renders inline against the
     offending fields and is the user's to fix. A failure is the system's.
+
+    The map has to be non-empty, and this raises rather than letting the hub
+    say so: the protocol rejects a ``validation`` outcome with nothing to
+    attach a message to, and a refusal here names the line that built it.
     """
+    if not field_errors:
+        raise ValueError(
+            'outcome "validation" must carry at least one field error; '
+            'use failed() for a failure with no field to attach to'
+        )
+
     body: dict[str, Any] = {
         "protocol": PROTOCOL,
         "outcome": "validation",
@@ -99,7 +124,7 @@ def failed(message: str) -> dict[str, Any]:
     return {
         "protocol": PROTOCOL,
         "outcome": "error",
-        "toast": {"level": "danger", "message": message},
+        "toast": {"level": "error", "message": message},
     }
 
 
@@ -176,6 +201,22 @@ def param(name: str, *, required: bool = False, description: str | None = None) 
     return entry
 
 
-def nav_entry(screen_id: str, label: str, *, section: str, order: int) -> dict[str, Any]:
-    """Where this satellite appears in the hub's navigation."""
-    return {"screenId": screen_id, "label": label, "section": section, "order": order}
+def nav_entry(
+    screen_id: str,
+    label: str,
+    *,
+    section: str | None = None,
+    order: int | None = None,
+) -> dict[str, Any]:
+    """Where this satellite appears in the hub's navigation.
+
+    Both ``section`` and ``order`` are optional, as they are in the manifest
+    schema: a satellite with one entry has nothing to group it with and
+    nothing to order it against.
+    """
+    entry: dict[str, Any] = {"screenId": screen_id, "label": label}
+    if section is not None:
+        entry["section"] = section
+    if order is not None:
+        entry["order"] = order
+    return entry

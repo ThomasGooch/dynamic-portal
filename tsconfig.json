@@ -33,6 +33,9 @@
     },
     {
       "path": "./packages/sdk-node"
+    },
+    {
+      "path": "./packages/sdk-python"
     }
   ]
 }

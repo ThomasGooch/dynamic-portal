@@ -70,6 +70,30 @@ class TestProvenance:
         assert node["props"]["source"] == {"toolCallId": "call-1"}
         assert "source" not in {k: v for k, v in node.items() if k != "props"}
 
+    def test_refuses_a_component_that_cannot_carry_one(self) -> None:
+        # Every component schema is strict and only four declare `source`, so
+        # citing a Text produces a node the hub refuses. Raising here names the
+        # mistake where it was made instead of at request time.
+        with pytest.raises(ValueError, match="cannot carry a source"):
+            with_source("call-1", ui.text(text="hello"))
+
+    def test_the_citable_set_is_exactly_what_declares_source(self) -> None:
+        import inspect
+
+        from portal_sdk import ui as module
+        from portal_sdk.protocol import CITABLE
+
+        declared = {
+            name
+            for name in module.__all__
+            if "source" in inspect.signature(getattr(module, name)).parameters
+        }
+        # Compares generated-to-generated, so it catches a builder gaining or
+        # losing `source` without the citable set following.
+        assert {n.lower().replace("_", "") for n in CITABLE} == {
+            n.replace("_", "") for n in declared
+        }
+
     def test_keeps_the_props_it_already_had(self) -> None:
         node = with_source("call-1", ui.stat_tile(label="Pending", value="2", tone="warning"))
         assert node["props"]["tone"] == "warning"
@@ -104,6 +128,27 @@ class TestEnvelopes:
         # did not get wrong.
         assert env.invalid({"depot": "Unknown depot"})["outcome"] == "validation"
         assert env.failed("The depot service is unavailable.")["outcome"] == "error"
+
+    def test_a_failure_toast_uses_the_level_the_protocol_defines(self) -> None:
+        # `ToastSchema` is `success | info | warning | error`. "danger" is a
+        # component *tone*, and this shipped with it — an envelope the hub
+        # rejects outright, from the SDK's own helper.
+        assert env.failed("Nope")["toast"]["level"] == "error"
+        assert "danger" not in env.ToastLevel.__args__
+
+    def test_a_validation_outcome_with_no_field_errors_is_refused_here(self) -> None:
+        # The hub rejects it; refusing at the call site names the line that
+        # built it instead of a response nobody can see.
+        with pytest.raises(ValueError):
+            env.invalid({})
+
+    def test_a_nav_entry_may_omit_section_and_order(self) -> None:
+        # Both are optional in the manifest schema. A satellite with one entry
+        # has nothing to group it with and nothing to order it against.
+        assert env.nav_entry("fleet.dashboard", "Fleet") == {
+            "screenId": "fleet.dashboard",
+            "label": "Fleet",
+        }
 
     def test_an_action_that_only_says_done_says_only_that(self) -> None:
         assert env.ok() == {"protocol": env.PROTOCOL, "outcome": "ok"}

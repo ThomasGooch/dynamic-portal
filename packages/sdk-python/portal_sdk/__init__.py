@@ -18,7 +18,16 @@ drift from it; everything else is hand-written and tracks the protocol.
         )
 """
 
-from . import envelopes, ui
+from . import envelopes, protocol, ui
 from .node import Node, with_id, with_source
+from .protocol import PROTOCOL
 
-__all__ = ["Node", "envelopes", "ui", "with_id", "with_source"]
+__all__ = [
+    "PROTOCOL",
+    "Node",
+    "envelopes",
+    "protocol",
+    "ui",
+    "with_id",
+    "with_source",
+]

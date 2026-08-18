@@ -81,6 +81,15 @@ describe("building a node", () => {
     expect(node).not.toHaveProperty("source");
   });
 
+  it("refuses a component that cannot carry a citation", () => {
+    // Only four components declare `source` and every schema is strict, so
+    // citing a `Text` builds a node the hub rejects. Throwing here names the
+    // mistake at the call site rather than at request time.
+    expect(() => withSource("call-1", ui.Text({ text: "hello" }))).toThrow(
+      /cannot carry a source/,
+    );
+  });
+
   it("produces a citation the catalog validates, which is the claim that matters", () => {
     // Through the catalog rather than by inspection: `source` is a declared
     // prop on every data-bearing component, so a shape the catalog rejects is

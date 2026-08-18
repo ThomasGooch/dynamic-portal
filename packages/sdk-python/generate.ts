@@ -3,6 +3,12 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { CATALOG_VERSION, COMPONENTS, COMPONENT_NAMES } from "@portal/catalog";
+import {
+  ActionResponseSchema,
+  AudienceSchema,
+  CURRENT_PROTOCOL_VERSION,
+  ToastSchema,
+} from "@portal/protocol";
 
 /**
  * The Python SDK is generated from the catalog, not written beside it.
@@ -200,8 +206,76 @@ ${collected}
 `;
 }
 
+/**
+ * The protocol's vocabulary, emitted rather than retyped.
+ *
+ * A review found `failed()` sending `{"level": "danger"}` — a component *tone*,
+ * not a toast level, which the hub rejects outright. It was hand-copied from
+ * the TypeScript and got one word wrong, and no satellite here ships an action,
+ * so nothing caught it. Three languages means three chances to make that
+ * mistake; the fix is to stop making the copy by hand.
+ */
+function literals(schema: unknown, path?: string): readonly string[] {
+  const json = zodToJsonSchema(schema as Parameters<typeof zodToJsonSchema>[0], {
+    target: "jsonSchema7",
+    $refStrategy: "none",
+  }) as JsonSchemaNode;
+  const node = path === undefined ? json : (json.properties?.[path] as JsonSchemaNode | undefined);
+  const values = node?.enum;
+  if (values === undefined || values.length === 0) {
+    throw new Error(`no enum found for ${path ?? "the schema"} — the protocol shape changed`);
+  }
+  return values.map(String);
+}
+
+function pyLiteral(values: readonly string[]): string {
+  return `Literal[${values.map((value) => JSON.stringify(value)).join(", ")}]`;
+}
+
+const protocolModule = `"""The protocol's constants, as the hub defines them.
+
+GENERATED FROM @portal/protocol — DO NOT EDIT.
+
+Run \`pnpm sdk:python\` to regenerate; \`pnpm sdk:check\` fails if this is stale.
+
+Everything here was previously retyped into Python by hand, which is how a
+toast went out carrying a component tone the hub refuses. A vocabulary copied
+by hand is a vocabulary that drifts.
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+#: The version this SDK emits.
+PROTOCOL = ${JSON.stringify(CURRENT_PROTOCOL_VERSION)}
+
+#: Toast levels. Note \`error\`, not \`danger\` — \`danger\` is a component tone.
+ToastLevel = ${pyLiteral(literals(ToastSchema, "level"))}
+
+#: What an action reports back.
+ActionOutcome = ${pyLiteral(literals(ActionResponseSchema, "outcome"))}
+
+#: Who a satellite, screen or action is visible to. Default-deny: absent means
+#: internal, and external must always be stated.
+Audience = ${pyLiteral(literals(AudienceSchema))}
+
+#: The components whose schema declares \`source\`. Only these can carry a
+#: citation: every component schema is strict, so a citation on anything else
+#: is a node the hub refuses rather than one it merely ignores.
+CITABLE = frozenset(
+    {
+${COMPONENT_NAMES.filter((name) => "source" in COMPONENTS[name].shape)
+  .map((name) => `        ${JSON.stringify(name)},`)
+  .join("\n")}
+    }
+)
+`;
+
 const body = COMPONENT_NAMES.map(emit).join("\n\n");
-const target = join(dirname(fileURLToPath(import.meta.url)), "portal_sdk", "ui.py");
+const root = join(dirname(fileURLToPath(import.meta.url)), "portal_sdk");
+const target = join(root, "ui.py");
+const protocolTarget = join(root, "protocol.py");
 const generated = `${header}\n${body}`;
 
 /**
@@ -213,18 +287,25 @@ const generated = `${header}\n${body}`;
  * git is not yet tracking. A guard that passes because it destroyed the
  * evidence is worse than none, because it reads as coverage.
  */
+const outputs: readonly (readonly [string, string])[] = [
+  [target, generated],
+  [protocolTarget, protocolModule],
+];
+
 if (process.argv.includes("--check")) {
-  const current = existsSync(target) ? readFileSync(target, "utf8") : "";
-  if (current !== generated) {
-    process.stderr.write(
-      current === ""
-        ? `${target} does not exist. Run \`pnpm sdk:python\`.\n`
-        : `${target} is out of date with the catalog. Run \`pnpm sdk:python\` and commit the result.\n`,
-    );
-    process.exit(1);
+  for (const [path, expected] of outputs) {
+    const current = existsSync(path) ? readFileSync(path, "utf8") : "";
+    if (current !== expected) {
+      process.stderr.write(
+        current === ""
+          ? `${path} does not exist. Run \`pnpm sdk:python\`.\n`
+          : `${path} is out of date. Run \`pnpm sdk:python\` and commit the result.\n`,
+      );
+      process.exit(1);
+    }
   }
   process.stdout.write(`up to date — ${COMPONENT_NAMES.length} components\n`);
 } else {
-  writeFileSync(target, generated, "utf8");
-  process.stdout.write(`wrote ${target} — ${COMPONENT_NAMES.length} components\n`);
+  for (const [path, contents] of outputs) writeFileSync(path, contents, "utf8");
+  process.stdout.write(`wrote ${outputs.length} files — ${COMPONENT_NAMES.length} components\n`);
 }
