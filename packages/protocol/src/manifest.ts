@@ -114,17 +114,14 @@ export const ActionParamSchema = z
   })
   .strict()
   .superRefine((param, ctx) => {
-    // The choices are strings. Attached to a number they would describe a
-    // parameter that no value can satisfy, which reads as a callable action
-    // and is not one.
-    // Choices are strings, so they describe a string or the elements of a
-    // string list. On a number they would describe a parameter no value can
-    // satisfy, which reads as callable and is not.
+    // Choices are strings, so they describe a string, or the elements of a
+    // string list. On a number or a boolean they would describe a parameter no
+    // value can satisfy, which reads as a callable action and is not one.
     if (param.enum !== undefined && param.type !== "string" && param.type !== "string[]") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["enum"],
-        message: `enumerated choices are only meaningful on a string parameter, not ${param.type}`,
+        message: `enumerated choices are only meaningful on a string or string[] parameter, not ${param.type}`,
       });
     }
   });

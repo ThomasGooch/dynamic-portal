@@ -170,4 +170,34 @@ describe("checking what a client sent", () => {
       ).ok,
     ).toBe(false);
   });
+
+  it("carries a list through, and holds each entry to the declared choices", () => {
+    // The façade builds the same schema the gateway does, from its own copy of
+    // the conversion. Untested, the two are free to disagree about what
+    // `string[]` means — and a partner would be the one to find out.
+    const params = [
+      { name: "tags", type: "string[]" as const, required: false, enum: ["retail", "hazmat"] },
+    ];
+    expect(checkOperationParams(params, { tags: ["retail"] })).toEqual({
+      ok: true,
+      value: { tags: ["retail"] },
+    });
+    // The choices constrain each entry, not the list.
+    expect(checkOperationParams(params, { tags: ["retail", "explosives"] }).ok).toBe(false);
+    // An object is not a list, however much `typeof` agrees.
+    expect(checkOperationParams(params, { tags: {} }).ok).toBe(false);
+    expect(checkOperationParams(params, { tags: "retail" }).ok).toBe(false);
+  });
+
+  it("calls a list a parameter of an operation, not of a tool", () => {
+    // The message is published contract. A partner has never heard of a tool,
+    // and the list branch is a new place that vocabulary could leak.
+    const result = checkOperationParams(
+      [{ name: "tags", type: "string[]", required: true }],
+      { nope: [] },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.message).toMatch(/operation/);
+    expect(result.ok === false && result.message).not.toMatch(/tool/);
+  });
 });

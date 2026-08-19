@@ -318,6 +318,74 @@ describe("calling those tools for real", () => {
     expect(repository.get("acme", pending.id)?.status).toBe("approved");
   });
 
+  it("carries a list all the way to the satellite, where the rule can see it", async () => {
+    // The schema shape is not the claim; this is. Before `string[]` the label
+    // could not cross the gateway at all, so the hazmat rule was judged against
+    // a list no agent could send. Both halves are asserted: the rule fires on
+    // the labels the agent actually sent, and the labels are what gets stored.
+    const surface = await surfaceFor(principal());
+    const draft = {
+      customer: "Hazard Co",
+      contactEmail: "ops@hazard.example",
+      total: 250,
+      currency: "GBP",
+      dueBy: "2999-01-01",
+      priority: "standard" as const,
+      expedited: false,
+    };
+
+    const refused = await invokeTool(
+      surface,
+      "orders__orders_create",
+      { ...draft, tags: ["hazmat"] },
+      principal(),
+      deps(true),
+    );
+    expect(refused.ok).toBe(true);
+    if (!refused.ok || refused.kind !== "write") return;
+    expect(refused.outcome).toBe("validation");
+    expect(refused.fieldErrors?.["notes"]).toMatch(/hazmat/i);
+
+    const accepted = await invokeTool(
+      surface,
+      "orders__orders_create",
+      { ...draft, tags: ["hazmat"], notes: "Handle with care." },
+      principal(),
+      deps(true),
+    );
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok || accepted.kind !== "write") return;
+    expect(accepted.outcome).toBe("ok");
+    expect(
+      repository.list("acme").some((order) => order.tags.includes("hazmat")),
+    ).toBe(true);
+  });
+
+  it("refuses a label outside the declared choices before the satellite is called", async () => {
+    // The enum sits on `items`, so it constrains each entry. A model that read
+    // it as constraining the array would send one value for the whole answer;
+    // one that invents an entry is stopped here rather than by the satellite.
+    const surface = await surfaceFor(principal());
+    const result = await invokeTool(
+      surface,
+      "orders__orders_create",
+      {
+        customer: "Hazard Co",
+        contactEmail: "ops@hazard.example",
+        total: 250,
+        currency: "GBP",
+        dueBy: "2999-01-01",
+        priority: "standard",
+        tags: ["explosives"],
+      },
+      principal(),
+      deps(true),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("bad-arguments");
+  });
+
   it("cannot be talked into sending a parameter the satellite never declared", async () => {
     // The tool schema is what the model was given; it is not what the model is
     // held to. `tenantId` is the field that matters — the satellite scopes on

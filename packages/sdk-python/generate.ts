@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { CATALOG_VERSION, COMPONENTS, COMPONENT_NAMES } from "@portal/catalog";
 import {
+  ActionParamSchema,
   ActionResponseSchema,
   AudienceSchema,
   CURRENT_PROTOCOL_VERSION,
@@ -259,6 +260,12 @@ ActionOutcome = ${pyLiteral(literals(ActionResponseSchema, "outcome"))}
 #: Who a satellite, screen or action is visible to. Default-deny: absent means
 #: internal, and external must always be stated.
 Audience = ${pyLiteral(literals(AudienceSchema))}
+
+#: What an action parameter can be. Generated, because this is exactly the
+#: vocabulary that drifted: \`string[]\` was added to the protocol and the C#
+#: SDK, and the hand-written Python copy went on refusing it — a Python
+#: satellite could not declare a list its own form already rendered.
+ParamType = ${pyLiteral(literals(ActionParamSchema, "type"))}
 
 #: The components whose schema declares \`source\`. Only these can carry a
 #: citation: every component schema is strict, so a citation on anything else

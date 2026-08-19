@@ -6,22 +6,23 @@ satellite using both never assembles a response by hand, which is where the
 protocol version, the key names and the outcome vocabulary go wrong.
 
 The *shapes* here are hand-written, because they track the protocol's envelope
-structure. The *vocabulary* is not: levels, outcomes, audiences and the version
-come from :mod:`portal_sdk.protocol`, which is generated. Retyping them by hand
+structure. The *vocabulary* is not: levels, outcomes, audiences, parameter
+types and the version come from :mod:`portal_sdk.protocol`, which is generated. Retyping them by hand
 is how a toast went out carrying ``danger`` — a component tone the hub refuses
 — and a mistake no satellite here could catch, because none ships an action.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from .node import Node
-from .protocol import PROTOCOL, Audience, ToastLevel
+from .protocol import PROTOCOL, Audience, ParamType, ToastLevel
 
 __all__ = [
     "PROTOCOL",
     "Audience",
+    "ParamType",
     "ToastLevel",
     "action_descriptor",
     "action_param",
@@ -37,8 +38,6 @@ __all__ = [
     "screen",
     "screen_descriptor",
 ]
-
-
 
 
 def screen(
@@ -195,9 +194,6 @@ def navigate(
     return body
 
 
-ParamType = Literal["string", "number", "boolean"]
-
-
 def action_param(
     name: str,
     param_type: ParamType,
@@ -225,15 +221,17 @@ def action_param(
                 "choices must not be empty; the hub rejects an empty enum, and "
                 "a list of no options is not a choice. Omit it instead."
             )
-        if param_type != "string":
+        if param_type not in ("string", "string[]"):
             # `ActionParamSchema` refuses this: the choices are strings, so on a
             # number or a boolean they describe a parameter no value can
-            # satisfy — an action that reads as callable and is not one.
+            # satisfy — an action that reads as callable and is not one. On a
+            # `string[]` they are meaningful and constrain each *entry*, which
+            # is why that one is allowed through.
             raise ValueError(
                 f'choices are only meaningful on a string parameter, not '
                 f'{param_type}: the values are strings, so a {param_type} '
                 "parameter could never match one. Drop the choices, or make "
-                'the parameter a "string".'
+                'the parameter a "string" or a "string[]".'
             )
         entry["enum"] = choices
     return entry

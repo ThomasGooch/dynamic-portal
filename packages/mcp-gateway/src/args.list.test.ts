@@ -55,6 +55,22 @@ describe("a list argument", () => {
     expect(result.ok === false && result.message).toMatch(/retail, hazmat/);
   });
 
+  it("refuses null and nested lists, which are objects but not text", () => {
+    // `typeof null === "object"` and so is a nested array, so neither is
+    // caught by anything except the per-entry string check.
+    expect(check({ plain: [null] }).ok).toBe(false);
+    expect(check({ plain: [["retail"]] }).ok).toBe(false);
+    expect(check({ plain: [{ toString: 1 }] }).ok).toBe(false);
+  });
+
+  it("refuses a list on a read rather than stringifying it into a query", () => {
+    // A read's params travel in a query string. `String(["a","b"])` is `"a,b"`
+    // — a different request that would look like a successful one.
+    const result = checkArguments(schema, { plain: ["retail", "hazmat"] }, "read");
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.message).not.toMatch(/retail,hazmat/);
+  });
+
   it("copies the list rather than passing the caller's array through", () => {
     const args = { plain: ["retail"] };
     const result = check(args);

@@ -240,6 +240,18 @@ export function checkArguments(
     if (value === undefined) continue;
 
     if (kind === "read") {
+      /**
+       * A list cannot travel in a query string, so it is refused by name.
+       *
+       * Nothing declares one on a read today — screen params are typed
+       * `string` and nothing else — but the stringify below is one reordering
+       * away from turning `["a","b"]` into the query value `"a,b"`, which is a
+       * different request that looks like a successful one. Saying so here
+       * costs a line and cannot rot.
+       */
+      if (property.type === "array") {
+        return { ok: false, message: `"${name}" cannot be a list here.` };
+      }
       if (typeof value === "object" || typeof value === "function") {
         return { ok: false, message: `"${name}" must be a simple value.` };
       }

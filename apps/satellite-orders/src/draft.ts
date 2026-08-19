@@ -135,10 +135,10 @@ export function readDraft(body: unknown, today: string): DraftResult {
   if (!PRIORITIES.includes(priority)) fieldErrors["priority"] = "Choose a priority.";
 
   // Absent is not the same answer as empty. An empty `MultiSelect` posts `[]`,
-  // so a user clearing every label sends one; an agent cannot send the field at
-  // all, because `ActionParamSchema` has no array type. Passing the difference
-  // through to the draft is what stops an agent's update erasing labels it was
-  // never able to name — see `OrderDraft.tags`.
+  // so a user clearing every label sends one; a caller that simply did not
+  // mention labels sends nothing, which `tags` being optional keeps possible
+  // for agents too. Passing the difference through to the draft is what stops
+  // an update erasing labels it never named — see `OrderDraft.tags`.
   const tagsGiven = input["tags"] !== undefined;
   const parsedTags = asList(input["tags"]);
   const tags = parsedTags ?? [];

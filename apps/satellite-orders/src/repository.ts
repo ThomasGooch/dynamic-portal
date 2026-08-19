@@ -43,12 +43,11 @@ export interface OrderDraft {
    * Absent means "leave them as they are", not "there are none".
    *
    * The form always sends this — an empty `MultiSelect` posts `[]`, so clearing
-   * every label is still a change a user can make. A caller that *cannot* send
-   * it is the other case: `ActionParamSchema` has no array type, so `tags` is
-   * undeclarable in the manifest and the MCP shim's `additionalProperties:
-   * false` refuses it, which means every agent-driven `orders.update` arrives
-   * without one. Reading that as `[]` would strip `hazmat` off an order as a
-   * side effect of editing its customer name.
+   * every label is still a change a user can make. An agent can now send it
+   * too, since `ActionParamSchema` grew a `string[]` type, but the parameter is
+   * not required: a caller updating one field can still leave `tags` out, and
+   * reading that as `[]` would strip `hazmat` off an order as a side effect of
+   * editing its customer name.
    */
   tags?: string[];
   expedited: boolean;
