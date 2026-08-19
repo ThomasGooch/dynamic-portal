@@ -1,5 +1,4 @@
 import type { ContentBlock, Message, ModelClient, ModelReply } from "./loop";
-import type { toolDefinitions } from "./tools";
 
 /**
  * A local model, behind the same interface the vendor sits behind.
@@ -63,6 +62,11 @@ export interface OllamaClientOptions {
  */
 function toOllamaMessages(system: string, messages: readonly Message[]): OllamaMessage[] {
   const out: OllamaMessage[] = [{ role: "system", content: system }];
+  // `tool_name` is the *tool's* name. It is carried on the `tool_use` block and
+  // a `tool_result` only refers back to it by id, so the pairing is rebuilt
+  // here — sending the id instead told the model a tool called `local_1`
+  // answered, which is the one thing a tool message exists to say correctly.
+  const toolNames = namesByToolUseId(messages);
 
   for (const message of messages) {
     const text = message.content
@@ -81,13 +85,37 @@ function toOllamaMessages(system: string, messages: readonly Message[]): OllamaM
     // Results first: they answer the turn before them, and Ollama reads the
     // list in order.
     for (const result of toolResults) {
-      out.push({ role: "tool", content: result.content, tool_name: result.tool_use_id });
+      out.push({
+        role: "tool",
+        content: result.content,
+        tool_name: toolNames.get(result.tool_use_id) ?? result.tool_use_id,
+      });
     }
 
     if (message.role === "assistant" && toolUses.length > 0) {
+      // The prose that came with the calls is dropped, and it has to be.
+      //
+      // Ollama renders history through the model's own Go template, and
+      // qwen2.5's is `{{ if .Content }}{{ .Content }}{{ else if .ToolCalls }}
+      // <tool_call>…` — an `else`. One word of preamble in `content` and every
+      // tool call in that turn vanishes from the prompt, so the model is shown
+      // a `<tool_response>` answering a call it cannot see it made.
+      //
+      // Splitting them across two assistant messages does not help: Ollama
+      // merges consecutive messages of the same role before templating, so the
+      // pair arrives as the one message again. Verified against the running
+      // model, asking it to name an argument it had just passed — "Ulaanbaatar"
+      // with the content empty, and "UNKNOWN" with the prose kept, in either
+      // order.
+      //
+      // Which of the two to lose is not a close call. Grounding makes the model
+      // cite the id of a call it made itself, and `render_screen` composes from
+      // calls it has to remember making; a preamble is filler. Losing the call
+      // is a screen that cannot be composed — which is some part of what the
+      // skipped e2e test currently blames on the model's size.
       out.push({
         role: "assistant",
-        content: text,
+        content: "",
         tool_calls: toolUses.map((use) => ({
           id: use.id,
           function: { name: use.name, arguments: use.input },
@@ -104,6 +132,41 @@ function toOllamaMessages(system: string, messages: readonly Message[]): OllamaM
   }
 
   return out;
+}
+
+function namesByToolUseId(messages: readonly Message[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const message of messages) {
+    for (const block of message.content) {
+      if (block.type === "tool_use") names.set(block.id, block.name);
+    }
+  }
+  return names;
+}
+
+/**
+ * Ids minted per *conversation*, not per client.
+ *
+ * A counter living in the closure looked equivalent and was not: the whole
+ * conversation travels with the request and `modelClient()` is built fresh for
+ * each one, so a per-client counter restarts at 1 on every turn and re-mints
+ * `local_1` for a call the history already answered. The loop then reads that
+ * call as answered, never runs it, asks the model again, and burns every turn
+ * it has — and grounding, which resolves a citation by id, would have two
+ * different reads wearing the same one. So the next id is read off the history
+ * instead. Short and sequential rather than a UUID on purpose: the model has to
+ * copy these ids into `render_screen` citations by hand.
+ */
+function localIdMinter(messages: readonly Message[]): () => string {
+  let highest = 0;
+  for (const message of messages) {
+    for (const block of message.content) {
+      if (block.type !== "tool_use") continue;
+      const match = /^local_(\d+)$/.exec(block.id);
+      if (match?.[1] !== undefined) highest = Math.max(highest, Number(match[1]));
+    }
+  }
+  return () => `local_${(highest += 1)}`;
 }
 
 /** Ollama's reply into ours. */
@@ -128,48 +191,80 @@ function fromOllamaMessage(message: OllamaMessage, fallbackId: () => string): Co
 }
 
 export function ollamaClient(options: OllamaClientOptions = {}): ModelClient {
-  const baseUrl = options.baseUrl ?? OLLAMA_URL;
+  // A trailing slash is what a human writes in a `.env`, and `${baseUrl}/api/chat`
+  // turns it into a double slash Ollama answers 404 to.
+  const baseUrl = (options.baseUrl ?? OLLAMA_URL).replace(/\/+$/, "");
   const model = options.model ?? OLLAMA_MODEL;
   const timeoutMs = options.timeoutMs ?? 180_000;
-  let minted = 0;
 
   return {
     async respond({ system, messages, tools }): Promise<ModelReply> {
-      const response = await fetch(`${baseUrl}/api/chat`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        signal: AbortSignal.timeout(timeoutMs),
-        body: JSON.stringify({
-          model,
-          stream: false,
-          options: { num_ctx: CONTEXT_TOKENS, temperature: 0 },
-          messages: toOllamaMessages(system, messages),
-          tools: (tools as ReturnType<typeof toolDefinitions>).map((tool) => ({
-            type: "function",
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.input_schema,
-            },
-          })),
-        }),
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${baseUrl}/api/chat`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          signal: AbortSignal.timeout(timeoutMs),
+          body: JSON.stringify({
+            model,
+            stream: false,
+            options: { num_ctx: CONTEXT_TOKENS, temperature: 0 },
+            messages: toOllamaMessages(system, messages),
+            tools: tools.map((tool) => ({
+              type: "function",
+              function: {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.input_schema,
+              },
+            })),
+          }),
+        });
+      } catch (cause) {
+        // The message below about `ollama serve` only ever reached anyone whose
+        // Ollama was already running — a server that is *not* running never
+        // answers, so `fetch` rejects with a bare `TypeError: fetch failed`
+        // and the route turns that into "could not complete that request".
+        // Not being started is the first thing that goes wrong here, so it is
+        // the case that has to say so.
+        const timedOut = (cause as { name?: unknown } | null)?.name === "TimeoutError";
+        throw new Error(
+          timedOut
+            ? `the local model at ${baseUrl} did not answer within ${timeoutMs}ms. ` +
+              `The first call also loads ${model} into memory, which is slower than the rest.`
+            : `could not reach the local model at ${baseUrl}. Is \`ollama serve\` running?`,
+          { cause },
+        );
+      }
 
       if (!response.ok) {
         // The body, not just the status. Ollama explains a 400 there, and a
         // provider that swallows it leaves the caller with "something was
         // wrong with a request they cannot see".
         const detail = await response.text().catch(() => "");
+        // Reaching a status at all means the server is up, so the question is
+        // about the model rather than the daemon.
         throw new Error(
           `the local model answered ${response.status}: ${detail.slice(0, 500)}. ` +
-            `Is \`ollama serve\` running, and is ${model} pulled?`,
+            `Is ${model} pulled?`,
         );
       }
 
-      const body = (await response.json()) as { message?: OllamaMessage };
+      const body = (await response.json()) as { message?: OllamaMessage; done_reason?: string };
       if (body.message === undefined) throw new Error("the local model returned no message");
 
-      return { content: fromOllamaMessage(body.message, () => `local_${(minted += 1)}`) };
+      // The mirror of `anthropic.ts`'s `max_tokens` throw, and it matters for
+      // the same reason: a generation cut off at the window can end part way
+      // through a `tool_call`, and the loop would go on to make a tool call
+      // with half its arguments. Ollama reports this only here — the HTTP call
+      // is a clean 200 either way.
+      if (body.done_reason === "length") {
+        throw new Error(
+          `the local model's reply was cut off at the ${CONTEXT_TOKENS}-token window.`,
+        );
+      }
+
+      return { content: fromOllamaMessage(body.message, localIdMinter(messages)) };
     },
   };
 }

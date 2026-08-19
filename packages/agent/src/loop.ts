@@ -132,7 +132,7 @@ export async function runAgent(input: RunInput, deps: RunDeps): Promise<AgentOut
         // to say what went wrong. Weaker models do this when a tool they were
         // meant to call did not fit; the user should be told to ask again
         // rather than left reading a blank.
-        if (text.trim() === "") {
+        if (text === "") {
           return {
             kind: "failed",
             reason: "The assistant had nothing to say. Try asking again.",

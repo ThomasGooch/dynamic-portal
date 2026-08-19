@@ -834,17 +834,17 @@ test.describe("the assistant, switched on", () => {
 
   test("composes a grounded screen the hub fills in", async ({ request }) => {
     // `render_screen` is a 34-variant `oneOf` and every data-bearing node has
-    // to cite a tool call that grounding then verifies. A 7B model manages it
-    // sometimes and not others — and because this provider runs at
-    // `temperature: 0`, "sometimes" is not random. It is deterministic per
-    // prompt: on one branch this passed three times out of three, and on
-    // another, with `tags` added to an unrelated tool's schema, it failed
-    // three out of three. Nothing about the screen changed; the tool list did.
+    // to cite a tool call that grounding then verifies. Driven against
+    // qwen2.5:7b directly, with the provider's translation bugs fixed, it
+    // still does not get there — it runs out of turns rather than composing.
     //
-    // That is worse than flaky, because it looks stable until something
-    // unrelated moves. So it is skipped locally rather than trusted locally —
-    // the other six assistant tests pass, and this one keeps its meaning only
-    // against the hosted model.
+    // Stated that way because an earlier version of this comment claimed more.
+    // It said the model "answers in prose", and offered a story about
+    // `temperature: 0` making the outcome deterministic per prompt. That story
+    // was built on a broken comparison: the branch it "passed" on had no local
+    // provider in its compose file at all, so it was measuring the hosted
+    // model against the local one. The honest claim is the narrow one — this
+    // path needs the hosted model, and the other assistant tests do not.
     test.skip(
       process.env["PORTAL_MODEL_PROVIDER"] === "ollama",
       "screen composition needs the hosted model; the local one answers in prose",

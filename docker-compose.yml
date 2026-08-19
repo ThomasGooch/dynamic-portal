@@ -127,6 +127,12 @@ services:
       PORTAL_ORDERS_URL: http://satellite-orders:4001
       PORTAL_FLEET_URL: http://satellite-fleet:4002
       PORTAL_DEPOTS_URL: http://satellite-depots:4003
+    # `host.docker.internal` is a Docker Desktop convenience; on Linux the name
+    # does not resolve at all, and the only symptom is the assistant answering
+    # "could not complete that request". Mapped explicitly so the local-model
+    # default URL above reaches the host everywhere.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
     depends_on:
