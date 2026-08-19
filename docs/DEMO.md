@@ -33,12 +33,20 @@ docker compose restart satellite-orders satellite-fleet satellite-depots
 
 | | Setup | Composition | Notes |
 |---|---|---|---|
-| Hosted | `ANTHROPIC_API_KEY` in `.env` | ~12 s | What to use in the room |
-| Local | `PORTAL_MODEL_PROVIDER=ollama` | does not work | Free; six of seven assistant tests pass |
+| Hosted | `ANTHROPIC_API_KEY` in `.env` | ~13 s, measured | What to use in the room |
+| Local | `PORTAL_MODEL_PROVIDER=ollama` | does not work | Free; six of the seven `the assistant` tests pass |
 
 Screen composition — beat 6 — **needs the hosted model**. On a local 7B it runs
 out of turns rather than composing. If the key is dead or the venue's network
 is unreliable, cut beat 6 and say why; do not let it fail live.
+
+**That ~13 s is a measurement, not a guarantee.** The home page is one turn
+with several tool calls and a satellite round trip inside each, so it moves with
+the model and the venue's network — the e2e test allows over three minutes
+before giving up, and that gap is deliberate rather than slack. Rehearse it on
+the venue's connection, keep talking while it fills in, and if it has not landed
+by the time you finish the sentence, move on: the launcher above it is a
+complete page, and beat 6 is the only beat that can be cut.
 
 ---
 
@@ -61,6 +69,26 @@ Copy the URL of a detail screen, paste it in a new tab, hit back. It all works
 
 That is the difference from the last attempt, and it is structural rather than
 a promise.
+
+**Optional, and the shortest proof of it.** Set `PORTAL_BRAND=contoso` in `.env`,
+then:
+
+```bash
+docker compose up -d hub                # NOT `restart` — see below
+```
+
+All three solutions restyle at once; none is rebuilt, redeployed, or told.
+
+> `up -d`, not `restart`. A container's environment is fixed when it is
+> created, so `docker compose restart hub` re-runs the same process with the
+> same variables and the brand does not change — verified, because it is a
+> silent no-op and the natural thing to type. `up -d` notices the config
+> changed and re-creates the container from the image it already has, which is
+> still no rebuild. Beat 3 is the other way round: the registry is a *mounted
+> file*, so `restart` is genuinely enough there.
+
+Rehearse it. It is the same few seconds of silence as beat 3, and the two are
+better shown together than apart.
 
 ### 3 · The authoring moment (4 min) — *kills coordination cost*
 
@@ -131,7 +159,7 @@ came from named on it.
 Then open the assistant and ask it to approve an order. It **pauses** and the
 hub draws a confirmation card.
 
-> "The model proposes; a person decides. Deletion it is not offered at all —
+> "The model proposes; a person decides. Deletion is not offered to it at all —
 > that is a line in a config file a human reviews, not a prompt."
 
 ### 7 · The ask (3 min)
@@ -151,8 +179,16 @@ into a commitment, and it is cheap at this size.
 | Form shows stale data | In-memory state from a rehearsal | `docker compose restart satellite-orders` |
 | Home never fills in | Composition failed | Say so and move on — the launcher is a complete page |
 
-**Do not** run `docker compose down -v` in the room. It removes volumes and the
-next `up` is a two-minute cold build.
+**Do not** run `docker compose down` in the room. Restarting a service keeps
+the stack up; `down` removes the containers and the next `up` re-creates all
+four and waits on every healthcheck. The images and the build cache survive it,
+so this is the ~20-second warm path rather than the cold build — but it is
+still the longest silence in the room, and `restart` above does everything a
+rehearsal reset needs.
+
+(The `-v` in `pnpm down` is harmless here: this stack declares no named volumes,
+so there are none to remove. Satellite state is in memory and goes with the
+container either way.)
 
 ---
 

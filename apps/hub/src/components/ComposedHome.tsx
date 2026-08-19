@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { Citation } from "@portal/agent";
 import type { UiNode } from "@portal/protocol";
 import { AGENT_ENDPOINT, type AgentApiResult } from "@/lib/agentApi";
-import { ScreenRenderer } from "@/renderer/ScreenRenderer";
+import { AgentScreen } from "@/components/AgentScreen";
 
 /**
  * A home screen nobody wrote.
@@ -26,6 +26,13 @@ import { ScreenRenderer } from "@/renderer/ScreenRenderer";
  * wrong for production: a model call on every home load is slow and costs
  * money per view. The fix is a per-tenant cache with a short TTL, and it is
  * recorded in PLAN.md rather than pretended away.
+ *
+ * Two calls per load under StrictMode, and aborting recovers only the browser
+ * half. `/api/agent` does not observe `request.signal`, so the turn the first
+ * effect started runs to completion on the server — a full model turn, paid
+ * for, with nowhere to go. It is a development-only cost today because
+ * StrictMode double-invocation is, but it is the same reason the cache above
+ * is the real fix: the client cannot make a turn cheap by giving up on it.
  */
 
 const ASK =
@@ -47,6 +54,22 @@ export function ComposedHome() {
     // that is gone.
     const controller = new AbortController();
 
+    // Nothing this effect learns after it has been torn down may reach the
+    // screen. React's StrictMode — on in this app, `reactStrictMode: true` in
+    // `next.config.ts` — runs the effect, tears it down, and runs it again, so
+    // the first fetch rejects with `AbortError` while the second is still in
+    // flight. Without this guard that rejection took the shared `catch` below
+    // and set `silent`, which returns `null`: the "Reading across your
+    // solutions…" line vanished, the `aria-live` region was removed from the
+    // tree and re-added, and a screen reader was told the section had gone. It
+    // recovered when the second answer landed, which is precisely why nothing
+    // caught it. The same path runs on a real unmount, where the component is
+    // gone and the update is pure waste.
+    const settle = (next: State): void => {
+      if (controller.signal.aborted) return;
+      setState(next);
+    };
+
     void (async () => {
       try {
         const response = await fetch(AGENT_ENDPOINT, {
@@ -59,7 +82,7 @@ export function ComposedHome() {
 
         const result = (await response.json()) as AgentApiResult;
         if (result.ok && result.kind === "screen") {
-          setState({
+          settle({
             status: "ready",
             ui: result.ui,
             citations: result.citations,
@@ -69,9 +92,9 @@ export function ComposedHome() {
         }
         // An answer in prose, a refusal, or the assistant switched off. None of
         // them is an error worth showing on a launcher that already works.
-        setState({ status: "silent" });
+        settle({ status: "silent" });
       } catch {
-        setState({ status: "silent" });
+        settle({ status: "silent" });
       }
     })();
 
@@ -81,37 +104,37 @@ export function ComposedHome() {
   if (state.status === "silent") return null;
 
   return (
-    <section className="composedHome" aria-live="polite">
+    /*
+      `aria-busy` on the section, and the live region only on the line that is
+      actually a status.
+
+      It was `aria-live="polite"` on the whole section, which is a different
+      promise than it looks: everything inserted into a live region gets read
+      out, and what lands here is a dashboard. A screen reader user waiting for
+      the launcher would have had the heading, the provenance line, every stat
+      tile and any table announced at them, unprompted, tens of seconds after
+      they stopped looking at this part of the page — the most disruptive
+      possible way to deliver a section whose entire premise is that it is
+      additive and skippable.
+
+      A short status announced politely is the useful half of that, and
+      `aria-busy` is how the section says it is still filling in without
+      narrating the result. The composed screen itself is ordinary page content
+      and is read when it is reached, like the launcher above it.
+    */
+    <section className="composedHome" aria-busy={state.status === "asking"}>
       <div className="screenHeader">
         <h2>Needs attention</h2>
       </div>
 
       {state.status === "asking" ? (
-        <p className="r-muted">Reading across your solutions…</p>
+        <p className="r-muted" role="status">
+          Reading across your solutions…
+        </p>
       ) : (
-        <>
-          {/*
-            Provenance, always. A satellite's screen reads as authoritative
-            because a team maintains it; this one is derived, and every figure
-            on it came from a tool call named here.
-          */}
-          <p className="agentDerived">
-            Composed by the assistant from{" "}
-            {state.citations.length === 0
-              ? "no tool calls"
-              : state.citations.map((citation) => citation.toolName).join(", ")}
-          </p>
-          <ScreenRenderer
-            ui={state.ui}
-            // No current satellite: this screen spans several, so a link that
-            // does not name one has nowhere to point and renders inert rather
-            // than guessing.
-            satelliteId=""
-            screenId=""
-            params={{}}
-            allowedSatelliteIds={state.allowed}
-          />
-        </>
+        // The same component the panel draws, so provenance cannot be present
+        // on one surface and forgotten on the other.
+        <AgentScreen ui={state.ui} citations={state.citations} allowed={state.allowed} />
       )}
     </section>
   );

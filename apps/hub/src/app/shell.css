@@ -116,7 +116,13 @@
   margin-bottom: var(--gap-lg);
 }
 
-.screenHeader h1 {
+/* `h2` as well as `h1`: the composed home heads its section with an `h2`,
+   because the page already has an `h1` and a document with two is one a screen
+   reader cannot outline. Without this it fell back to the browser default —
+   24px and margins of its own, so the derived section shouted louder than the
+   page it hangs off. */
+.screenHeader h1,
+.screenHeader h2 {
   margin: 0;
   font-size: 22px;
   letter-spacing: -0.01em;

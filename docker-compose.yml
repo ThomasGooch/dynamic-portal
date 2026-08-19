@@ -111,12 +111,16 @@ services:
       # this line existed, and the assistant-off run it was supposed to produce
       # was really only ever a run with no API key.
       PORTAL_AGENT: ${PORTAL_AGENT:-}
+      # Which palette the portal wears. Every brand ships in the stylesheet, so
+      # a rebrand re-creates this container rather than rebuilding its image:
+      # `docker compose up -d hub`, and *not* `restart`, which re-runs the same
+      # process with the environment it was created with and changes nothing.
+      # An unrecognised name is a startup error rather than a rebrand that
+      # silently did not happen.
+      PORTAL_BRAND: ${PORTAL_BRAND:-}
       # A model on the developer's own machine, off unless asked for. The
       # default URL reaches the host from inside the container, which is the
       # one thing that differs from running the hub directly.
-      # Which palette the portal wears. Both ship in the stylesheet, so this is
-      # a restart rather than a rebuild.
-      PORTAL_BRAND: ${PORTAL_BRAND:-}
       PORTAL_MODEL_PROVIDER: ${PORTAL_MODEL_PROVIDER:-}
       PORTAL_OLLAMA_URL: ${PORTAL_OLLAMA_URL:-http://host.docker.internal:11434}
       PORTAL_OLLAMA_MODEL: ${PORTAL_OLLAMA_MODEL:-}

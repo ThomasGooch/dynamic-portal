@@ -386,7 +386,18 @@ test.describe("the brand", () => {
     expect(depots).toBe(orders);
   });
 
-  test("changes what a satellite looks like without redeploying it", async ({ page }) => {
+  test("ships two palettes that actually differ, and wears the one it was told to", async ({
+    page,
+  }) => {
+    // Named for what it checks. It was "changes what a satellite looks like
+    // without redeploying it", which is the feature's claim and half a
+    // stylesheet away from what the body proves: swapping `data-brand` in the
+    // browser exercises the CSS, and says nothing about whether `PORTAL_BRAND`
+    // ever reaches that attribute. Both halves are below, and the second is
+    // only meaningful on a stack that has a brand configured — which is why the
+    // env-to-attribute step is also covered where it can be asserted
+    // unconditionally, in the hub's own suite.
+    //
     // Navigate first: reading the brand before the page loads reports whatever
     // the previous document had, which sent the swap below the wrong way and
     // made this pass by changing nothing.
@@ -407,6 +418,13 @@ test.describe("the brand", () => {
     }, brand);
 
     expect(other).not.toBe(accent);
+
+    // A brand the server put on the document has to be one the stylesheet
+    // knows. An unrecognised name renders in the default palette while the
+    // attribute insists otherwise, which is a rebrand that silently did not
+    // happen — the hub now refuses to start rather than serve that, and this
+    // is the assertion that would notice if it stopped.
+    if (brand !== "") expect(["contoso"]).toContain(brand);
   });
 });
 
@@ -433,6 +451,16 @@ test.describe("the home nobody wrote", () => {
   });
 
   test("fills in a screen composed across every solution", async ({ page }) => {
+    // Same gate as "composes a grounded screen the hub fills in", and for the
+    // same reason: this is screen composition, which needs the hosted model.
+    // Without this the local-provider run — the one `.env.example` documents as
+    // costing nothing — gained a second failing test rather than a second
+    // skipped one, and `assistantConfigured` cannot tell the two providers
+    // apart because it only asks whether *an* assistant answers.
+    test.skip(
+      process.env["PORTAL_MODEL_PROVIDER"] === "ollama",
+      "screen composition needs the hosted model; the local one answers in prose",
+    );
     test.skip(!enabled, "no assistant in the running stack");
     await page.goto("/");
 

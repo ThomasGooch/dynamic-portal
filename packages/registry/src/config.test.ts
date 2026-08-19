@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 import type { Principal } from "@portal/identity";
 import { loadRegistry, resolveNav, visibleSatellites } from "./registry";
 
@@ -165,8 +166,17 @@ describe("the compose stack can actually demonstrate zero-deploy changes", () =>
     // the hub image, so a hub restarted after an edit re-read its own stale
     // copy and nothing changed — the claim was false in the one setup anyone
     // would try it in, and a demo built on it would have failed live.
-    const compose = readFileSync(new URL("../../../docker-compose.yml", import.meta.url), "utf8");
+    // Parsed rather than grepped. A substring match is satisfied by the line
+    // appearing anywhere in the file, including inside the comment above it or
+    // commented out entirely — which is exactly how this mount would be lost,
+    // and the test would have stayed green through it.
+    const compose = parse(
+      readFileSync(new URL("../../../docker-compose.yml", import.meta.url), "utf8"),
+    ) as { services?: Record<string, { volumes?: unknown }> };
 
-    expect(compose).toContain("./config/satellites.yaml:/repo/config/satellites.yaml:ro");
+    const volumes = compose.services?.["hub"]?.volumes;
+    expect(Array.isArray(volumes) ? volumes : []).toContain(
+      "./config/satellites.yaml:/repo/config/satellites.yaml:ro",
+    );
   });
 });
