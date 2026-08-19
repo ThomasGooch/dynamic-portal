@@ -20,6 +20,21 @@ import type { Failure } from "@portal/registry";
 export const MAX_PAYLOAD_BYTES = 256 * 1024;
 
 /**
+ * The ceiling for a submission that carries a file.
+ *
+ * A separate number, because the reason for the small one does not apply: 256
+ * KB is "far past any form" precisely because a form is text. A purchase order
+ * scanned to PDF is not, and refusing it would make `FileUpload` a component
+ * that renders and cannot be used.
+ *
+ * Ten megabytes is a document, not a video. It is also the point past which
+ * buffering in the hub stops being reasonable — this reads the body to check
+ * it before forwarding, which is simple and honest at this size and would need
+ * to become a streaming proxy at a hundred times it.
+ */
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/**
  * Reads the body, giving up as soon as it passes the limit.
  *
  * `request.text()` would buffer the whole thing first and only then let the
@@ -81,4 +96,18 @@ export function statusFor(failure: Failure): number {
     case "upstream-error":
       return 502;
   }
+}
+
+
+/**
+ * Refuses an oversized upload from its declared length, before reading it.
+ *
+ * A cheap first gate, and only that: a chunked request declares nothing, and a
+ * dishonest one can understate. The caller checks the parsed total afterwards
+ * too — this exists so the obvious case costs nothing rather than ten
+ * megabytes of transfer.
+ */
+export function withinUploadLimit(request: Request): boolean {
+  const declared = Number(request.headers.get("content-length"));
+  return !Number.isFinite(declared) || declared <= MAX_UPLOAD_BYTES;
 }

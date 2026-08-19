@@ -105,7 +105,17 @@ export function buildCatalog(
     const operations = projection.operations
       .map(({ name, actionId }) => {
         const action = entry.manifest.actions.find((candidate) => candidate.id === actionId);
-        return action !== undefined && offered(entry.satellite, action, principal)
+        // A file parameter takes this operation off the public surface, even
+        // where a platform-team mapping named it. The façade is a JSON
+        // contract — a partner posts a body and reads one back — and there is
+        // no multipart on it. Publishing the operation without the field would
+        // describe a call that always fails validation at the satellite;
+        // publishing it *with* the field would describe a call a partner
+        // cannot make. Absent is the only honest option until the façade grows
+        // an upload of its own, and that is a versioned contract change.
+        return action !== undefined &&
+          offered(entry.satellite, action, principal) &&
+          !(action.params ?? []).some((param) => param.type === "file")
           ? describeOperation(name, action)
           : undefined;
       })
@@ -275,7 +285,9 @@ function describeOperation(name: string, action: ActionDescriptor): PublicOperat
     ...(action.description === undefined ? {} : { description: action.description }),
     params: (action.params ?? []).map((param) => ({
       name: param.name,
-      type: param.type,
+      // Narrowed rather than cast: an operation carrying a file never reaches
+      // here, so the façade's own type stays free of a case it cannot serve.
+      type: param.type as Exclude<typeof param.type, "file">,
       required: param.required,
       ...(param.description === undefined ? {} : { description: param.description }),
       ...(param.enum === undefined ? {} : { enum: param.enum }),

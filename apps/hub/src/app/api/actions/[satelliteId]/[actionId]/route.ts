@@ -2,7 +2,13 @@ import { actionInvoke, authorize } from "@portal/identity";
 import { findSatellite } from "@portal/registry";
 import type { Failure } from "@portal/registry";
 import type { ActionApiResult } from "@/lib/actionApi";
-import { MAX_PAYLOAD_BYTES, readBounded, statusFor } from "@/lib/http";
+import {
+  MAX_PAYLOAD_BYTES,
+  MAX_UPLOAD_BYTES,
+  readBounded,
+  statusFor,
+  withinUploadLimit,
+} from "@/lib/http";
 import { auditKeyFor, auditStamp, recordAudit } from "@/lib/audit";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
@@ -73,21 +79,60 @@ export async function POST(
     message: "That submission is too large to send.",
   };
 
-  const raw = await readBounded(request, MAX_PAYLOAD_BYTES);
-  if (raw === null) return json(tooLarge, 413);
+  /**
+   * Two shapes arrive here, and the size limit differs by an order of
+   * magnitude between them.
+   *
+   * A JSON action is a form's worth of text and stays on the small cap. A
+   * multipart action carries a file, and the reason the small cap exists —
+   * "far past any form" — stops applying the moment the payload is a scanned
+   * document. The type is read from the request rather than from the action's
+   * declaration on purpose: the declaration is fetched below, and a caller
+   * must not be able to pick which limit applies by naming an action.
+   */
+  const multipart = (request.headers.get("content-type") ?? "").startsWith("multipart/form-data");
 
   let payload: unknown;
-  try {
-    payload = raw === "" ? {} : JSON.parse(raw);
-  } catch {
-    return json(
-      { ok: false, reason: "bad-request", message: "The portal could not read that submission." },
-      400,
-    );
+
+  if (multipart) {
+    if (!withinUploadLimit(request)) return json(tooLarge, 413);
+
+    try {
+      // Parsed rather than streamed through: the hub has to know a file is
+      // what arrived before it forwards one, and at ten megabytes buffering
+      // costs less than the machinery not to. `request.formData()` enforces
+      // nothing about size itself, which is why the header is checked first
+      // and the parsed total is checked after.
+      const form = await request.formData();
+      const total = [...form.values()].reduce(
+        (sum, value) => sum + (value instanceof File ? value.size : value.length),
+        0,
+      );
+      if (total > MAX_UPLOAD_BYTES) return json(tooLarge, 413);
+      payload = form;
+    } catch {
+      return json(
+        { ok: false, reason: "bad-request", message: "The portal could not read that submission." },
+        400,
+      );
+    }
+  } else {
+    const raw = await readBounded(request, MAX_PAYLOAD_BYTES);
+    if (raw === null) return json(tooLarge, 413);
+
+    try {
+      payload = raw === "" ? {} : JSON.parse(raw);
+    } catch {
+      return json(
+        { ok: false, reason: "bad-request", message: "The portal could not read that submission." },
+        400,
+      );
+    }
   }
 
   // An object, specifically: the satellites read named fields, and an array or
-  // a bare string would arrive as something none of them expect.
+  // a bare string would arrive as something none of them expect. A `FormData`
+  // is an object and passes, which is what lets it through to the proxy.
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
     return json(
       { ok: false, reason: "bad-request", message: "The portal could not read that submission." },

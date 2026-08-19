@@ -151,6 +151,23 @@ export function manifest(): Manifest {
         audience: ["internal"],
       },
       {
+        // The action that carries bytes. Declared `file` so the hub knows to
+        // expect multipart and the gateway knows not to offer it to a model.
+        id: "orders.attach",
+        title: "Attach a document",
+        description: "Attach a purchase order or delivery note to an order.",
+        params: [
+          { name: "id", type: "string", required: true, description: "The order to attach to." },
+          {
+            name: "document",
+            type: "file",
+            required: true,
+            description: "The document. PDF or an image, up to 10 MB.",
+          },
+        ],
+        audience: ["internal"],
+      },
+      {
         id: "orders.delete",
         title: "Delete order",
         description: "Remove a pending order. Only pending orders can be removed.",
@@ -254,6 +271,36 @@ export function detailScreen(order: Order, audience: Audience = "internal"): Scr
     breadcrumbs: [{ label: "Orders", screenId: "orders.list" }, { label: order.id }],
     ui: ui.Page(
       {},
+      ui.Section(
+        { title: "Documents" },
+        ...(order.attachment === undefined
+          ? [ui.EmptyState({ title: "Nothing attached yet" })]
+          : [
+              ui.KeyValueList({
+                items: [
+                  { label: "File", value: order.attachment.filename },
+                  { label: "Type", value: order.attachment.contentType },
+                  {
+                    label: "Size",
+                    value: `${Math.max(1, Math.round(order.attachment.bytes / 1024))} KB`,
+                  },
+                ],
+              }),
+            ]),
+        // The one form in this portal that carries bytes. The hub sends it as
+        // multipart because a `FileUpload` is present; every other form is
+        // still JSON.
+        ui.Form(
+          { actionId: "orders.attach", submitLabel: "Attach" },
+          ui.Hidden({ name: "id", value: order.id }),
+          ui.FileUpload({
+            name: "document",
+            label: "Purchase order or delivery note",
+            help: "PDF or an image, up to 10 MB.",
+            accept: ["application/pdf", "image/png", "image/jpeg"],
+          }),
+        ),
+      ),
       ui.Card(
         {},
         ui.KeyValueList({

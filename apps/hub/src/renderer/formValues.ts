@@ -243,5 +243,51 @@ function optionValues(props: Record<string, unknown>): ReadonlySet<unknown> {
         ? (option as Record<string, unknown>)["value"]
         : undefined,
     ),
+
+/**
+ * The files a form is carrying, as `[name, File]` pairs.
+ *
+ * Separate from `collectFormValues`, which deliberately skips file inputs: a
+ * `File` cannot go in a JSON envelope, and putting the *filename* there would
+ * look like an upload that worked. This is the other half — the bytes, for the
+ * multipart path — and keeping them apart is what lets the values map stay
+ * serialisable.
+ *
+ * A `multiple` input contributes several pairs under one name, which is how
+ * multipart carries a list.
+ */
+export function collectFormFiles(form: HTMLFormElement): [string, File][] {
+  const files: [string, File][] = [];
+
+  for (const element of Array.from(form.elements)) {
+    if (!(element instanceof HTMLInputElement)) continue;
+    if (element.type.toLowerCase() !== "file") continue;
+    if (element.name === "" || element.disabled) continue;
+
+    // An input the user never touched has an empty list, so an untouched
+    // optional upload contributes nothing rather than an empty file.
+    for (const file of Array.from(element.files ?? [])) files.push([element.name, file]);
+  }
+
+  return files;
+}
+
+
+/**
+ * Whether this form can carry a file at all.
+ *
+ * The encoding follows the form's *shape*, not what the user picked. Deciding
+ * it from the files actually chosen meant an untouched upload submitted as
+ * JSON, and a satellite reading JSON on an action that expects multipart
+ * cannot tell "no document" from "wrong content type" — so it answers with a
+ * general failure where it means to point at the field.
+ */
+export function hasFileInput(form: HTMLFormElement): boolean {
+  return Array.from(form.elements).some(
+    (element) =>
+      element instanceof HTMLInputElement &&
+      element.type.toLowerCase() === "file" &&
+      element.name !== "" &&
+      !element.disabled,
   );
 }

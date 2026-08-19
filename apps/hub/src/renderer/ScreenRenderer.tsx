@@ -125,10 +125,37 @@ export function ScreenRenderer(props: ScreenRendererProps) {
     setToast(undefined);
 
     try {
+      /**
+       * Multipart only when there is a file, JSON otherwise.
+       *
+       * The `content-type` is deliberately unset for multipart: the browser
+       * appends the boundary it generated, and a header written here would
+       * declare a boundary that does not match the body. Every satellite would
+       * then read an empty form, which looks like "the file did not attach"
+       * rather than "the header was wrong".
+       */
+      // Present-but-empty means "this form carries files, none were chosen" —
+      // still multipart. Absent means an ordinary form.
+      const files = request.files;
+      const body = (() => {
+        if (files === undefined) return JSON.stringify(request.payload);
+
+        const form = new FormData();
+        for (const [name, value] of Object.entries(request.payload)) {
+          // Arrays are appended once per entry, which is how a multi-select
+          // survives a form encoding — one key repeated, not one key holding
+          // a comma-joined string nobody can split back safely.
+          if (Array.isArray(value)) for (const entry of value) form.append(name, String(entry));
+          else if (value !== undefined && value !== null) form.append(name, String(value));
+        }
+        for (const [name, file] of files) form.append(name, file, file.name);
+        return form;
+      })();
+
       const response = await fetch(actionEndpoint(props.satelliteId, request.actionId), {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(request.payload),
+        ...(files === undefined ? { headers: { "content-type": "application/json" } } : {}),
+        body,
         credentials: "same-origin",
       });
 

@@ -3,7 +3,12 @@
 import type { FormEvent, ReactNode } from "react";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRender } from "../context";
-import { collectFormValues, initialFormValues } from "../formValues";
+import {
+  collectFormFiles,
+  collectFormValues,
+  hasFileInput,
+  initialFormValues,
+} from "../formValues";
 import type { Renderer } from "../kinds";
 import { isVisible, type VisibleWhen } from "../visibility";
 
@@ -194,11 +199,16 @@ export const Form: Renderer<"Form"> = ({ props, node, children }) => {
     // The hub posts through its own proxy; a real form submission would take
     // the browser to a satellite the browser is not supposed to know exists.
     event.preventDefault();
+    // Multipart is chosen by the form's shape, not by whether a file was
+    // picked: an upload left untouched still has to arrive as multipart, or
+    // the satellite cannot tell "no document" from "wrong content type".
+    const carriesFiles = hasFileInput(event.currentTarget);
     dispatch({
       actionId: props.actionId,
       // Collected from the DOM, so a hidden field is absent because it is not
       // rendered — not because anything filtered it out.
       payload: collectFormValues(event.currentTarget),
+      ...(carriesFiles ? { files: collectFormFiles(event.currentTarget) } : {}),
       ...(props.confirm === undefined ? {} : { confirm: props.confirm }),
     });
   };

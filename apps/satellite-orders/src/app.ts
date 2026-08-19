@@ -10,6 +10,9 @@ import {
 import type { Manifest } from "@portal/protocol";
 import type { OrderRepository } from "./repository";
 import { readDraft } from "./draft";
+
+/** Matches the hub's own upload ceiling; see apps/hub/src/lib/http.ts. */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 import { detailScreen, editScreen, listScreen, manifest, newScreen, ordersTable } from "./screens";
 
 export interface AppOptions {
@@ -62,6 +65,16 @@ export function createApp({
 }: AppOptions): Express {
   const app = express();
   app.use(express.json());
+  /**
+   * Multipart, kept as bytes for the one action that wants them.
+   *
+   * `express.raw` rather than a parser dependency: Node's own `Request` can
+   * read a multipart body, so the buffer goes straight into one below. The
+   * limit is the hub's — a satellite that accepted more than the hub forwards
+   * would be advertising a capacity nothing can reach, and one that accepted
+   * less would fail a submission the hub had already agreed to carry.
+   */
+  app.use(express.raw({ type: "multipart/form-data", limit: MAX_UPLOAD_BYTES }));
   app.disable("x-powered-by");
 
   /** Establishes the principal. The manifest is public; everything else is not. */
@@ -331,6 +344,71 @@ export function createApp({
       res.json(
         ok({
           message: `Order ${id} saved.`,
+          navigate: { screenId: "orders.detail", params: { id } },
+        }),
+      );
+    },
+  );
+
+  app.post(
+    "/portal/actions/orders.attach",
+    authenticate,
+    requireAccess(["orders.write"], forAction("orders.attach")),
+    async (req: AuthedRequest, res) => {
+      const tenantId = req.principal!.tenantId;
+
+      if (!Buffer.isBuffer(req.body)) {
+        res.json(failed("Attach a document using the form."));
+        return;
+      }
+
+      let form: FormData;
+      try {
+        // Node's own multipart parser, reached by wrapping the raw body in a
+        // `Request`. The boundary lives in the content-type, which is why the
+        // header is passed through rather than reconstructed.
+        form = await new Request("http://satellite.invalid/", {
+          method: "POST",
+          headers: { "content-type": req.header("content-type") ?? "" },
+          body: req.body,
+        }).formData();
+      } catch {
+        res.json(failed("That upload could not be read."));
+        return;
+      }
+
+      const id = typeof form.get("id") === "string" ? String(form.get("id")) : "";
+      const document = form.get("document");
+
+      if (id === "") {
+        res.json(failed("Which order?"));
+        return;
+      }
+      if (!(document instanceof File) || document.size === 0) {
+        // A validation outcome, keyed to the field: the user can pick a file.
+        res.json(invalid({ document: "Choose a document to attach." }));
+        return;
+      }
+
+      const order = repository.get(tenantId, id);
+      if (order === undefined) {
+        res.status(404).json({ error: "order not found" });
+        return;
+      }
+
+      const attached = repository.attach(tenantId, id, {
+        filename: document.name,
+        contentType: document.type === "" ? "application/octet-stream" : document.type,
+        bytes: document.size,
+      });
+      if (!attached.ok) {
+        res.status(404).json({ error: "order not found" });
+        return;
+      }
+
+      res.json(
+        ok({
+          message: `${document.name} attached to ${id}.`,
           navigate: { screenId: "orders.detail", params: { id } },
         }),
       );

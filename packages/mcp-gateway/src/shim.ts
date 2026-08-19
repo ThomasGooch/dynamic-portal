@@ -122,6 +122,25 @@ export function shimTools(satellite: Satellite, manifest: Manifest): ShimResult 
       continue;
     }
 
+    // A model cannot produce bytes. An action that needs a file is a form a
+    // person fills in, and offering it as a tool would put a write on the
+    // agent's surface that every call must fail — worse than not offering it,
+    // because a refusal at the satellite reads as a broken integration rather
+    // than a deliberate boundary.
+    //
+    // Optional file parameters are not a reason to skip: the rest of the
+    // action is still callable, and the file simply is not sent.
+    const requiredFile = action.params.find(
+      (param) => param.type === "file" && param.required === true,
+    );
+    if (requiredFile !== undefined) {
+      skipped.push({
+        toolId: action.id,
+        reason: `action requires a file in "${requiredFile.name}", which no agent can supply`,
+      });
+      continue;
+    }
+
     const title = action.title ?? action.id;
     const tool = build({
       satellite,
@@ -136,7 +155,18 @@ export function shimTools(satellite: Satellite, manifest: Manifest): ShimResult 
       properties: Object.fromEntries(
         action.params.map((param) => [
           param.name,
-          param.type === "string[]"
+          param.type === "file"
+            ? // Described as what it is, not omitted: a model reading the
+              // schema should see that the field exists and that it is not
+              // one it can fill. Optional by construction — a *required* file
+              // skipped the whole action above.
+              {
+                type: "string" as const,
+                description:
+                  `${param.description === undefined ? "" : `${param.description} `}` +
+                  "Supplied by a person through the portal; an agent cannot set this.",
+              }
+            : param.type === "string[]"
             ? {
                 type: "array" as const,
                 items: {

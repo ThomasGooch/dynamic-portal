@@ -361,6 +361,56 @@ test.describe("the assistant panel between screens", () => {
   });
 });
 
+test.describe("attaching a file", () => {
+  // The last thing in the catalog that rendered and could not be used:
+  // `FileUpload` drew an input with nowhere to send what it collected. This is
+  // the only form in the portal that goes out as multipart.
+  // Creates its own order rather than picking one off the list. The satellite
+  // holds state in memory, so a seeded order carries whatever an earlier run
+  // did to it — and the first version of this test attached a file, failed a
+  // later assertion, and then failed differently on the next run because the
+  // attachment it had made was still there.
+  const future = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+
+  async function anOrder(page: import("@playwright/test").Page, customer: string) {
+    await page.goto("/orders/orders.new");
+    await page.getByLabel("Customer").fill(customer);
+    await page.getByLabel("Contact email").fill("attach@playwright.test");
+    await page.getByLabel("Total").fill("42");
+    await page.getByLabel("Due by").fill(future);
+    await page.getByRole("button", { name: "Create order" }).click();
+    await expect(page).toHaveURL(/orders\.detail/);
+  }
+
+  test("carries a document from the browser to the satellite", async ({ page }) => {
+    await anOrder(page, "Attachment Co");
+    await expect(page.getByText("Nothing attached yet")).toBeVisible();
+
+    await page.getByLabel("Purchase order or delivery note").setInputFiles({
+      name: "purchase-order.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4 a small but real pdf header"),
+    });
+    await page.getByRole("button", { name: "Attach" }).click();
+
+    // Back on the detail screen, showing what the satellite recorded — so the
+    // bytes reached it, not just the filename.
+    // Twice over: the toast the satellite sent, and the record it kept. The
+    // second is what proves the bytes arrived rather than just the filename.
+    await expect(page.getByText("purchase-order.pdf").first()).toBeVisible();
+    await expect(page.getByText("application/pdf")).toBeVisible();
+    await expect(page.getByText(/KB$/)).toBeVisible();
+    await expect(page.getByText("Nothing attached yet")).toHaveCount(0);
+  });
+
+  test("asks for a document rather than attaching nothing", async ({ page }) => {
+    await anOrder(page, "No Document Ltd");
+    await page.getByRole("button", { name: "Attach" }).click();
+
+    await expect(page.getByText(/choose a document/i)).toBeVisible();
+  });
+});
+
 test.describe("the C# satellite", () => {
   test("renders real data through the hub, having shipped no stylesheet", async ({ page }) => {
     await page.goto("/depots/depots.dashboard");

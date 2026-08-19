@@ -67,6 +67,9 @@ const registryEntry = (baseUrl: string) =>
     orders.delete:
       agentVisible: false
       rbacScopes: [orders.write]
+    orders.attach:
+      agentVisible: false
+      rbacScopes: [orders.write]
 `,
     {},
   )[0];
@@ -135,6 +138,7 @@ const deps = (confirmed?: boolean) => ({
 describe("the surface this satellite actually offers", () => {
   it("projects its real manifest into callable tools", async () => {
     const surface = await surfaceFor(principal());
+    // `orders__orders_attach` is deliberately absent; see the skip test below.
     expect(surface.tools.map((tool) => tool.name).sort()).toEqual([
       "orders__orders_approve",
       "orders__orders_create",
@@ -217,12 +221,28 @@ describe("the surface this satellite actually offers", () => {
     expect(surface.byName.has("orders__orders_refresh")).toBe(false);
   });
 
-  it("reports nothing as broken", async () => {
-    // Every skip is a satellite declaration the gateway could not use. On this
-    // satellite there should be none, and a new one appearing means a manifest
-    // changed in a way that quietly cost the agent a capability.
+  it("skips exactly one thing, and says why", async () => {
+    // Every skip is a satellite declaration the gateway could not use, and an
+    // unexplained new one means a manifest changed in a way that quietly cost
+    // the agent a capability. This one is deliberate: `orders.attach` requires
+    // a file, and no model can produce bytes.
     const surface = await surfaceFor(principal());
-    expect(surface.skipped).toEqual([]);
+
+    expect(surface.skipped).toEqual([
+      {
+        satelliteId: "orders",
+        toolId: "orders.attach",
+        reason: 'action requires a file in "document", which no agent can supply',
+      },
+    ]);
+  });
+
+  it("does not offer the upload as a tool a model could call", async () => {
+    // Offering it would put a write on the surface that every call must fail,
+    // and a refusal at the satellite reads as a broken integration rather than
+    // a deliberate boundary.
+    const surface = await surfaceFor(principal());
+    expect(surface.byName.has("orders__orders_attach")).toBe(false);
   });
 
   it("marks the enabled write as needing confirmation", async () => {

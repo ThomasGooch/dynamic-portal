@@ -121,17 +121,30 @@ export class SatelliteClient {
     );
   }
 
+  /**
+   * Posts an action, as JSON or as the multipart body it arrived in.
+   *
+   * A `FormData` body is passed through untouched and its `content-type` is
+   * left to `fetch`, which appends the boundary it generated. Setting the
+   * header here would send a boundary that does not match the body, and every
+   * satellite would read an empty form — the failure looks like "the file was
+   * not attached" rather than "the header was wrong".
+   */
   async invokeAction(
     actionId: string,
     payload: unknown,
     principal: Principal,
   ): Promise<Result<ActionResponse>> {
+    const multipart = payload instanceof FormData;
+
     return this.#request(
       `/portal/actions/${encodeURIComponent(actionId)}`,
       {
         method: "POST",
-        headers: { ...this.#authHeaders(principal), "content-type": "application/json" },
-        body: JSON.stringify(payload ?? {}),
+        headers: multipart
+          ? this.#authHeaders(principal)
+          : { ...this.#authHeaders(principal), "content-type": "application/json" },
+        body: multipart ? payload : JSON.stringify(payload ?? {}),
       },
       (body) => {
         const parsed = ActionResponseSchema.safeParse(body);

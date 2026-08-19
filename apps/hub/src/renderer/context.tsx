@@ -14,6 +14,15 @@ import { createContext, useContext } from "react";
 export interface ActionRequest {
   readonly actionId: string;
   readonly payload: Record<string, unknown>;
+  /**
+   * The files this submission carries, if any.
+   *
+   * Kept beside the payload rather than inside it: a `File` has no JSON
+   * representation, and putting one in the values map would make every
+   * consumer of `payload` handle a type it cannot serialise. When this is
+   * present the request goes out as multipart instead.
+   */
+  readonly files?: readonly (readonly [string, File])[] | undefined;
   /** When present, the hub asks before sending. See `ConfirmDialog`. */
   readonly confirm?: { readonly title: string; readonly body?: string | undefined } | undefined;
 }
