@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Citation, Message, PendingWrite } from "@portal/agent";
 import type { UiNode } from "@portal/protocol";
 import { AGENT_ENDPOINT, type AgentApiResult } from "@/lib/agentApi";
@@ -40,16 +40,101 @@ function hasPendingCall(messages: readonly Message[]): boolean {
   return last?.role === "assistant" && last.content.some((block) => block.type === "tool_use");
 }
 
+/**
+ * Where a conversation lives between screens.
+ *
+ * The panel is mounted in the layout, so client-side navigation would leave it
+ * alone — but the renderer's `Link` is a real anchor and an action's
+ * `navigate` is a real navigation, both by design: PLAN.md wants deep links,
+ * the back button and copyable URLs, which is exactly what iframes and
+ * micro-frontends break. Every one of those is a full page load, and a full
+ * page load takes React state with it. Ask a question, click into an order,
+ * and the thread was gone.
+ *
+ * `sessionStorage`, not `localStorage`: this is the browsing session's, and it
+ * should end when the tab does. The conversation carries tool results — real
+ * tenant data — so it has no business outliving the tab it was read in.
+ *
+ * If a different person signs in on the same tab, the restored history is
+ * posted once, fails its signature check (which is bound to the subject since
+ * the conversation was signed), and the panel clears itself on the 400. That
+ * is the intended path rather than a lucky one, and it is why this can be
+ * restored without knowing who is asking.
+ */
+const STORAGE_KEY = "portal.assistant.conversation";
+
+interface Saved {
+  readonly open: boolean;
+  readonly messages: Message[];
+  readonly signature: string;
+  readonly turns: Turn[];
+}
+
+function restore(): Saved | undefined {
+  // Server-rendered first, so there is no `window` on the first pass.
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    if (raw === null) return undefined;
+    const parsed = JSON.parse(raw) as Partial<Saved>;
+    // Shape-checked rather than trusted: this is storage another tab, an
+    // extension or a stale release could have written, and a malformed restore
+    // would break the panel on every load with no way back except devtools.
+    if (!Array.isArray(parsed.messages) || !Array.isArray(parsed.turns)) return undefined;
+    if (typeof parsed.signature !== "string") return undefined;
+    return {
+      open: parsed.open === true,
+      messages: parsed.messages,
+      signature: parsed.signature,
+      turns: parsed.turns,
+    };
+  } catch {
+    // Unreadable storage is no storage. A thrown parse here would take the
+    // whole shell down, for a convenience.
+    return undefined;
+  }
+}
+
 export function AgentPanel() {
-  const [open, setOpen] = useState(false);
+  // Restored in one pass rather than in an effect: reading it after mount
+  // would render an empty panel first and pop the conversation in a frame
+  // later, which reads as a bug even when it settles correctly.
+  const saved = useState(restore)[0];
+
+  const [open, setOpen] = useState(saved?.open ?? false);
   const [question, setQuestion] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(saved?.messages ?? []);
   // Held beside the conversation it belongs to: the hub refuses a history whose
   // signature does not match, so losing this ends the thread rather than
   // silently starting an unverified one.
-  const [signature, setSignature] = useState("");
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [signature, setSignature] = useState(saved?.signature ?? "");
+  const [turns, setTurns] = useState<Turn[]>(saved?.turns ?? []);
   const [busy, setBusy] = useState(false);
+
+  /**
+   * Written on every change, so the next full page load finds it.
+   *
+   * Quota failures are swallowed. A screen result carries its whole UI tree,
+   * so a long conversation can outgrow the few megabytes a browser allows —
+   * and losing the ability to *restore* a thread is a far smaller harm than
+   * throwing while rendering the shell that holds it.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (messages.length === 0 && turns.length === 0 && !open) {
+        window.sessionStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+      window.sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ open, messages, signature, turns }),
+      );
+    } catch {
+      // Full, disabled, or private-mode storage. The panel still works; it
+      // just will not survive the next navigation.
+    }
+  }, [open, messages, signature, turns]);
 
   async function send(
     body: {
@@ -152,6 +237,27 @@ export function AgentPanel() {
     <aside className="agentPanel" aria-label="Assistant">
       <header className="agentHead">
         <strong>Assistant</strong>
+        {/*
+          A conversation now outlives the screen it started on, so there has to
+          be a way to end one. Before it was persisted, navigating anywhere did
+          that by accident — which was the bug, but it was also the only exit.
+        */}
+        {turns.length > 0 && (
+          <button
+            type="button"
+            className="r-button"
+            data-variant="ghost"
+            data-size="sm"
+            onClick={() => {
+              setMessages([]);
+              setSignature("");
+              setTurns([]);
+            }}
+            disabled={busy}
+          >
+            New conversation
+          </button>
+        )}
         <button type="button" className="r-iconButton" onClick={() => setOpen(false)} aria-label="Close">
           ×
         </button>

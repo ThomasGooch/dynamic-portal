@@ -220,6 +220,60 @@ test.describe("filling in a form", () => {
   });
 });
 
+test.describe("the assistant panel between screens", () => {
+  // The panel is mounted in the layout, but the renderer's `Link` is a real
+  // anchor and an action's `navigate` is a real navigation — both deliberate,
+  // because deep links and the back button are the things this design refuses
+  // to give up. Every one of them is a full page load, and a full page load
+  // used to take the conversation with it.
+  test.describe.configure({ timeout: 240_000 });
+
+  let enabled = false;
+
+  test.beforeAll(async ({ request }) => {
+    enabled = await assistantConfigured(request);
+  });
+
+  test("keeps the conversation when you walk around the portal", async ({ page }) => {
+    test.skip(!enabled, "no assistant in the running stack");
+
+    await page.goto("/orders/orders.list");
+    await page.getByRole("button", { name: "Ask the portal" }).click();
+    await page.getByLabel("Ask the assistant").fill("How many orders are pending?");
+    await page.getByRole("button", { name: "Ask", exact: true }).click();
+
+    // Wait for a reply rather than a fixed delay: a local model is slow.
+    await expect(page.getByText("How many orders are pending?")).toBeVisible();
+    await expect(page.locator(".agentTurn")).toHaveCount(1, { timeout: 120_000 });
+    await expect(page.getByText("Working…")).toHaveCount(0, { timeout: 120_000 });
+
+    // A real navigation, not a client-side one.
+    await page.goto("/fleet/fleet.dashboard");
+
+    await expect(page.getByText("How many orders are pending?")).toBeVisible();
+    await expect(page.locator(".agentTurn")).toHaveCount(1);
+  });
+
+  test("survives a reload, and ends when asked", async ({ page }) => {
+    test.skip(!enabled, "no assistant in the running stack");
+    await page.goto("/orders/orders.list");
+    await page.getByRole("button", { name: "Ask the portal" }).click();
+    await page.getByLabel("Ask the assistant").fill("How many orders are pending?");
+    await page.getByRole("button", { name: "Ask", exact: true }).click();
+    await expect(page.getByText("Working…")).toHaveCount(0, { timeout: 120_000 });
+
+    await page.reload();
+    await expect(page.getByText("How many orders are pending?")).toBeVisible();
+
+    // The exit that navigating away used to provide by accident.
+    await page.getByRole("button", { name: "New conversation" }).click();
+    await expect(page.locator(".agentTurn")).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.locator(".agentTurn")).toHaveCount(0);
+  });
+});
+
 test.describe("the C# satellite", () => {
   test("renders real data through the hub, having shipped no stylesheet", async ({ page }) => {
     await page.goto("/depots/depots.dashboard");
