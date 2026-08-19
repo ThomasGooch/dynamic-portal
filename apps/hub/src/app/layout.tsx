@@ -87,8 +87,18 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                   agent-composed screen with the same `ScreenRenderer` the
                   routes use, and that component calls `useToaster()`, which
                   throws outside a `<Toaster>`. The panel is `position: fixed`,
-                  so its place in the tree costs nothing visually. */}
-              {isAgentEnabled(principal) && <AgentPanel />}
+                  so its place in the tree costs nothing visually.
+
+                  `owner` is who the panel's stored conversation belongs to. It
+                  keeps a thread in `sessionStorage` from being drawn for
+                  whoever signs in next on the same tab: the hub's signature
+                  check refuses that history, but only once it is sent, and the
+                  panel renders its tool results before then. Nothing about the
+                  principal that the browser is not already entitled to — it is
+                  the identity of the person being answered. */}
+              {isAgentEnabled(principal) && (
+                <AgentPanel owner={`${principal.tenantId}:${principal.sub}`} />
+              )}
             </Toaster>
           </main>
         </div>
