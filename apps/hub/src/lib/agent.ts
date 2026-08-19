@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Principal } from "@portal/identity";
-import { anthropicClient, type ModelClient } from "@portal/agent";
+import { anthropicClient, ollamaClient, type ModelClient } from "@portal/agent";
 import {
   buildSurface,
   invokeTool,
@@ -50,10 +50,26 @@ export function isAgentAllowedForTenant(principal: Principal): boolean {
   return !disabledTenants().has(principal.tenantId);
 }
 
-export function isAgentEnabled(principal?: Principal): boolean {
+/**
+ * Whether *a* model is configured for the hub's own assistant.
+ *
+ * "Configured" is not "keyed". `PORTAL_MODEL_PROVIDER=ollama` needs no key of
+ * ours — the model is on this machine — and asking only about
+ * `ANTHROPIC_API_KEY` would have answered 404 "the assistant is not enabled"
+ * to the very setup the local provider exists to make cheap. This has to agree
+ * with `modelClient()` below: the two are the same question asked once for the
+ * gate and once for the client, and a disagreement is either a dead assistant
+ * or a throw inside the turn.
+ */
+function isModelConfigured(): boolean {
+  if (isLocalProvider()) return true;
   // A key that is not there is not a misconfiguration to warn about — running
   // without an agent is a supported way to run this portal.
-  if (!process.env["ANTHROPIC_API_KEY"]) return false;
+  return Boolean(process.env["ANTHROPIC_API_KEY"]);
+}
+
+export function isAgentEnabled(principal?: Principal): boolean {
+  if (!isModelConfigured()) return false;
   if (principal !== undefined) return isAgentAllowedForTenant(principal);
   return process.env["PORTAL_AGENT"] !== "off";
 }
@@ -181,7 +197,65 @@ export function agentInvoker(principal: Principal, surface: ToolSurface): AgentI
   };
 }
 
+/**
+ * Which model answers, and why the default is the paid one.
+ *
+ * `PORTAL_MODEL_PROVIDER=ollama` points the agent at a model on this machine.
+ * That exists because testing the assistant against a metered API turned a
+ * regression suite into a bill, which is a poor incentive to test the agent at
+ * all.
+ *
+ * The default stays Anthropic deliberately. PLAN.md picks `claude-opus-5`
+ * because it is zero-data-retention eligible and regulated data reaches the
+ * model through tool results — a compliance decision before a capability one.
+ * A local model answers that question differently and nobody has reviewed it,
+ * so it turns on by choice and never by omission.
+ */
+/**
+ * Trimmed, because this arrives from a `.env` file compose reads verbatim and
+ * `PORTAL_MODEL_PROVIDER=ollama ` with a trailing space is not a typo anyone
+ * can see.
+ */
+function provider(): string {
+  return (process.env["PORTAL_MODEL_PROVIDER"] ?? "").trim();
+}
+
+function isLocalProvider(): boolean {
+  return provider() === "ollama";
+}
+
 export function modelClient(): ModelClient {
+  // A value nobody recognises used to fall through to the paid client, which
+  // is the worst available answer: `PORTAL_MODEL_PROVIDER=ollma` asked for a
+  // free model and quietly got a metered one, and the only evidence was the
+  // invoice. This whole feature exists to stop testing costing money, so a
+  // misspelling of it has to fail rather than bill.
+  const chosen = provider();
+  if (chosen !== "" && chosen !== "ollama" && chosen !== "anthropic") {
+    throw new Error(
+      `PORTAL_MODEL_PROVIDER="${chosen}" is not a provider. Use "ollama", or leave it unset for Anthropic.`,
+    );
+  }
+
+  if (isLocalProvider()) {
+    // Empty is absent. Compose writes `PORTAL_OLLAMA_MODEL: ${VAR:-}` for
+    // every optional setting, so an unset variable arrives as "" rather than
+    // undefined — and `??` only catches null. That sent `model: ""` to Ollama,
+    // which rejected it in three milliseconds while the hub reported only that
+    // the assistant "could not complete that request".
+    const set = (name: string): string | undefined => {
+      const value = process.env[name];
+      return value === undefined || value === "" ? undefined : value;
+    };
+
+    const baseUrl = set("PORTAL_OLLAMA_URL");
+    const model = set("PORTAL_OLLAMA_MODEL");
+    return ollamaClient({
+      ...(baseUrl === undefined ? {} : { baseUrl }),
+      ...(model === undefined ? {} : { model }),
+    });
+  }
+
   const apiKey = process.env["ANTHROPIC_API_KEY"];
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is required to run the agent");
   return anthropicClient({ apiKey });

@@ -53,4 +53,6 @@ export {
 
 export { conversationBudget, trimConversation } from "./trim";
 
+export { OLLAMA_MODEL, OLLAMA_URL, ollamaClient, type OllamaClientOptions } from "./ollama";
+
 export { AGENT_MODEL, anthropicClient, type AnthropicClientOptions } from "./anthropic";

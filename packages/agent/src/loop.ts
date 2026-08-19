@@ -126,7 +126,20 @@ export async function runAgent(input: RunInput, deps: RunDeps): Promise<AgentOut
       const reply = await deps.client.respond({ system: SYSTEM_PROMPT, messages, tools });
       messages = [...messages, { role: "assistant", content: reply.content }];
       if (!reply.content.some((block) => block.type === "tool_use")) {
-        return { kind: "answer", text: textOf(reply.content), messages };
+        const text = textOf(reply.content);
+        // A reply with no tool call *and* no words is not an answer, and
+        // returning it as one puts an empty bubble on the screen with nothing
+        // to say what went wrong. Weaker models do this when a tool they were
+        // meant to call did not fit; the user should be told to ask again
+        // rather than left reading a blank.
+        if (text === "") {
+          return {
+            kind: "failed",
+            reason: "The assistant had nothing to say. Try asking again.",
+            messages,
+          };
+        }
+        return { kind: "answer", text, messages };
       }
       continue;
     }

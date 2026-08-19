@@ -111,6 +111,12 @@ services:
       # this line existed, and the assistant-off run it was supposed to produce
       # was really only ever a run with no API key.
       PORTAL_AGENT: ${PORTAL_AGENT:-}
+      # A model on the developer's own machine, off unless asked for. The
+      # default URL reaches the host from inside the container, which is the
+      # one thing that differs from running the hub directly.
+      PORTAL_MODEL_PROVIDER: ${PORTAL_MODEL_PROVIDER:-}
+      PORTAL_OLLAMA_URL: ${PORTAL_OLLAMA_URL:-http://host.docker.internal:11434}
+      PORTAL_OLLAMA_MODEL: ${PORTAL_OLLAMA_MODEL:-}
       PORTAL_AGENT_DISABLED_TENANTS: ${PORTAL_AGENT_DISABLED_TENANTS:-}
       PORTAL_AUDIT_KEY: ${PORTAL_AUDIT_KEY:-dev-only-not-a-real-audit-key}
       PORTAL_AUDIT_LOG: /tmp/portal-audit.jsonl
@@ -121,6 +127,12 @@ services:
       PORTAL_ORDERS_URL: http://satellite-orders:4001
       PORTAL_FLEET_URL: http://satellite-fleet:4002
       PORTAL_DEPOTS_URL: http://satellite-depots:4003
+    # `host.docker.internal` is a Docker Desktop convenience; on Linux the name
+    # does not resolve at all, and the only symptom is the assistant answering
+    # "could not complete that request". Mapped explicitly so the local-model
+    # default URL above reaches the host everywhere.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
     depends_on:
