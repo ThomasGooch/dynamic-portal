@@ -6,8 +6,8 @@ import {
   MAX_PAYLOAD_BYTES,
   MAX_UPLOAD_BYTES,
   readBounded,
+  readBoundedBytes,
   statusFor,
-  withinUploadLimit,
 } from "@/lib/http";
 import { auditKeyFor, auditStamp, recordAudit } from "@/lib/audit";
 import { getPortal } from "@/lib/portal";
@@ -73,73 +73,21 @@ export async function POST(
     return json(NOT_FOUND, 404);
   }
 
-  const tooLarge: ActionApiResult = {
-    ok: false,
-    reason: "too-large",
-    message: "That submission is too large to send.",
-  };
-
   /**
-   * Two shapes arrive here, and the size limit differs by an order of
-   * magnitude between them.
+   * The declaration is resolved *before* the body is read, because it is what
+   * decides which ceiling applies.
    *
-   * A JSON action is a form's worth of text and stays on the small cap. A
-   * multipart action carries a file, and the reason the small cap exists —
-   * "far past any form" — stops applying the moment the payload is a scanned
-   * document. The type is read from the request rather than from the action's
-   * declaration on purpose: the declaration is fetched below, and a caller
-   * must not be able to pick which limit applies by naming an action.
+   * Read the other way round — the order this was written in — the ceiling
+   * follows the request's own `content-type`, so any action at all could be
+   * posted as multipart and spend the upload budget instead of the form one.
+   * That was not theoretical: `orders.delete` accepted a 2 MB multipart body
+   * and forwarded it, forty times what the action can possibly need, at an
+   * internal service the caller cannot otherwise reach. Which is precisely the
+   * amplifier `MAX_PAYLOAD_BYTES` exists to deny.
+   *
+   * It also means an action nobody may call, or one the manifest never
+   * declared, is refused before a byte of its body is buffered.
    */
-  const multipart = (request.headers.get("content-type") ?? "").startsWith("multipart/form-data");
-
-  let payload: unknown;
-
-  if (multipart) {
-    if (!withinUploadLimit(request)) return json(tooLarge, 413);
-
-    try {
-      // Parsed rather than streamed through: the hub has to know a file is
-      // what arrived before it forwards one, and at ten megabytes buffering
-      // costs less than the machinery not to. `request.formData()` enforces
-      // nothing about size itself, which is why the header is checked first
-      // and the parsed total is checked after.
-      const form = await request.formData();
-      const total = [...form.values()].reduce(
-        (sum, value) => sum + (value instanceof File ? value.size : value.length),
-        0,
-      );
-      if (total > MAX_UPLOAD_BYTES) return json(tooLarge, 413);
-      payload = form;
-    } catch {
-      return json(
-        { ok: false, reason: "bad-request", message: "The portal could not read that submission." },
-        400,
-      );
-    }
-  } else {
-    const raw = await readBounded(request, MAX_PAYLOAD_BYTES);
-    if (raw === null) return json(tooLarge, 413);
-
-    try {
-      payload = raw === "" ? {} : JSON.parse(raw);
-    } catch {
-      return json(
-        { ok: false, reason: "bad-request", message: "The portal could not read that submission." },
-        400,
-      );
-    }
-  }
-
-  // An object, specifically: the satellites read named fields, and an array or
-  // a bare string would arrive as something none of them expect. A `FormData`
-  // is an object and passes, which is what lets it through to the proxy.
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-    return json(
-      { ok: false, reason: "bad-request", message: "The portal could not read that submission." },
-      400,
-    );
-  }
-
   const client = portal.clientFor(satellite);
 
   const manifest = await client.fetchManifest();
@@ -158,6 +106,83 @@ export async function POST(
     return json(NOT_FOUND, 404);
   }
 
+  const tooLarge: ActionApiResult = {
+    ok: false,
+    reason: "too-large",
+    message: "That submission is too large to send.",
+  };
+
+  const unreadable: ActionApiResult = {
+    ok: false,
+    reason: "bad-request",
+    message: "The portal could not read that submission.",
+  };
+
+  // Case-insensitive: `Multipart/Form-Data` is the same media type, and a
+  // branch that turns on capitalisation is a branch two components will
+  // eventually disagree about.
+  const multipart = (request.headers.get("content-type") ?? "")
+    .toLowerCase()
+    .trimStart()
+    .startsWith("multipart/form-data");
+
+  // The action's own declaration, not the caller's header, is what grants the
+  // larger ceiling.
+  const declaresFile = (declared.params ?? []).some((param) => param.type === "file");
+
+  if (multipart && !declaresFile) {
+    return json(
+      {
+        ok: false,
+        reason: "unsupported-media-type",
+        message: "That action does not accept a file.",
+      },
+      415,
+    );
+  }
+
+  let payload: unknown;
+
+  if (multipart) {
+    // Read under the ceiling first, parsed second. `request.formData()` on the
+    // incoming request buffers whatever arrives before anything can object,
+    // and a `content-length` check does not save it — a chunked request
+    // declares no length at all. `readBoundedBytes` stops at the limit, and
+    // the parse then runs over a buffer that is already known to be small
+    // enough, so the decoded total needs no separate check.
+    const bytes = await readBoundedBytes(request, MAX_UPLOAD_BYTES);
+    if (bytes === null) return json(tooLarge, 413);
+
+    try {
+      // The platform's own multipart parser, reached by wrapping the bounded
+      // buffer in a `Request`. The content-type is carried over rather than
+      // reconstructed, because the boundary lives in it.
+      payload = await new Request("http://hub.invalid/", {
+        method: "POST",
+        headers: { "content-type": request.headers.get("content-type") ?? "" },
+        body: bytes,
+      }).formData();
+    } catch {
+      return json(unreadable, 400);
+    }
+  } else {
+    const raw = await readBounded(request, MAX_PAYLOAD_BYTES);
+    if (raw === null) return json(tooLarge, 413);
+
+    try {
+      payload = raw === "" ? {} : JSON.parse(raw);
+    } catch {
+      return json(unreadable, 400);
+    }
+  }
+
+  // An object, specifically: the satellites read named fields, and an array or
+  // a bare string would arrive as something none of them expect. A `FormData`
+  // is an object and passes, which is what lets it through to the proxy.
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return json(unreadable, 400);
+  }
+
   const startedAt = Date.now();
   const result = await client.invokeAction(actionId, payload, principal);
 
@@ -169,7 +194,7 @@ export async function POST(
         auditKey: auditKeyFor(principal),
         satelliteId: satellite.id,
         actionId,
-        params: payload,
+        params: auditableParams(payload),
         outcome: result.ok
           ? { status: "ok" }
           : { status: "error", reason: result.reason, httpStatus: statusFor(result) },
@@ -201,6 +226,38 @@ export async function POST(
   }
 
   return json({ ok: true, response: result.value }, 200);
+}
+
+/**
+ * What the audit record digests for a submission.
+ *
+ * A `FormData` has no own enumerable properties, so the canonicaliser walks it
+ * to `{}` — every upload would then share one digest with every other upload
+ * and with an empty payload, which is the single property the record depends
+ * on. Flattened to a plain object instead: the fields as they were sent, and a
+ * file described by what it was rather than by its bytes, which are not the
+ * hub's to keep.
+ */
+function auditableParams(payload: unknown): unknown {
+  if (!(payload instanceof FormData)) return payload;
+
+  // Null-prototype: a field named `__proto__` must land as a key, not as an
+  // assignment through the prototype chain.
+  const out = Object.create(null) as Record<string, unknown>;
+  for (const [name, value] of payload.entries()) {
+    const described =
+      value instanceof File
+        ? { filename: value.name, contentType: value.type, bytes: value.size }
+        : value;
+    // One name can carry several values — a multi-select, or a `multiple`
+    // upload — and collapsing them would digest two different submissions the
+    // same way.
+    const existing = out[name];
+    if (!Object.hasOwn(out, name)) out[name] = described;
+    else if (Array.isArray(existing)) existing.push(described);
+    else out[name] = [existing, described];
+  }
+  return out;
 }
 
 /**

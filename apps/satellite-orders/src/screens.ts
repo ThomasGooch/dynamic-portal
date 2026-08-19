@@ -290,16 +290,26 @@ export function detailScreen(order: Order, audience: Audience = "internal"): Scr
         // The one form in this portal that carries bytes. The hub sends it as
         // multipart because a `FileUpload` is present; every other form is
         // still JSON.
-        ui.Form(
-          { actionId: "orders.attach", submitLabel: "Attach" },
-          ui.Hidden({ name: "id", value: order.id }),
-          ui.FileUpload({
-            name: "document",
-            label: "Purchase order or delivery note",
-            help: "PDF or an image, up to 10 MB.",
-            accept: ["application/pdf", "image/png", "image/jpeg"],
-          }),
-        ),
+        //
+        // Behind the same audience gate as every other write on this screen:
+        // `orders.attach` is `audience: ["internal"]`, so drawing it for an
+        // external principal offers a customer a form the hub refuses with
+        // "that action is not available". What is already attached still
+        // shows — reading is what the façade grants.
+        ...(canWrite(audience)
+          ? [
+              ui.Form(
+                { actionId: "orders.attach", submitLabel: "Attach" },
+                ui.Hidden({ name: "id", value: order.id }),
+                ui.FileUpload({
+                  name: "document",
+                  label: "Purchase order or delivery note",
+                  help: "PDF or an image, up to 10 MB.",
+                  accept: ["application/pdf", "image/png", "image/jpeg"],
+                }),
+              ),
+            ]
+          : []),
       ),
       ui.Card(
         {},

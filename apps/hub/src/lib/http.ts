@@ -49,11 +49,30 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
  * Returns `null` when the limit was exceeded.
  */
 export async function readBounded(request: Request, limit: number): Promise<string | null> {
+  const bytes = await readBoundedBytes(request, limit);
+  return bytes === null ? null : new TextDecoder("utf-8").decode(bytes);
+}
+
+/**
+ * The same bounded read, stopping at the bytes.
+ *
+ * The multipart path needs these rather than a string: a `Request` built over
+ * a bounded buffer can be handed to the platform's own `formData()` parser,
+ * which is how the parse gets a ceiling. Calling `formData()` on the incoming
+ * request instead buffers whatever arrives *before* anything can object — a
+ * `content-length` check does not save it, because a chunked request declares
+ * no length at all, and a 600 MB body measurably moved this hub's resident set
+ * by 1.3 GB before the route returned its 413.
+ */
+export async function readBoundedBytes(
+  request: Request,
+  limit: number,
+): Promise<Uint8Array<ArrayBuffer> | null> {
   // Refused from the header when there is one, which costs nothing.
   const declared = Number(request.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > limit) return null;
 
-  if (request.body === null) return "";
+  if (request.body === null) return new Uint8Array(0);
 
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -71,7 +90,10 @@ export async function readBounded(request: Request, limit: number): Promise<stri
     chunks.push(value);
   }
 
-  return new TextDecoder("utf-8").decode(Buffer.concat(chunks));
+  // Copied into an `ArrayBuffer` of its own rather than handed out as a view
+  // over Node's pooled buffer: the result is passed straight to a `Request`
+  // body, and `BodyInit` wants a buffer this owns.
+  return new Uint8Array(Buffer.concat(chunks));
 }
 
 /**
@@ -96,18 +118,4 @@ export function statusFor(failure: Failure): number {
     case "upstream-error":
       return 502;
   }
-}
-
-
-/**
- * Refuses an oversized upload from its declared length, before reading it.
- *
- * A cheap first gate, and only that: a chunked request declares nothing, and a
- * dishonest one can understate. The caller checks the parsed total afterwards
- * too — this exists so the obvious case costs nothing rather than ten
- * megabytes of transfer.
- */
-export function withinUploadLimit(request: Request): boolean {
-  const declared = Number(request.headers.get("content-length"));
-  return !Number.isFinite(declared) || declared <= MAX_UPLOAD_BYTES;
 }

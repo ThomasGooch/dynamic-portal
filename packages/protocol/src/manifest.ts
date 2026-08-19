@@ -117,17 +117,12 @@ export const ActionParamSchema = z
     // Choices are strings, so they describe a string, or the elements of a
     // string list. On a number or a boolean they would describe a parameter no
     // value can satisfy, which reads as a callable action and is not one.
-    // A file carries bytes, not a value, so nothing else on this parameter
-    // describes it: choices are meaningless and a default would be a file the
-    // satellite invented. The *kinds* it accepts are the `FileUpload`
-    // component's business, because that is what the browser filters on.
-    if (param.type === "file" && param.enum !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["enum"],
-        message: "a file parameter cannot have enumerated choices",
-      });
-    }
+    // A file is covered by the same rule and needs no clause of its own: it
+    // carries bytes rather than a value, so choices are as meaningless on it
+    // as on a number, and the check below already says so by name. A second
+    // clause only raised two issues on one path. The *kinds* a file accepts
+    // are the `FileUpload` component's business, because that is what the
+    // browser filters on.
     if (param.enum !== undefined && param.type !== "string" && param.type !== "string[]") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

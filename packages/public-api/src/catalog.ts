@@ -115,7 +115,7 @@ export function buildCatalog(
         // an upload of its own, and that is a versioned contract change.
         return action !== undefined &&
           offered(entry.satellite, action, principal) &&
-          !(action.params ?? []).some((param) => param.type === "file")
+          !carriesFile(action)
           ? describeOperation(name, action)
           : undefined;
       })
@@ -196,6 +196,13 @@ export function resolveOperation(
 
     const action = entry.manifest.actions.find((candidate) => candidate.id === mapping.actionId);
     if (action === undefined || !offered(entry.satellite, action, principal)) continue;
+    // The same rule the listing applies, restated here for the same reason the
+    // rest of this function shares its filters: an operation carrying a file is
+    // not on the façade, so it must not be reachable by url either. Without
+    // this, `buildCatalog` hides it and the request still arrives — and the
+    // partner is told `"document" must be a file`, a requirement no JSON body
+    // can meet, instead of that there is no such operation.
+    if (carriesFile(action)) continue;
 
     return {
       satelliteId: entry.satellite.id,
@@ -264,6 +271,16 @@ function offered(
     toolPolicy(satellite, action.id),
   ]);
 }
+
+/**
+ * Whether this operation would need bytes the façade cannot carry.
+ *
+ * One predicate, used by the listing and by resolution, because a rule stated
+ * twice is a rule that ends up applied once — and the half that gets forgotten
+ * is always the one that decides whether a request is served.
+ */
+const carriesFile = (action: ActionDescriptor): boolean =>
+  (action.params ?? []).some((param) => param.type === "file");
 
 function describeResource(name: string, screen: ScreenDescriptor): PublicResource {
   return {

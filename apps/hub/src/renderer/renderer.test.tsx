@@ -294,9 +294,13 @@ describe("fields", () => {
     expect(markup).toContain("Already in use");
   });
 
-  it("says a file will not be sent rather than letting the user find out", () => {
+  it("no longer warns that a file will not be sent, because it is", () => {
+    // The warning was true until the protocol grew a `file` parameter and the
+    // action route grew a multipart branch. Left in place it would tell every
+    // user their document is being discarded while the satellite records it.
     const markup = render({ type: "FileUpload", props: { name: "doc", label: "Document" } });
-    expect(markup).toMatch(/not yet carried/i);
+    expect(markup).toContain('type="file"');
+    expect(markup).not.toMatch(/not yet carried|will not be sent/i);
   });
 
   it("gives a DateRange two controls whose names nest into one value", () => {

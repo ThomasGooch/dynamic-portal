@@ -627,6 +627,45 @@ describe("attaching a document", () => {
     expect((await attach({ id: "ord-1001", document: pdf() }, READ_ONLY)).status).toBe(403);
   });
 
+  it("refuses a type the screen never said it accepts", async () => {
+    // `accept` travels in the screen, so a browser honours it and anything
+    // that is not a browser ignores it. Enforced where the bytes land or not
+    // enforced at all.
+    const script = new File([new Uint8Array([0x3c, 0x3f])], "invoice.svg", {
+      type: "image/svg+xml",
+    });
+    const response = await attach({ id: "ord-1001", document: script });
+
+    expect(response.body.outcome).toBe("validation");
+    expect(repository.get("acme", "ord-1001")?.attachment?.filename).not.toBe("invoice.svg");
+  });
+
+  it("stores a filename stripped of everything a path or a header could use", async () => {
+    // The name arrives in a `Content-Disposition` the uploader wrote. What is
+    // stored here is what a real satellite would use as an object-storage key.
+    const nasty = new File([new Uint8Array([0x25])], "../../../etc/pa\u0000ss\r\nwd.pdf", {
+      type: "application/pdf",
+    });
+    await attach({ id: "ord-1003", document: nasty });
+
+    const stored = repository.get("acme", "ord-1003")?.attachment?.filename ?? "";
+    expect(stored).toBe("passwd.pdf");
+    expect(stored).not.toMatch(/[\u0000-\u001f]/);
+    expect(stored).not.toContain("/");
+    expect(stored).not.toContain("..");
+  });
+
+  it("keeps a filename to a length something could actually store", async () => {
+    const long = new File([new Uint8Array([0x25])], `${"a".repeat(5000)}.pdf`, {
+      type: "application/pdf",
+    });
+    await attach({ id: "ord-1001", document: long });
+
+    expect(
+      (repository.get("acme", "ord-1001")?.attachment?.filename ?? "").length,
+    ).toBeLessThanOrEqual(120);
+  });
+
   it("accepts one on a shipped order, unlike an edit", async () => {
     // A delivery note arrives after the thing has shipped, which is the point
     // of a delivery note.

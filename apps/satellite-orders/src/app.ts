@@ -10,10 +10,43 @@ import {
 import type { Manifest } from "@portal/protocol";
 import type { OrderRepository } from "./repository";
 import { readDraft } from "./draft";
+import { detailScreen, editScreen, listScreen, manifest, newScreen, ordersTable } from "./screens";
 
 /** Matches the hub's own upload ceiling; see apps/hub/src/lib/http.ts. */
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-import { detailScreen, editScreen, listScreen, manifest, newScreen, ordersTable } from "./screens";
+
+/**
+ * What `orders.attach` will store, matching the `accept` its screen declares.
+ *
+ * A browser honours `accept` in the file picker and a caller that is not a
+ * browser ignores it completely, so the list has to exist on this side too.
+ */
+const ACCEPTED_TYPES = new Set(["application/pdf", "image/png", "image/jpeg"]);
+
+/**
+ * A filename reduced to something safe to store, display and eventually use as
+ * an object-storage key.
+ *
+ * The name arrives in a `Content-Disposition` header the uploader wrote. The
+ * platform's multipart parser percent-escapes CR and LF on the way *out*, so
+ * the hop between hub and satellite cannot be split — but it hands the raw
+ * bytes back on the way in, so what lands here still contains whatever was
+ * sent: newlines, NULs, directory separators, `..`, and a length bounded only
+ * by the request. None of that is a header-injection hole today; all of it is
+ * one stored value away from being a path-traversal hole the moment this
+ * writes the bytes somewhere, which is exactly what the repository comment
+ * says a real satellite does here.
+ */
+function safeFilename(raw: string): string {
+  // Any separator, either slash, so a Windows-style name loses its path too.
+  const base = raw.split(/[\\/]/).pop() ?? "";
+  const cleaned = base
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/^\.+/, "")
+    .trim()
+    .slice(0, 120);
+  return cleaned === "" ? "document" : cleaned;
+}
 
 export interface AppOptions {
   repository: OrderRepository;
@@ -396,9 +429,23 @@ export function createApp({
         return;
       }
 
+      // The declared `accept` is a hint to the file picker and nothing more —
+      // it travels in the screen, so it is enforced where the bytes land or it
+      // is not enforced at all. This is still the *claimed* type, not a
+      // sniffed one; a real satellite reads the magic bytes before it trusts
+      // it. What this does buy is that the value stored and echoed back is one
+      // of three known strings rather than whatever the part's header said.
+      const contentType = document.type.split(";")[0]!.trim().toLowerCase();
+      if (!ACCEPTED_TYPES.has(contentType)) {
+        res.json(invalid({ document: "Attach a PDF, a PNG or a JPEG." }));
+        return;
+      }
+
+      const filename = safeFilename(document.name);
+
       const attached = repository.attach(tenantId, id, {
-        filename: document.name,
-        contentType: document.type === "" ? "application/octet-stream" : document.type,
+        filename,
+        contentType,
         bytes: document.size,
       });
       if (!attached.ok) {
@@ -408,7 +455,7 @@ export function createApp({
 
       res.json(
         ok({
-          message: `${document.name} attached to ${id}.`,
+          message: `${filename} attached to ${id}.`,
           navigate: { screenId: "orders.detail", params: { id } },
         }),
       );

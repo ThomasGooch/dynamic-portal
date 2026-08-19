@@ -455,13 +455,9 @@ export const FileUpload: Renderer<"FileUpload"> = ({ props }) => (
       multiple={props.multiple === true}
       disabled={props.disabled === true}
     />
-    {/* Said out loud rather than discovered on submit. The action envelope is
-        JSON and carries no file, so the chosen file is deliberately left out of
-        the payload — sending its name alone would read as an upload that
-        worked. Uploads need a protocol addition, not a renderer workaround. */}
-    <small className="r-help r-warn">
-      File uploads are not yet carried by the portal protocol; this file will not be sent.
-    </small>
+    {/* No warning here any more: a form carrying a `FileUpload` is submitted
+        as multipart and the bytes reach the satellite. See `collectFormFiles`
+        and the action route's multipart branch. */}
   </Field>
 );
 

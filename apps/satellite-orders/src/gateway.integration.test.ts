@@ -5,8 +5,9 @@ import type { AuditEvent, Principal } from "@portal/identity";
 import { AuditEventSchema, tenantAuditKey } from "@portal/identity";
 import { ManifestSchema } from "@portal/protocol";
 import { SatelliteClient, SatelliteSchema, loadRegistry } from "@portal/registry";
-import { buildSurface, invokeTool, type ToolTransport } from "@portal/mcp-gateway";
+import { buildSurface, invokeTool, shimTools, type ToolTransport } from "@portal/mcp-gateway";
 import { createApp } from "./app";
+import { manifest } from "./screens";
 import { OrderRepository, seedOrders } from "./repository";
 
 /** Any key will do here; what matters is that one is required. */
@@ -243,6 +244,39 @@ describe("the surface this satellite actually offers", () => {
     // a deliberate boundary.
     const surface = await surfaceFor(principal());
     expect(surface.byName.has("orders__orders_attach")).toBe(false);
+  });
+
+  it("leaves an optional file out of the schema rather than describing it as a string", async () => {
+    // Described as `{ type: "string" }` it *validates*, so "an agent cannot
+    // set this" is a sentence in a description and not a boundary — a model
+    // puts a filename on the wire and a satellite that reads presence as
+    // truthy believes a document arrived. Omitted, `additionalProperties:
+    // false` refuses the call before anything is invoked.
+    const widened = {
+      ...manifest(),
+      actions: manifest().actions.map((action) =>
+        action.id === "orders.approve"
+          ? {
+              ...action,
+              params: [
+                ...(action.params ?? []),
+                { name: "scan", type: "file" as const, required: false },
+              ],
+            }
+          : action,
+      ),
+    };
+
+    const surface = shimTools(registryEntry("http://unused.invalid")!, widened);
+    const tool = surface.tools.find(
+      (candidate) => candidate.targetId === "orders.approve" && candidate.kind === "write",
+    );
+
+    expect(tool).toBeDefined();
+    expect(Object.keys(tool!.inputSchema.properties)).not.toContain("scan");
+    expect(tool!.inputSchema.additionalProperties).toBe(false);
+    // Still named, so a model knows the write is partial by design.
+    expect(tool!.description).toContain("scan");
   });
 
   it("marks the enabled write as needing confirmation", async () => {
