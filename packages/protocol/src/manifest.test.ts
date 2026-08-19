@@ -267,10 +267,27 @@ describe("action parameters", () => {
     expect(() => withParams([{ name: "status", type: "string", enum: [] }])).toThrow();
   });
 
-  it("rejects choices on a parameter that is not a string", () => {
+  it("rejects choices on a parameter that is neither a string nor a list of them", () => {
     // The choices are strings; attaching them to a number would describe a
     // parameter no value can satisfy.
     expect(() => withParams([{ name: "n", type: "number", enum: ["1"] }])).toThrow(/string/i);
+    expect(() => withParams([{ name: "b", type: "boolean", enum: ["yes"] }])).toThrow(/string/i);
+  });
+
+  it("accepts choices on a list, where they constrain each entry", () => {
+    // A list restricted to a set restricts its entries. Refusing this would
+    // have left `MultiSelect` — the component that produces one — with no way
+    // to say which labels exist.
+    expect(
+      withParams([{ name: "tags", type: "string[]", enum: ["retail", "hazmat"] }])?.[0],
+    ).toMatchObject({ type: "string[]", enum: ["retail", "hazmat"] });
+  });
+
+  it("still rejects an array type it never agreed to carry", () => {
+    // Deliberately only `string[]`. Anything richer invites nesting, and
+    // nesting is what keeps a schema out of strict structured outputs.
+    expect(() => withParams([{ name: "n", type: "number[]" }])).toThrow();
+    expect(() => withParams([{ name: "n", type: "array" }])).toThrow();
   });
 
   it("rejects an unknown key rather than ignoring it", () => {

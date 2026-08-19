@@ -22,11 +22,25 @@ import { indexToolNames, projectToolName } from "./names";
 
 export type ToolKind = "read" | "write";
 
-export interface JsonPropertySchema {
-  readonly type: "string" | "number" | "boolean";
-  readonly description?: string;
-  readonly enum?: readonly string[];
-}
+export type JsonPropertySchema =
+  | {
+      readonly type: "string" | "number" | "boolean";
+      readonly description?: string;
+      readonly enum?: readonly string[];
+    }
+  /**
+   * A list of strings, and only that.
+   *
+   * `items` carries the element's own `enum` rather than the array's, because
+   * a list constrained to a set constrains each entry — a model that read the
+   * choices as constraining the array would think one value was the whole
+   * answer.
+   */
+  | {
+      readonly type: "array";
+      readonly items: { readonly type: "string"; readonly enum?: readonly string[] };
+      readonly description?: string;
+    };
 
 /**
  * Deliberately expressible only in what structured outputs accept: types,
@@ -122,11 +136,20 @@ export function shimTools(satellite: Satellite, manifest: Manifest): ShimResult 
       properties: Object.fromEntries(
         action.params.map((param) => [
           param.name,
-          {
-            type: param.type,
-            ...(param.description === undefined ? {} : { description: param.description }),
-            ...(param.enum === undefined ? {} : { enum: param.enum }),
-          },
+          param.type === "string[]"
+            ? {
+                type: "array" as const,
+                items: {
+                  type: "string" as const,
+                  ...(param.enum === undefined ? {} : { enum: param.enum }),
+                },
+                ...(param.description === undefined ? {} : { description: param.description }),
+              }
+            : {
+                type: param.type,
+                ...(param.description === undefined ? {} : { description: param.description }),
+                ...(param.enum === undefined ? {} : { enum: param.enum }),
+              },
         ]),
       ),
       required: action.params.filter((param) => param.required).map((param) => param.name),

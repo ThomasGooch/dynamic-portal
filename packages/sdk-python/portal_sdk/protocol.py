@@ -26,6 +26,12 @@ ActionOutcome = Literal["ok", "error", "validation"]
 #: internal, and external must always be stated.
 Audience = Literal["internal", "external"]
 
+#: What an action parameter can be. Generated, because this is exactly the
+#: vocabulary that drifted: `string[]` was added to the protocol and the C#
+#: SDK, and the hand-written Python copy went on refusing it — a Python
+#: satellite could not declare a list its own form already rendered.
+ParamType = Literal["string", "number", "boolean", "string[]"]
+
 #: The components whose schema declares `source`. Only these can carry a
 #: citation: every component schema is strict, so a citation on anything else
 #: is a node the hub refuses rather than one it merely ignores.

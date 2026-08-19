@@ -270,10 +270,11 @@ describe("updating an order", () => {
   });
 
   it("judges the cross-field rules against the labels the order will end up with", async () => {
-    // The shape an agent posts: no `tags`, because it has no way to send one.
-    // The order keeps its `hazmat` label, so the rule that says a hazmat order
-    // needs handling notes has to be applied to the label the order still has
-    // rather than to the empty list the payload implies.
+    // An update that never mentions `tags` — the parameter is optional, so this
+    // is a shape any caller can post. The order keeps its `hazmat` label, so
+    // the rule that says a hazmat order needs handling notes has to be applied
+    // to the label the order still has rather than to the empty list the
+    // payload implies.
     const hazmat = { ...validDraft, id: "ord-1003", tags: ["hazmat"], notes: "Handle with care." };
     expect((await post("orders.update", hazmat)).body.outcome).toBe("ok");
 
@@ -316,14 +317,12 @@ describe("updating an order", () => {
     expect(after.customer).toBe(validDraft.customer);
   });
 
-  it("keeps labels a caller had no way to send", async () => {
-    // The agent path, exactly. `ActionParamSchema` has no array type, so `tags`
-    // is undeclarable in the manifest and the shim's `additionalProperties:
-    // false` refuses it — every agent-driven update arrives without one.
-    // Reading absent as empty would strip `hazmat` off an order as a side
-    // effect of editing its customer name, and take the handling-notes rule
-    // with it.
-    const { tags: _unsendable, ...withoutTags } = validDraft;
+  it("keeps labels an update never mentioned", async () => {
+    // `tags` is declarable and optional, so an agent editing one field can
+    // leave it out. Reading absent as empty would strip `hazmat` off an order
+    // as a side effect of editing its customer name, and take the
+    // handling-notes rule with it.
+    const { tags: _unmentioned, ...withoutTags } = validDraft;
     await post("orders.update", { ...withoutTags, id: "ord-1003", customer: "Renamed Ltd" });
 
     const after = repository.get("acme", "ord-1003");

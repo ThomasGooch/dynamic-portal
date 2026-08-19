@@ -289,15 +289,14 @@ export function createApp({
       /**
        * The order as it stands, read before validating rather than after.
        *
-       * `tags` is the reason. An agent cannot send it — `ActionParamSchema` has
-       * no array type — so an update from one arrives with the field absent,
-       * meaning "leave the labels as they are". The cross-field rules then have
-       * to be judged against the labels the order will *actually* carry once
-       * saved, not against the empty list the payload implies: otherwise an
-       * agent updating a hazmat order and clearing its notes passes validation,
-       * the repository keeps the `hazmat` label, and the rule that says such an
-       * order needs handling notes is left broken by a write that never
-       * mentioned either field.
+       * `tags` is the reason. It is optional, so an update can arrive with the
+       * field absent, meaning "leave the labels as they are". The cross-field
+       * rules then have to be judged against the labels the order will
+       * *actually* carry once saved, not against the empty list the payload
+       * implies: otherwise a caller updating a hazmat order and clearing its
+       * notes passes validation, the repository keeps the `hazmat` label, and
+       * the rule that says such an order needs handling notes is left broken by
+       * a write that never mentioned either field.
        *
        * Looking it up first leaks nothing new: 404 already answers an id this
        * tenant cannot see, exactly as it does for a valid payload.

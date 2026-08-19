@@ -146,7 +146,15 @@ export function checkOperationParams(
       properties: Object.fromEntries(
         params.map((param) => [
           param.name,
-          { type: param.type, ...(param.enum === undefined ? {} : { enum: param.enum }) },
+          param.type === "string[]"
+            ? {
+                type: "array" as const,
+                items: {
+                  type: "string" as const,
+                  ...(param.enum === undefined ? {} : { enum: param.enum }),
+                },
+              }
+            : { type: param.type, ...(param.enum === undefined ? {} : { enum: param.enum }) },
         ]),
       ),
       required: params.filter((param) => param.required).map((param) => param.name),

@@ -240,10 +240,50 @@ export function checkArguments(
     if (value === undefined) continue;
 
     if (kind === "read") {
+      /**
+       * A list cannot travel in a query string, so it is refused by name.
+       *
+       * Nothing declares one on a read today — screen params are typed
+       * `string` and nothing else — but the stringify below is one reordering
+       * away from turning `["a","b"]` into the query value `"a,b"`, which is a
+       * different request that looks like a successful one. Saying so here
+       * costs a line and cannot rot.
+       */
+      if (property.type === "array") {
+        return { ok: false, message: `"${name}" cannot be a list here.` };
+      }
       if (typeof value === "object" || typeof value === "function") {
         return { ok: false, message: `"${name}" must be a simple value.` };
       }
       out[name] = String(value);
+      continue;
+    }
+
+    if (property.type === "array") {
+      /**
+       * A list of strings, checked element by element.
+       *
+       * `typeof [] === "object"`, so the branch below would have accepted any
+       * object at all here — including `{}` — and passed it to a satellite as
+       * a list. Every entry is checked because a single bad one is the whole
+       * point: `["retail", 7]` is not a list of strings, and silently keeping
+       * the good entries would change what the caller asked for.
+       */
+      if (!Array.isArray(value)) {
+        return { ok: false, message: `"${name}" must be a list.` };
+      }
+      for (const entry of value) {
+        if (typeof entry !== "string") {
+          return { ok: false, message: `"${name}" must be a list of text values.` };
+        }
+        if (property.items.enum !== undefined && !property.items.enum.includes(entry)) {
+          return {
+            ok: false,
+            message: `"${name}" may only contain: ${property.items.enum.join(", ")}.`,
+          };
+        }
+      }
+      out[name] = [...value];
       continue;
     }
 

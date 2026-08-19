@@ -202,6 +202,17 @@ class TestGuards:
         with pytest.raises(ValueError, match="only meaningful on a string"):
             env.action_param("force", "boolean", choices=["yes"])
 
+    def test_choices_constrain_the_entries_of_a_list(self) -> None:
+        # `string[]` is the other type choices are meaningful on: they describe
+        # each entry, not the list. Refusing them here would have left a Python
+        # satellite unable to declare a `MultiSelect` its own form renders.
+        assert env.action_param("tags", "string[]", choices=["retail"]) == {
+            "name": "tags",
+            "type": "string[]",
+            "required": False,
+            "enum": ["retail"],
+        }
+
     def test_an_action_declares_an_audience_too(self) -> None:
         # The manifest-wide guard is worth nothing if a descriptor can slip an
         # empty list past it — the hub rejects the whole manifest either way.
