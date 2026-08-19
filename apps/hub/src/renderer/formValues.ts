@@ -243,6 +243,8 @@ function optionValues(props: Record<string, unknown>): ReadonlySet<unknown> {
         ? (option as Record<string, unknown>)["value"]
         : undefined,
     ),
+  );
+}
 
 /**
  * The files a form is carrying, as `[name, File]` pairs.
