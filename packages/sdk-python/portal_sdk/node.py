@@ -77,3 +77,33 @@ def with_source(tool_call_id: str, node: Node) -> Node:
         )
     props = {**node.get("props", {}), "source": {"toolCallId": tool_call_id}}
     return {**node, "props": props}
+
+
+def visible_when(
+    field: str,
+    *,
+    equals: str | bool | None = None,
+    one_of: list[str] | None = None,
+) -> dict[str, Any]:
+    """Builds a ``visibleWhen`` rule.
+
+    The generated builders take this prop as a plain dict, because the
+    generator maps a nested object to one. That is honest but untyped: a
+    satellite writing ``{"feild": "expedited"}`` would find out from the hub.
+    This is the hand-written half of the SDK doing what the generated half
+    cannot.
+
+    Exactly one of ``equals`` or ``one_of``. Both would need a rule about how
+    they combine and neither describes anything.
+    """
+    if (equals is None) == (one_of is None):
+        raise ValueError("visible_when needs exactly one of equals or one_of")
+    if one_of is not None and not one_of:
+        raise ValueError("one_of needs a value; an empty list shows the field never")
+
+    rule: dict[str, Any] = {"field": field}
+    if equals is not None:
+        rule["equals"] = equals
+    else:
+        rule["oneOf"] = one_of
+    return rule

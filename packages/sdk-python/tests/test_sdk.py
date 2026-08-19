@@ -253,3 +253,41 @@ class TestActionDeclarations:
             "params": {"id": "1"},
         }
         assert "satelliteId" not in env.navigate("depots.detail")
+
+
+class TestVisibleWhen:
+    def test_builds_an_equals_rule(self) -> None:
+        from portal_sdk import visible_when
+
+        assert visible_when("expedited", equals=True) == {"field": "expedited", "equals": True}
+
+    def test_builds_a_membership_rule(self) -> None:
+        from portal_sdk import visible_when
+
+        assert visible_when("tags", one_of=["hazmat"]) == {"field": "tags", "oneOf": ["hazmat"]}
+
+    def test_refuses_both_or_neither(self) -> None:
+        from portal_sdk import visible_when
+
+        with pytest.raises(ValueError):
+            visible_when("tags")
+        with pytest.raises(ValueError):
+            visible_when("tags", equals="a", one_of=["a"])
+
+    def test_refuses_an_empty_membership_list(self) -> None:
+        from portal_sdk import visible_when
+
+        # Matches nothing, so the field never appears — a bug wearing the
+        # costume of a configuration.
+        with pytest.raises(ValueError):
+            visible_when("tags", one_of=[])
+
+    def test_reaches_a_builder_as_the_catalog_spells_it(self) -> None:
+        from portal_sdk import ui, visible_when
+
+        node = ui.text_field(
+            name="expediteReason",
+            label="Why?",
+            visibleWhen=visible_when("expedited", equals=True),
+        )
+        assert node["props"]["visibleWhen"] == {"field": "expedited", "equals": True}

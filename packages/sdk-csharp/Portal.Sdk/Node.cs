@@ -98,6 +98,44 @@ public static class NodeBuilder
     }
 }
 
+/// <summary>Builds a <c>visibleWhen</c> rule.</summary>
+/// <remarks>
+/// The generated builders take this prop as a dictionary, because the
+/// generator maps a nested object to one. That is honest but untyped, and an
+/// untyped bag is the opposite of why this SDK exists in a language with a
+/// compiler. This is the hand-written half doing what the generated half
+/// cannot.
+/// </remarks>
+public static class Visibility
+{
+    /// <summary>Shown when <paramref name="field"/> equals this value.</summary>
+    public static IReadOnlyDictionary<string, object?> WhenEquals(string field, string value) =>
+        new Dictionary<string, object?> { ["field"] = field, ["equals"] = value };
+
+    /// <summary>Shown when <paramref name="field"/> is ticked, or not.</summary>
+    public static IReadOnlyDictionary<string, object?> WhenEquals(string field, bool value) =>
+        new Dictionary<string, object?> { ["field"] = field, ["equals"] = value };
+
+    /// <summary>
+    /// Shown when <paramref name="field"/> holds one of these. For a
+    /// multi-select that means the selection <em>includes</em> one of them.
+    /// </summary>
+    public static IReadOnlyDictionary<string, object?> WhenOneOf(
+        string field,
+        params string[] values)
+    {
+        if (values.Length == 0)
+        {
+            // An empty list matches nothing, so the field would never appear —
+            // which reads as a missing feature rather than a choice.
+            throw new ArgumentException(
+                "WhenOneOf needs at least one value; an empty list shows the field never.",
+                nameof(values));
+        }
+        return new Dictionary<string, object?> { ["field"] = field, ["oneOf"] = values };
+    }
+}
+
 /// <summary>The serialiser settings a satellite must use.</summary>
 /// <remarks>
 /// Provided rather than left to the caller because the defaults are wrong for

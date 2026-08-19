@@ -1,9 +1,11 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRender } from "../context";
-import { collectFormValues } from "../formValues";
+import { collectFormValues, initialFormValues } from "../formValues";
 import type { Renderer } from "../kinds";
+import { isVisible, type VisibleWhen } from "../visibility";
 
 /**
  * Inputs, and the `Form` that submits them.
@@ -28,6 +30,7 @@ interface FieldShell {
   readonly label: string;
   readonly required?: boolean | undefined;
   readonly help?: string | undefined;
+  readonly visibleWhen?: VisibleWhen | undefined;
 }
 
 function Field({
@@ -42,6 +45,15 @@ function Field({
 }) {
   const { fieldErrors } = useRender();
   const error = fieldErrors[meta.name];
+  const visible = useVisible(meta);
+
+  // One place, so every input that shells through `Field` gets this rather than
+  // each remembering to. Returning null removes it from the DOM, which is also
+  // what keeps it out of the submission — `collectFormValues` reads the form's
+  // own elements. The two controls that do not shell through `Field` —
+  // `Toggle` and the fieldset around `RadioGroup` — call `useVisible`
+  // themselves.
+  if (!visible) return null;
 
   const caption = (
     <>
@@ -95,8 +107,88 @@ function useAria(meta: FieldShell) {
   return aria(meta.name, meta.help !== undefined, fieldErrors[meta.name] !== undefined);
 }
 
-export const Form: Renderer<"Form"> = ({ props, children }) => {
+interface FormState {
+  /** What every field on this form currently holds, hidden ones excepted. */
+  readonly values: Record<string, unknown>;
+  /** Every field the form declared, hidden or not. See `isVisible`. */
+  readonly declared: ReadonlySet<string>;
+}
+
+/**
+ * The state a `visibleWhen` is evaluated against.
+ *
+ * Empty outside a form, which is what makes a `visibleWhen` on a stray field
+ * render it rather than hide it: a condition that can never be evaluated
+ * should not silently remove a control.
+ */
+const FormValues = createContext<FormState>({ values: {}, declared: new Set() });
+
+/**
+ * Whether two readings of a form say the same thing.
+ *
+ * Enough for what `collectFormValues` produces — strings, numbers, booleans,
+ * `null`, an array of strings, and one level of nesting for a `DateRange` — and
+ * deliberately not a general deep-equal, which would be a larger promise than
+ * this needs and slower on every keystroke.
+ */
+function unchanged(before: Record<string, unknown>, after: Record<string, unknown>): boolean {
+  const keys = Object.keys(before);
+  return keys.length === Object.keys(after).length && keys.every((key) => same(before[key], after[key]));
+}
+
+function same(before: unknown, after: unknown): boolean {
+  if (Array.isArray(before) || Array.isArray(after)) {
+    return (
+      Array.isArray(before) &&
+      Array.isArray(after) &&
+      before.length === after.length &&
+      before.every((entry, index) => entry === after[index])
+    );
+  }
+  if (typeof before === "object" && before !== null && typeof after === "object" && after !== null) {
+    return unchanged(before as Record<string, unknown>, after as Record<string, unknown>);
+  }
+  return before === after;
+}
+
+/** `isVisible` against the form this field is rendered in. */
+function useVisible(meta: FieldShell): boolean {
+  const { values, declared } = useContext(FormValues);
+  return isVisible(meta.visibleWhen, values, declared);
+}
+
+export const Form: Renderer<"Form"> = ({ props, node, children }) => {
   const { dispatch, busy } = useRender();
+  const form = useRef<HTMLFormElement>(null);
+
+  // Seeded from the satellite's own tree rather than from an empty object: the
+  // hub server-renders this, and there is no DOM to read until hydration. A
+  // conditional field would otherwise be drawn on the server and removed on
+  // hydration — a flash of a field whose condition was never met.
+  const initial = useMemo(() => initialFormValues(node), [node]);
+  const declared = useMemo(() => new Set(Object.keys(initial)), [initial]);
+  const [values, setValues] = useState<Record<string, unknown>>(initial);
+
+  // Read from the DOM after that rather than held per field: the fields stay
+  // uncontrolled, which is what keeps `defaultValue` working and the renderer
+  // free of a state tree mirroring every input. `change` bubbles, so one
+  // handler sees them all — and React's `change` *is* the input event, so
+  // typing into a text field updates a condition without waiting for blur.
+  const sync = () => {
+    if (form.current === null) return;
+    const next = collectFormValues(form.current, { includeDisabled: true });
+    // Same reading, same object: a new one on every keystroke would re-render
+    // every field on the form for nothing.
+    setValues((previous) => (unchanged(previous, next) ? previous : next));
+  };
+
+  // After every render, not only the first. A field that has just been removed
+  // has to stop feeding conditions in the same breath, or the value it held
+  // when it vanished keeps a field that depends on it on the screen — and in
+  // the payload. Hiding only ever causes more hiding, so this settles.
+  useEffect(sync);
+
+  const state = useMemo(() => ({ values, declared }), [values, declared]);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     // The hub posts through its own proxy; a real form submission would take
@@ -104,14 +196,16 @@ export const Form: Renderer<"Form"> = ({ props, children }) => {
     event.preventDefault();
     dispatch({
       actionId: props.actionId,
+      // Collected from the DOM, so a hidden field is absent because it is not
+      // rendered — not because anything filtered it out.
       payload: collectFormValues(event.currentTarget),
       ...(props.confirm === undefined ? {} : { confirm: props.confirm }),
     });
   };
 
   return (
-    <form className="r-form" onSubmit={onSubmit} noValidate>
-      {children}
+    <form className="r-form" onSubmit={onSubmit} onChange={sync} ref={form} noValidate>
+      <FormValues.Provider value={state}>{children}</FormValues.Provider>
       <div className="r-formActions">
         <button type="submit" className="r-button" data-variant="primary" disabled={busy}>
           {busy ? "Working…" : (props.submitLabel ?? "Submit")}
@@ -268,11 +362,17 @@ function Toggle({
   props,
   variant,
 }: {
-  props: { name: string; label: string; checked?: boolean | undefined; disabled?: boolean | undefined; help?: string | undefined; required?: boolean | undefined };
+  props: { name: string; label: string; checked?: boolean | undefined; disabled?: boolean | undefined; help?: string | undefined; required?: boolean | undefined; visibleWhen?: VisibleWhen | undefined };
   variant: "checkbox" | "switch";
 }) {
   const { fieldErrors } = useRender();
   const error = fieldErrors[props.name];
+  // A toggle draws its own shell rather than going through `Field`, so it has
+  // to ask the same question itself — the catalog offers `visibleWhen` on every
+  // field, and a checkbox that ignored it would be shown whatever it declared.
+  const visible = useVisible(props);
+
+  if (!visible) return null;
 
   return (
     <div className="r-field" data-invalid={error === undefined ? undefined : ""}>
@@ -306,26 +406,33 @@ export const Checkbox: Renderer<"Checkbox"> = ({ props }) => (
 
 export const Switch: Renderer<"Switch"> = ({ props }) => <Toggle props={props} variant="switch" />;
 
-export const RadioGroup: Renderer<"RadioGroup"> = ({ props }) => (
-  <fieldset className="r-fieldset" disabled={props.disabled === true}>
-    <Field meta={props} as="group">
-      <div className="r-radios">
-        {props.options.map((option) => (
-          <label key={option.value} className="r-radio">
-            <input
-              type="radio"
-              name={props.name}
-              value={option.value}
-              defaultChecked={props.value === option.value}
-              disabled={option.disabled === true}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
-      </div>
-    </Field>
-  </fieldset>
-);
+export const RadioGroup: Renderer<"RadioGroup"> = ({ props }) => {
+  // Asked here rather than left to `Field`: the fieldset is outside it, so a
+  // hidden group would otherwise leave an empty bordered box on the form.
+  const visible = useVisible(props);
+  if (!visible) return null;
+
+  return (
+    <fieldset className="r-fieldset" disabled={props.disabled === true}>
+      <Field meta={props} as="group">
+        <div className="r-radios">
+          {props.options.map((option) => (
+            <label key={option.value} className="r-radio">
+              <input
+                type="radio"
+                name={props.name}
+                value={option.value}
+                defaultChecked={props.value === option.value}
+                disabled={option.disabled === true}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+      </Field>
+    </fieldset>
+  );
+};
 
 export const FileUpload: Renderer<"FileUpload"> = ({ props }) => (
   <Field meta={props}>

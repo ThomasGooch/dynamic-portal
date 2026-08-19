@@ -304,4 +304,49 @@ describe("fields", () => {
     expect(markup).toContain('name="window.from"');
     expect(markup).toContain('name="window.to"');
   });
+
+  it("settles a visibleWhen in the markup, before there is a DOM to read", () => {
+    // This is the server pass: no effects have run and nothing has been
+    // hydrated. A form that answered its conditions only after hydration would
+    // send the unmet field down the wire and take it away again in front of the
+    // user — and would say, briefly, something the satellite never said.
+    const markup = render({
+      type: "Form",
+      props: { actionId: "orders.create" },
+      children: [
+        { type: "Checkbox", props: { name: "expedited", label: "Expedite" } },
+        {
+          type: "TextField",
+          props: {
+            name: "expediteReason",
+            label: "Why is this expedited?",
+            visibleWhen: { field: "expedited", equals: true },
+          },
+        },
+      ],
+    });
+
+    expect(markup).toContain('name="expedited"');
+    expect(markup).not.toContain('name="expediteReason"');
+  });
+
+  it("draws a conditional field the satellite's own values already satisfy", () => {
+    const markup = render({
+      type: "Form",
+      props: { actionId: "orders.update" },
+      children: [
+        { type: "Checkbox", props: { name: "expedited", label: "Expedite", checked: true } },
+        {
+          type: "TextField",
+          props: {
+            name: "expediteReason",
+            label: "Why is this expedited?",
+            visibleWhen: { field: "expedited", equals: true },
+          },
+        },
+      ],
+    });
+
+    expect(markup).toContain('name="expediteReason"');
+  });
 });

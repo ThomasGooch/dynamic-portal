@@ -262,6 +262,11 @@ export function detailScreen(order: Order, audience: Audience = "internal"): Scr
             { label: "Total", value: money(order) },
             { label: "Status", value: order.status, as: "badge", tone: statusTone(order.status) },
             { label: "Placed", value: order.placedAt, as: "date" },
+            // Shown because it is stored. A reason nothing ever displays is a
+            // field the user is asked for and never sees again — and it is
+            // what makes "the reason was not saved" an observable claim rather
+            // than one only a database can settle.
+            ...(order.expediteReason ? [{ label: "Expedite reason", value: order.expediteReason }] : []),
             ...(order.blockedByVehicleId
               ? [{ label: "Blocked by vehicle", value: order.blockedByVehicleId }]
               : []),
@@ -408,10 +413,41 @@ export function orderForm(options: {
       ...(order ? { checked: order.expedited } : {}),
     }),
 
+    // The other direction: a field that appears once a box is ticked. Between
+    // them these cover both shapes a conditional form takes — one driven by a
+    // multi-select, one by a boolean.
+    ui.TextField({
+      name: "expediteReason",
+      label: "Why is this expedited?",
+      visibleWhen: { field: "expedited", equals: true },
+      placeholder: "Who approved the surcharge?",
+      // Filled in on edit like every other field. Without it an edit posts no
+      // reason, and `update` reads an absent reason as "no longer expedited"
+      // and deletes the one already stored — a field forgotten on edit is a
+      // field a user can set and then never change.
+      ...(order?.expediteReason ? { value: order.expediteReason } : {}),
+    }),
+
+    // Shown only when the order is labelled hazmat, which is exactly when the
+    // satellite requires it. The condition is data — `{ field, oneOf }` — so
+    // the hub evaluates it and no JavaScript crosses from here.
+    //
+    // The rule still lives in `readDraft`. This decides what is *drawn*; a
+    // caller can post whatever it likes to the action endpoint, and there is a
+    // test that does.
     ui.TextArea({
       name: "notes",
-      label: "Notes",
+      label: "Handling notes",
+      help: "Required for hazmat orders.",
       rows: 3,
+      // Conditional only while there is nothing to lose. A note already on the
+      // order is data, and a field that is not drawn is not submitted — so an
+      // edit of an order that has notes but is not labelled hazmat would post
+      // none, and `update` reads an absent note as one the user cleared. A
+      // condition is allowed to hide a field; it is not allowed to delete a
+      // record. `expediteReason` needs no such guard: it is only ever stored on
+      // an expedited order, so its own condition holds whenever it has a value.
+      ...(order?.notes ? {} : { visibleWhen: { field: "tags", oneOf: ["hazmat"] } }),
       ...(order?.notes ? { value: order.notes } : {}),
     }),
   );

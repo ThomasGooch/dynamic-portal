@@ -49,8 +49,21 @@ export const MUST_CITE_A_SOURCE: readonly ComponentName[] = Object.freeze([
   "Chart",
 ]);
 
-/** Opaque bags with no describable shape. Dropped rather than left open. */
-const OPAQUE_PROPERTIES = new Set(["payload"]);
+/**
+ * Properties the model never authors, dropped from its schema.
+ *
+ * `payload` is an opaque bag with no describable shape — left in, it would be
+ * an open object in a schema whose whole claim is that it has none.
+ *
+ * `visibleWhen` is different: it has a perfectly good shape, and the model
+ * still has no business writing it. Conditional visibility is a satellite
+ * authoring a form it owns; the agent composes a view over tool results and
+ * does not collect input. Leaving it in would also cost the strict schema its
+ * two loudest guarantees — the rule needs a union for `equals` and a
+ * non-empty array for `oneOf`, and structured outputs reject both. The schema
+ * tests caught that the moment it was added, which is why they exist.
+ */
+const OPAQUE_PROPERTIES = new Set(["payload", "visibleWhen"]);
 
 /** `Record<string, string>` properties, projected as closed key/value pairs. */
 const STRING_MAP_PROPERTIES = new Set(["params"]);

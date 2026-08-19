@@ -468,3 +468,108 @@ describe("what an external principal is offered", () => {
     expect(detail).toContain("orders.edit");
   });
 });
+
+
+describe("conditional fields", () => {
+  // The form draws `notes` only for a hazmat order and `expediteReason` only
+  // once expedite is ticked. That is presentation. These check the server does
+  // not believe it.
+  it("declares the conditions on the fields the hub will evaluate", async () => {
+    const form = JSON.stringify((await screen("orders.new")).body.ui);
+    expect(form).toContain('"visibleWhen":{"field":"tags","oneOf":["hazmat"]}');
+    expect(form).toContain('"visibleWhen":{"field":"expedited","equals":true}');
+  });
+
+  it("still refuses a hazmat order with no notes, hidden field or not", async () => {
+    // The field the user never saw. A caller can post straight to the action,
+    // so the rule has to live here as well as in the form.
+    const response = await post("orders.create", { ...validDraft, tags: ["hazmat"], notes: "" });
+    expect(response.body.outcome).toBe("validation");
+    expect(response.body.fieldErrors["notes"]).toMatch(/hazmat/i);
+  });
+
+  it("drops a reason posted for an order that is not expedited", async () => {
+    // Ticking expedite, typing a reason, then unticking leaves the value in
+    // the DOM. Storing it would describe an order that is not expedited.
+    const response = await post("orders.create", {
+      ...validDraft,
+      priority: "standard",
+      expedited: false,
+      expediteReason: "signed off by finance",
+    });
+
+    expect(response.body.outcome).toBe("ok");
+    const created = repository.get("acme", response.body.navigate.params["id"] ?? "");
+    expect(created?.expediteReason).toBeUndefined();
+  });
+
+  it("keeps the reason when the order really is expedited", async () => {
+    const response = await post("orders.create", {
+      ...validDraft,
+      expedited: true,
+      priority: "express",
+      expediteReason: "signed off by finance",
+    });
+
+    // Asserted before reading the record: without this, a validation failure
+    // reads as "the field was not stored" and the test blames the wrong thing.
+    expect(response.body.outcome, JSON.stringify(response.body.fieldErrors)).toBe("ok");
+    const created = repository.get("acme", response.body.navigate.params["id"] ?? "");
+    expect(created?.expediteReason).toBe("signed off by finance");
+  });
+
+  it("does not lose the reason when the order is edited without retyping it", async () => {
+    // A conditional field is still a field on the edit form. If it comes back
+    // empty, the edit posts no reason and `update` reads that as "not expedited
+    // any more" and deletes the stored one — set once, then silently erased by
+    // an edit that never mentioned it.
+    const created = await post("orders.create", {
+      ...validDraft,
+      expedited: true,
+      priority: "express",
+      expediteReason: "signed off by finance",
+    });
+    const id = created.body.navigate.params["id"] ?? "";
+
+    const form = JSON.stringify((await screen("orders.edit", `?id=${id}`)).body.ui);
+    expect(form).toContain("signed off by finance");
+
+    const edited = await post("orders.update", {
+      ...validDraft,
+      id,
+      customer: "Acme Corp",
+      expedited: true,
+      priority: "express",
+      expediteReason: "signed off by finance",
+    });
+    expect(edited.body.outcome, JSON.stringify(edited.body.fieldErrors)).toBe("ok");
+    expect(repository.get("acme", id)?.expediteReason).toBe("signed off by finance");
+  });
+
+  it("does not hide a note the order already has, which an edit would erase", async () => {
+    // `validDraft` is labelled retail, not hazmat, and carries a note — a
+    // shape the action accepts and the form would otherwise refuse to draw.
+    // A field that is not drawn is not submitted, and `update` reads an absent
+    // note as one the user cleared: opening the edit screen and saving would
+    // delete it without anyone typing. A condition may hide a field; it may not
+    // delete a record.
+    const created = await post("orders.create", validDraft);
+    const id = created.body.navigate.params["id"] ?? "";
+
+    const form = JSON.stringify((await screen("orders.edit", `?id=${id}`)).body.ui);
+    expect(form).toContain(validDraft.notes);
+    expect(form).not.toContain('"visibleWhen":{"field":"tags","oneOf":["hazmat"]}');
+
+    const edited = await post("orders.update", { ...validDraft, id });
+    expect(edited.body.outcome, JSON.stringify(edited.body.fieldErrors)).toBe("ok");
+    expect(repository.get("acme", id)?.notes).toBe(validDraft.notes);
+  });
+
+  it("refuses a reason that is not text", async () => {
+    // `text()` answers "" for a number, so without a type check `42` would be
+    // stored as no reason at all and nobody told.
+    const response = await post("orders.create", { ...validDraft, expediteReason: 42 });
+    expect(response.body.outcome).toBe("validation");
+    expect(response.body.fieldErrors["expediteReason"]).toBeDefined();
+  });
+});

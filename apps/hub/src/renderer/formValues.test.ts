@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { collectFormValues } from "./formValues";
+import type { UiNode } from "@portal/protocol";
+import { collectFormValues, initialFormValues } from "./formValues";
 
 function form(html: string): HTMLFormElement {
   document.body.innerHTML = `<form>${html}</form>`;
@@ -128,5 +129,97 @@ describe("collectFormValues", () => {
     // more way for a field name to mean something it should not.
     const values = collectFormValues(form(`<input name="x" value="1">`));
     expect(Object.getPrototypeOf(values)).toBeNull();
+  });
+});
+
+describe("initialFormValues", () => {
+  const node = (type: string, props: Record<string, unknown>): UiNode => ({ type, props });
+
+  const formNode = (...children: UiNode[]): UiNode => ({ type: "Form", props: {}, children });
+
+  it("answers what the form would collect before anything is touched", () => {
+    // The point of the pairing: the shapes have to match `collectFormValues`,
+    // because a condition is evaluated against one of them before hydration and
+    // the other after, and a field that changed shape in between would appear
+    // and then vanish.
+    const values = initialFormValues(
+      formNode(
+        node("TextField", { name: "customer", label: "Customer", value: "Acme" }),
+        node("TextField", { name: "empty", label: "Empty" }),
+        node("NumberField", { name: "total", label: "Total", value: 12.5 }),
+        node("NumberField", { name: "blank", label: "Blank" }),
+        node("Checkbox", { name: "expedited", label: "Expedite", checked: true }),
+        node("Switch", { name: "live", label: "Live" }),
+      ),
+    );
+
+    expect(values).toEqual({
+      customer: "Acme",
+      empty: "",
+      total: 12.5,
+      blank: null,
+      expedited: true,
+      live: false,
+    });
+  });
+
+  it("nests a DateRange the way its two inputs collect", () => {
+    const values = initialFormValues(
+      formNode(node("DateRange", { name: "window", label: "Window", from: "2026-01-01" })),
+    );
+    expect(values).toEqual({ window: { from: "2026-01-01", to: "" } });
+  });
+
+  it("keeps only the choices that name a real option", () => {
+    // The renderer falls back to the placeholder for a `value` naming no
+    // option, and the browser selects nothing for one in a multi-select. A
+    // reading that disagreed would answer a condition the DOM never would.
+    const values = initialFormValues(
+      formNode(
+        node("Select", {
+          name: "tier",
+          label: "Tier",
+          options: [{ value: "a", label: "A" }],
+          value: "gone",
+        }),
+        node("MultiSelect", {
+          name: "tags",
+          label: "Tags",
+          options: [{ value: "hazmat", label: "Hazmat" }],
+          value: ["hazmat", "gone"],
+        }),
+        node("RadioGroup", {
+          name: "priority",
+          label: "Priority",
+          options: [{ value: "express", label: "Express" }],
+        }),
+      ),
+    );
+
+    expect(values).toEqual({ tier: "", tags: ["hazmat"], priority: null });
+  });
+
+  it("finds fields wherever the tree puts them, and skips a nested form's", () => {
+    const values = initialFormValues(
+      formNode(
+        { type: "Section", props: { title: "Details" }, children: [
+          node("TextField", { name: "deep", label: "Deep", value: "found" }),
+        ] },
+        { type: "Form", props: { actionId: "other" }, children: [
+          node("TextField", { name: "theirs", label: "Theirs", value: "not ours" }),
+        ] },
+      ),
+    );
+
+    expect(values).toEqual({ deep: "found" });
+  });
+
+  it("reports nothing for a file upload, which carries no value either way", () => {
+    const values = initialFormValues(formNode(node("FileUpload", { name: "doc", label: "Doc" })));
+    expect(values).toEqual({});
+  });
+
+  it("returns a null-prototype object, like the reading it stands in for", () => {
+    expect(Object.getPrototypeOf(initialFormValues(formNode()))).toBeNull();
   });
 });

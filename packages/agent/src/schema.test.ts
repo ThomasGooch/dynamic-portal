@@ -116,6 +116,17 @@ describe("what the model may not author", () => {
     const action = (button["properties"] as Record<string, Record<string, unknown>>)["action"];
     expect(Object.keys(action?.["properties"] as object)).toEqual(["actionId"]);
   });
+
+  it("gives the model no way to say when a field is shown", () => {
+    // Conditional visibility is a satellite authoring a form it owns; the agent
+    // composes a view over tool results and collects no input. It is also the
+    // one prop whose shape would cost this schema its two loudest guarantees —
+    // `equals` needs a union and `oneOf` a non-empty array, and structured
+    // outputs reject both.
+    const textField = componentSchema("TextField");
+    expect(Object.keys(textField["properties"] as object)).not.toContain("visibleWhen");
+    expect(Object.keys(textField["properties"] as object)).toContain("name");
+  });
 });
 
 describe("string maps, which JSON Schema can close and a record cannot", () => {
