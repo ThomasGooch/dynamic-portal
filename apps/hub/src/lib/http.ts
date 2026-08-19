@@ -20,6 +20,21 @@ import type { Failure } from "@portal/registry";
 export const MAX_PAYLOAD_BYTES = 256 * 1024;
 
 /**
+ * The ceiling for a submission that carries a file.
+ *
+ * A separate number, because the reason for the small one does not apply: 256
+ * KB is "far past any form" precisely because a form is text. A purchase order
+ * scanned to PDF is not, and refusing it would make `FileUpload` a component
+ * that renders and cannot be used.
+ *
+ * Ten megabytes is a document, not a video. It is also the point past which
+ * buffering in the hub stops being reasonable — this reads the body to check
+ * it before forwarding, which is simple and honest at this size and would need
+ * to become a streaming proxy at a hundred times it.
+ */
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/**
  * Reads the body, giving up as soon as it passes the limit.
  *
  * `request.text()` would buffer the whole thing first and only then let the
@@ -34,11 +49,30 @@ export const MAX_PAYLOAD_BYTES = 256 * 1024;
  * Returns `null` when the limit was exceeded.
  */
 export async function readBounded(request: Request, limit: number): Promise<string | null> {
+  const bytes = await readBoundedBytes(request, limit);
+  return bytes === null ? null : new TextDecoder("utf-8").decode(bytes);
+}
+
+/**
+ * The same bounded read, stopping at the bytes.
+ *
+ * The multipart path needs these rather than a string: a `Request` built over
+ * a bounded buffer can be handed to the platform's own `formData()` parser,
+ * which is how the parse gets a ceiling. Calling `formData()` on the incoming
+ * request instead buffers whatever arrives *before* anything can object — a
+ * `content-length` check does not save it, because a chunked request declares
+ * no length at all, and a 600 MB body measurably moved this hub's resident set
+ * by 1.3 GB before the route returned its 413.
+ */
+export async function readBoundedBytes(
+  request: Request,
+  limit: number,
+): Promise<Uint8Array<ArrayBuffer> | null> {
   // Refused from the header when there is one, which costs nothing.
   const declared = Number(request.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > limit) return null;
 
-  if (request.body === null) return "";
+  if (request.body === null) return new Uint8Array(0);
 
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -56,7 +90,10 @@ export async function readBounded(request: Request, limit: number): Promise<stri
     chunks.push(value);
   }
 
-  return new TextDecoder("utf-8").decode(Buffer.concat(chunks));
+  // Copied into an `ArrayBuffer` of its own rather than handed out as a view
+  // over Node's pooled buffer: the result is passed straight to a `Request`
+  // body, and `BodyInit` wants a buffer this owns.
+  return new Uint8Array(Buffer.concat(chunks));
 }
 
 /**

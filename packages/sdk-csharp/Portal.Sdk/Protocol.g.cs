@@ -75,6 +75,9 @@ public enum ParamType
 
     /// <summary>The protocol value <c>string[]</c>.</summary>
     StringList,
+
+    /// <summary>The protocol value <c>file</c>.</summary>
+    File,
 }
 
 /// <summary>Who a satellite, screen or action is visible to. Default-deny.</summary>
@@ -119,6 +122,7 @@ public static partial class WireValues
             ParamType.Number => "number",
             ParamType.Boolean => "boolean",
             ParamType.StringList => "string[]",
+            ParamType.File => "file",
             _ => throw new ArgumentOutOfRangeException(nameof(value)),
         };
 

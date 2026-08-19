@@ -12,6 +12,42 @@ import type { OrderRepository } from "./repository";
 import { readDraft } from "./draft";
 import { detailScreen, editScreen, listScreen, manifest, newScreen, ordersTable } from "./screens";
 
+/** Matches the hub's own upload ceiling; see apps/hub/src/lib/http.ts. */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/**
+ * What `orders.attach` will store, matching the `accept` its screen declares.
+ *
+ * A browser honours `accept` in the file picker and a caller that is not a
+ * browser ignores it completely, so the list has to exist on this side too.
+ */
+const ACCEPTED_TYPES = new Set(["application/pdf", "image/png", "image/jpeg"]);
+
+/**
+ * A filename reduced to something safe to store, display and eventually use as
+ * an object-storage key.
+ *
+ * The name arrives in a `Content-Disposition` header the uploader wrote. The
+ * platform's multipart parser percent-escapes CR and LF on the way *out*, so
+ * the hop between hub and satellite cannot be split — but it hands the raw
+ * bytes back on the way in, so what lands here still contains whatever was
+ * sent: newlines, NULs, directory separators, `..`, and a length bounded only
+ * by the request. None of that is a header-injection hole today; all of it is
+ * one stored value away from being a path-traversal hole the moment this
+ * writes the bytes somewhere, which is exactly what the repository comment
+ * says a real satellite does here.
+ */
+function safeFilename(raw: string): string {
+  // Any separator, either slash, so a Windows-style name loses its path too.
+  const base = raw.split(/[\\/]/).pop() ?? "";
+  const cleaned = base
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/^\.+/, "")
+    .trim()
+    .slice(0, 120);
+  return cleaned === "" ? "document" : cleaned;
+}
+
 export interface AppOptions {
   repository: OrderRepository;
   principalSecret: string;
@@ -62,6 +98,16 @@ export function createApp({
 }: AppOptions): Express {
   const app = express();
   app.use(express.json());
+  /**
+   * Multipart, kept as bytes for the one action that wants them.
+   *
+   * `express.raw` rather than a parser dependency: Node's own `Request` can
+   * read a multipart body, so the buffer goes straight into one below. The
+   * limit is the hub's — a satellite that accepted more than the hub forwards
+   * would be advertising a capacity nothing can reach, and one that accepted
+   * less would fail a submission the hub had already agreed to carry.
+   */
+  app.use(express.raw({ type: "multipart/form-data", limit: MAX_UPLOAD_BYTES }));
   app.disable("x-powered-by");
 
   /** Establishes the principal. The manifest is public; everything else is not. */
@@ -331,6 +377,85 @@ export function createApp({
       res.json(
         ok({
           message: `Order ${id} saved.`,
+          navigate: { screenId: "orders.detail", params: { id } },
+        }),
+      );
+    },
+  );
+
+  app.post(
+    "/portal/actions/orders.attach",
+    authenticate,
+    requireAccess(["orders.write"], forAction("orders.attach")),
+    async (req: AuthedRequest, res) => {
+      const tenantId = req.principal!.tenantId;
+
+      if (!Buffer.isBuffer(req.body)) {
+        res.json(failed("Attach a document using the form."));
+        return;
+      }
+
+      let form: FormData;
+      try {
+        // Node's own multipart parser, reached by wrapping the raw body in a
+        // `Request`. The boundary lives in the content-type, which is why the
+        // header is passed through rather than reconstructed.
+        form = await new Request("http://satellite.invalid/", {
+          method: "POST",
+          headers: { "content-type": req.header("content-type") ?? "" },
+          body: req.body,
+        }).formData();
+      } catch {
+        res.json(failed("That upload could not be read."));
+        return;
+      }
+
+      const id = typeof form.get("id") === "string" ? String(form.get("id")) : "";
+      const document = form.get("document");
+
+      if (id === "") {
+        res.json(failed("Which order?"));
+        return;
+      }
+      if (!(document instanceof File) || document.size === 0) {
+        // A validation outcome, keyed to the field: the user can pick a file.
+        res.json(invalid({ document: "Choose a document to attach." }));
+        return;
+      }
+
+      const order = repository.get(tenantId, id);
+      if (order === undefined) {
+        res.status(404).json({ error: "order not found" });
+        return;
+      }
+
+      // The declared `accept` is a hint to the file picker and nothing more —
+      // it travels in the screen, so it is enforced where the bytes land or it
+      // is not enforced at all. This is still the *claimed* type, not a
+      // sniffed one; a real satellite reads the magic bytes before it trusts
+      // it. What this does buy is that the value stored and echoed back is one
+      // of three known strings rather than whatever the part's header said.
+      const contentType = document.type.split(";")[0]!.trim().toLowerCase();
+      if (!ACCEPTED_TYPES.has(contentType)) {
+        res.json(invalid({ document: "Attach a PDF, a PNG or a JPEG." }));
+        return;
+      }
+
+      const filename = safeFilename(document.name);
+
+      const attached = repository.attach(tenantId, id, {
+        filename,
+        contentType,
+        bytes: document.size,
+      });
+      if (!attached.ok) {
+        res.status(404).json({ error: "order not found" });
+        return;
+      }
+
+      res.json(
+        ok({
+          message: `${filename} attached to ${id}.`,
           navigate: { screenId: "orders.detail", params: { id } },
         }),
       );

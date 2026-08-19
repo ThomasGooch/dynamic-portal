@@ -37,11 +37,23 @@ import { defineConfig } from "vitest/config";
  */
 const oxc = { jsx: { runtime: "automatic", importSource: "react" } } as const;
 
+/**
+ * The hub's own `@/` alias, which Next resolves from `apps/hub/tsconfig.json`
+ * and Vitest otherwise does not.
+ *
+ * Without it a test cannot import a hub route at all — the route's own
+ * `@/lib/http` import fails to resolve — which is why the action route had no
+ * test of any kind. The trailing slash matters: keyed on `@` alone it would
+ * also swallow `@portal/...`.
+ */
+const alias = { "@/": new URL("./apps/hub/src/", import.meta.url).pathname };
+
 export default defineConfig({
   test: {
     projects: [
       {
         oxc,
+        resolve: { alias },
         test: {
           name: "unit",
           include: ["{packages,apps}/*/src/**/*.test.{ts,tsx}"],
@@ -51,6 +63,7 @@ export default defineConfig({
       },
       {
         oxc,
+        resolve: { alias },
         test: {
           name: "integration",
           include: ["{packages,apps}/*/src/**/*.integration.test.{ts,tsx}"],

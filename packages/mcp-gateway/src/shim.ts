@@ -1,4 +1,4 @@
-import type { Audience, Manifest } from "@portal/protocol";
+import type { ActionDescriptor, Audience, Manifest } from "@portal/protocol";
 import { combine, satelliteLayer, toolPolicy, type Satellite } from "@portal/registry";
 import { indexToolNames, projectToolName } from "./names";
 
@@ -21,6 +21,10 @@ import { indexToolNames, projectToolName } from "./names";
  */
 
 export type ToolKind = "read" | "write";
+
+/** One declared parameter, and the subset of its types a tool call can carry. */
+type ActionParam = NonNullable<ActionDescriptor["params"]>[number];
+type SettableType = Exclude<ActionParam["type"], "file">;
 
 export type JsonPropertySchema =
   | {
@@ -122,6 +126,25 @@ export function shimTools(satellite: Satellite, manifest: Manifest): ShimResult 
       continue;
     }
 
+    // A model cannot produce bytes. An action that needs a file is a form a
+    // person fills in, and offering it as a tool would put a write on the
+    // agent's surface that every call must fail — worse than not offering it,
+    // because a refusal at the satellite reads as a broken integration rather
+    // than a deliberate boundary.
+    //
+    // Optional file parameters are not a reason to skip: the rest of the
+    // action is still callable, and the file simply is not sent.
+    const requiredFile = action.params.find(
+      (param) => param.type === "file" && param.required === true,
+    );
+    if (requiredFile !== undefined) {
+      skipped.push({
+        toolId: action.id,
+        reason: `action requires a file in "${requiredFile.name}", which no agent can supply`,
+      });
+      continue;
+    }
+
     const title = action.title ?? action.id;
     const tool = build({
       satellite,
@@ -131,10 +154,19 @@ export function shimTools(satellite: Satellite, manifest: Manifest): ShimResult 
       title,
       description: `${title} in ${satellite.displayName}.${
         action.description === undefined ? "" : ` ${action.description}`
-      }`,
+      }${optionalFileNote(action)}`,
       audience: action.audience,
+      // An optional file is left out of the schema entirely, not described as
+      // a string a model is asked not to fill.
+      //
+      // `additionalProperties: false` is what makes the difference real:
+      // omitted, a model that sets the field is refused by `checkArguments`
+      // before anything is invoked. Declared as `{ type: "string" }`, it
+      // *validates* — and a filename-shaped string is then posted as JSON into
+      // a field the satellite expects bytes in. A sentence in a description is
+      // not a boundary; the schema is.
       properties: Object.fromEntries(
-        action.params.map((param) => [
+        settable(action).map((param) => [
           param.name,
           param.type === "string[]"
             ? {
@@ -241,4 +273,33 @@ function build(input: BuildInput): ToolDescriptor | { reason: string } {
     requiresConfirmation: policy?.requiresConfirmation ?? !isRead,
     agentVisible: policy?.agentVisible ?? isRead,
   };
+}
+
+/**
+ * The parameters an agent may actually set — everything but a file.
+ *
+ * A type predicate rather than a bare `filter`, so the `"file"` case is gone
+ * from the element type too and the schema builder below stays exhaustive over
+ * what remains.
+ */
+function settable(action: ActionDescriptor): (ActionParam & { type: SettableType })[] {
+  return (action.params ?? []).filter(
+    (param): param is ActionParam & { type: SettableType } => param.type !== "file",
+  );
+}
+
+/**
+ * Says out loud that the action has a field the tool call cannot carry.
+ *
+ * The field is absent from the schema, which is what stops a model setting it.
+ * That alone would leave the model to infer from a failed write that something
+ * was missing; naming it in the description tells it the write is partial by
+ * design and that a person finishes it in the portal.
+ */
+function optionalFileNote(action: ActionDescriptor): string {
+  const names = (action.params ?? [])
+    .filter((param) => param.type === "file")
+    .map((param) => `"${param.name}"`);
+  if (names.length === 0) return "";
+  return ` ${names.join(", ")} ${names.length === 1 ? "is a file" : "are files"} only a person can attach through the portal, and ${names.length === 1 ? "it is" : "they are"} not part of this call.`;
 }

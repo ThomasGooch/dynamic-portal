@@ -105,7 +105,17 @@ export function buildCatalog(
     const operations = projection.operations
       .map(({ name, actionId }) => {
         const action = entry.manifest.actions.find((candidate) => candidate.id === actionId);
-        return action !== undefined && offered(entry.satellite, action, principal)
+        // A file parameter takes this operation off the public surface, even
+        // where a platform-team mapping named it. The façade is a JSON
+        // contract — a partner posts a body and reads one back — and there is
+        // no multipart on it. Publishing the operation without the field would
+        // describe a call that always fails validation at the satellite;
+        // publishing it *with* the field would describe a call a partner
+        // cannot make. Absent is the only honest option until the façade grows
+        // an upload of its own, and that is a versioned contract change.
+        return action !== undefined &&
+          offered(entry.satellite, action, principal) &&
+          !carriesFile(action)
           ? describeOperation(name, action)
           : undefined;
       })
@@ -186,6 +196,13 @@ export function resolveOperation(
 
     const action = entry.manifest.actions.find((candidate) => candidate.id === mapping.actionId);
     if (action === undefined || !offered(entry.satellite, action, principal)) continue;
+    // The same rule the listing applies, restated here for the same reason the
+    // rest of this function shares its filters: an operation carrying a file is
+    // not on the façade, so it must not be reachable by url either. Without
+    // this, `buildCatalog` hides it and the request still arrives — and the
+    // partner is told `"document" must be a file`, a requirement no JSON body
+    // can meet, instead of that there is no such operation.
+    if (carriesFile(action)) continue;
 
     return {
       satelliteId: entry.satellite.id,
@@ -255,6 +272,16 @@ function offered(
   ]);
 }
 
+/**
+ * Whether this operation would need bytes the façade cannot carry.
+ *
+ * One predicate, used by the listing and by resolution, because a rule stated
+ * twice is a rule that ends up applied once — and the half that gets forgotten
+ * is always the one that decides whether a request is served.
+ */
+const carriesFile = (action: ActionDescriptor): boolean =>
+  (action.params ?? []).some((param) => param.type === "file");
+
 function describeResource(name: string, screen: ScreenDescriptor): PublicResource {
   return {
     name,
@@ -275,7 +302,9 @@ function describeOperation(name: string, action: ActionDescriptor): PublicOperat
     ...(action.description === undefined ? {} : { description: action.description }),
     params: (action.params ?? []).map((param) => ({
       name: param.name,
-      type: param.type,
+      // Narrowed rather than cast: an operation carrying a file never reaches
+      // here, so the façade's own type stays free of a case it cannot serve.
+      type: param.type as Exclude<typeof param.type, "file">,
       required: param.required,
       ...(param.description === undefined ? {} : { description: param.description }),
       ...(param.enum === undefined ? {} : { enum: param.enum }),

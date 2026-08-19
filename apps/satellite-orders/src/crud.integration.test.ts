@@ -573,3 +573,103 @@ describe("conditional fields", () => {
     expect(response.body.fieldErrors["expediteReason"]).toBeDefined();
   });
 });
+
+describe("attaching a document", () => {
+  // The question this answers is protocol-level: can bytes cross the hub at
+  // all? `FileUpload` was in the catalog from the start and rendered an input
+  // that had nowhere to send what it collected.
+  async function attach(fields: Record<string, string | Blob>, auth = WRITE) {
+    const form = new FormData();
+    for (const [name, value] of Object.entries(fields)) form.append(name, value);
+
+    const response = await fetch(`${baseUrl}/portal/actions/orders.attach`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${auth}` },
+      body: form,
+    });
+    return { status: response.status, body: (await response.json()) as Body };
+  }
+
+  const pdf = () =>
+    new File([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])], "po-1001.pdf", {
+      type: "application/pdf",
+    });
+
+  it("records what was attached, and to which order", async () => {
+    const response = await attach({ id: "ord-1001", document: pdf() });
+
+    expect(response.body.outcome).toBe("ok");
+    expect(repository.get("acme", "ord-1001")?.attachment).toMatchObject({
+      filename: "po-1001.pdf",
+      contentType: "application/pdf",
+    });
+  });
+
+  it("needs a document, and says which field", async () => {
+    const response = await attach({ id: "ord-1001" });
+    expect(response.body.outcome).toBe("validation");
+    expect(response.body.fieldErrors["document"]).toMatch(/choose a document/i);
+  });
+
+  it("refuses an empty file rather than recording a zero-byte attachment", async () => {
+    // A file input can produce one, and storing it would report a document
+    // that is not there.
+    const empty = new File([], "empty.pdf", { type: "application/pdf" });
+    expect((await attach({ id: "ord-1001", document: empty })).body.outcome).toBe("validation");
+  });
+
+  it("will not attach to another tenant's order", async () => {
+    expect((await attach({ id: "ord-2001", document: pdf() })).status).toBe(404);
+    expect(repository.get("globex", "ord-2001")?.attachment).toBeUndefined();
+  });
+
+  it("needs the write scope", async () => {
+    expect((await attach({ id: "ord-1001", document: pdf() }, READ_ONLY)).status).toBe(403);
+  });
+
+  it("refuses a type the screen never said it accepts", async () => {
+    // `accept` travels in the screen, so a browser honours it and anything
+    // that is not a browser ignores it. Enforced where the bytes land or not
+    // enforced at all.
+    const script = new File([new Uint8Array([0x3c, 0x3f])], "invoice.svg", {
+      type: "image/svg+xml",
+    });
+    const response = await attach({ id: "ord-1001", document: script });
+
+    expect(response.body.outcome).toBe("validation");
+    expect(repository.get("acme", "ord-1001")?.attachment?.filename).not.toBe("invoice.svg");
+  });
+
+  it("stores a filename stripped of everything a path or a header could use", async () => {
+    // The name arrives in a `Content-Disposition` the uploader wrote. What is
+    // stored here is what a real satellite would use as an object-storage key.
+    const nasty = new File([new Uint8Array([0x25])], "../../../etc/pa\u0000ss\r\nwd.pdf", {
+      type: "application/pdf",
+    });
+    await attach({ id: "ord-1003", document: nasty });
+
+    const stored = repository.get("acme", "ord-1003")?.attachment?.filename ?? "";
+    expect(stored).toBe("passwd.pdf");
+    expect(stored).not.toMatch(/[\u0000-\u001f]/);
+    expect(stored).not.toContain("/");
+    expect(stored).not.toContain("..");
+  });
+
+  it("keeps a filename to a length something could actually store", async () => {
+    const long = new File([new Uint8Array([0x25])], `${"a".repeat(5000)}.pdf`, {
+      type: "application/pdf",
+    });
+    await attach({ id: "ord-1001", document: long });
+
+    expect(
+      (repository.get("acme", "ord-1001")?.attachment?.filename ?? "").length,
+    ).toBeLessThanOrEqual(120);
+  });
+
+  it("accepts one on a shipped order, unlike an edit", async () => {
+    // A delivery note arrives after the thing has shipped, which is the point
+    // of a delivery note.
+    const response = await attach({ id: "ord-1002", document: pdf() });
+    expect(response.body.outcome).toBe("ok");
+  });
+});

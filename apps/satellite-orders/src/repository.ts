@@ -30,6 +30,15 @@ export interface Order {
   /** Only ever set on an expedited order; see `readDraft`. */
   expediteReason?: string;
   notes?: string;
+  /**
+   * What was attached, not what it contained.
+   *
+   * The bytes are the satellite's to store — a real one writes them to object
+   * storage and keeps the key. This prototype keeps the metadata, because the
+   * protocol question is whether a file can cross the hub at all, and holding
+   * ten megabytes in a demo's memory answers nothing.
+   */
+  attachment?: { filename: string; contentType: string; bytes: number };
   blockedByVehicleId?: string;
 }
 
@@ -261,6 +270,27 @@ export class OrderRepository {
     if (draft.notes === undefined) delete order.notes;
     else order.notes = draft.notes;
 
+    return { ok: true, order: copy(order) };
+  }
+
+  /**
+   * Records what was attached to an order.
+   *
+   * Metadata only, and deliberately so — see `Order.attachment`. A real
+   * satellite writes the bytes to object storage here and keeps the key; the
+   * shape of this call does not change when it does.
+   */
+  attach(
+    tenantId: string,
+    id: string,
+    attachment: { filename: string; contentType: string; bytes: number },
+  ): WriteResult {
+    const order = this.#orders.find((o) => o.id === id && o.tenantId === tenantId);
+    if (order === undefined) return { ok: false, reason: "not-found" };
+
+    // Unlike an edit, this is allowed on a shipped order: a delivery note
+    // arrives after the thing has shipped, which is the whole point of it.
+    order.attachment = { ...attachment };
     return { ok: true, order: copy(order) };
   }
 

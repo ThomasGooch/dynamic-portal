@@ -125,10 +125,51 @@ export function ScreenRenderer(props: ScreenRendererProps) {
     setToast(undefined);
 
     try {
+      /**
+       * Multipart only when there is a file, JSON otherwise.
+       *
+       * The `content-type` is deliberately unset for multipart: the browser
+       * appends the boundary it generated, and a header written here would
+       * declare a boundary that does not match the body. Every satellite would
+       * then read an empty form, which looks like "the file did not attach"
+       * rather than "the header was wrong".
+       */
+      // Present-but-empty means "this form carries files, none were chosen" —
+      // still multipart. Absent means an ordinary form.
+      const files = request.files;
+      const body = (() => {
+        if (files === undefined) return JSON.stringify(request.payload);
+
+        // Multipart carries text per field, so the typed payload
+        // `collectFormValues` built loses its types here — a number arrives as
+        // a number's digits and a boolean as "true"/"false". That is inherent
+        // to the encoding and a satellite reading a multipart action knows it.
+        //
+        // What is *not* acceptable is `String(value)` on a value that has no
+        // text form: a `DateRange`, or anything a dotted name nested, encodes
+        // as the literal "[object Object]" and the field is simply gone. Those
+        // go as JSON, which a satellite can recover; nothing here silently
+        // becomes a string that means nothing.
+        const encode = (value: unknown): string =>
+          typeof value === "object" && value !== null ? JSON.stringify(value) : String(value);
+
+        const form = new FormData();
+        for (const [name, value] of Object.entries(request.payload)) {
+          if (value === undefined || value === null) continue;
+          // Arrays are appended once per entry, which is how a multi-select
+          // survives a form encoding — one key repeated, not one key holding
+          // a comma-joined string nobody can split back safely.
+          if (Array.isArray(value)) for (const entry of value) form.append(name, encode(entry));
+          else form.append(name, encode(value));
+        }
+        for (const [name, file] of files) form.append(name, file, file.name);
+        return form;
+      })();
+
       const response = await fetch(actionEndpoint(props.satelliteId, request.actionId), {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(request.payload),
+        ...(files === undefined ? { headers: { "content-type": "application/json" } } : {}),
+        body,
         credentials: "same-origin",
       });
 

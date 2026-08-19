@@ -106,7 +106,7 @@ export const ActionParamSchema = z
      * catalog's `MultiSelect` produces; anything richer invites nesting, and
      * nesting is what keeps a schema out of strict structured outputs.
      */
-    type: z.enum(["string", "number", "boolean", "string[]"]),
+    type: z.enum(["string", "number", "boolean", "string[]", "file"]),
     required: z.boolean().default(false),
     description: z.string().optional(),
     /** Enumerated choices, so an agent picks from a list rather than inventing one. */
@@ -117,6 +117,12 @@ export const ActionParamSchema = z
     // Choices are strings, so they describe a string, or the elements of a
     // string list. On a number or a boolean they would describe a parameter no
     // value can satisfy, which reads as a callable action and is not one.
+    // A file is covered by the same rule and needs no clause of its own: it
+    // carries bytes rather than a value, so choices are as meaningless on it
+    // as on a number, and the check below already says so by name. A second
+    // clause only raised two issues on one path. The *kinds* a file accepts
+    // are the `FileUpload` component's business, because that is what the
+    // browser filters on.
     if (param.enum !== undefined && param.type !== "string" && param.type !== "string[]") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
