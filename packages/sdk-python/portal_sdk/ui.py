@@ -516,6 +516,7 @@ def text_field(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     value: str | None = None,
     placeholder: str | None = None,
 ) -> Node:
@@ -526,6 +527,7 @@ def text_field(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     value (optional)
     placeholder (optional)
     """
@@ -538,6 +540,7 @@ def text_field(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "value": value,
             "placeholder": placeholder,
         },
@@ -551,6 +554,7 @@ def text_area(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     value: str | None = None,
     rows: int | None = None,
 ) -> Node:
@@ -561,6 +565,7 @@ def text_area(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     value (optional)
     rows (optional)
     """
@@ -573,6 +578,7 @@ def text_area(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "value": value,
             "rows": rows,
         },
@@ -586,6 +592,7 @@ def number_field(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     value: float | int | None = None,
     min: float | int | None = None,
     max: float | int | None = None,
@@ -598,6 +605,7 @@ def number_field(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     value (optional)
     min (optional)
     max (optional)
@@ -612,6 +620,7 @@ def number_field(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "value": value,
             "min": min,
             "max": max,
@@ -628,6 +637,7 @@ def select(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     value: str | None = None,
 ) -> Node:
     """Select.
@@ -638,6 +648,7 @@ def select(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     value (optional)
     """
     return build(
@@ -650,6 +661,7 @@ def select(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "value": value,
         },
     )
@@ -663,6 +675,7 @@ def multi_select(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     value: list[str] | None = None,
 ) -> Node:
     """MultiSelect.
@@ -673,6 +686,7 @@ def multi_select(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     value (optional)
     """
     return build(
@@ -685,6 +699,7 @@ def multi_select(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "value": value,
         },
     )
@@ -697,6 +712,7 @@ def date_field(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     value: str | None = None,
 ) -> Node:
     """DateField.
@@ -706,6 +722,7 @@ def date_field(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     value (optional)
     """
     return build(
@@ -717,6 +734,7 @@ def date_field(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "value": value,
         },
     )
@@ -729,6 +747,7 @@ def date_range(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     from_: str | None = None,
     to: str | None = None,
 ) -> Node:
@@ -739,6 +758,7 @@ def date_range(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     from_ (optional) — sent as `from`
     to (optional)
     """
@@ -751,6 +771,7 @@ def date_range(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "from": from_,
             "to": to,
         },
@@ -764,6 +785,7 @@ def checkbox(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     checked: bool | None = None,
 ) -> Node:
     """Checkbox.
@@ -773,6 +795,7 @@ def checkbox(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     checked (optional)
     """
     return build(
@@ -784,6 +807,7 @@ def checkbox(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "checked": checked,
         },
     )
@@ -796,6 +820,7 @@ def switch(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     checked: bool | None = None,
 ) -> Node:
     """Switch.
@@ -805,6 +830,7 @@ def switch(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     checked (optional)
     """
     return build(
@@ -816,6 +842,7 @@ def switch(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "checked": checked,
         },
     )
@@ -829,6 +856,7 @@ def radio_group(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     value: str | None = None,
 ) -> Node:
     """RadioGroup.
@@ -839,6 +867,7 @@ def radio_group(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     value (optional)
     """
     return build(
@@ -851,6 +880,7 @@ def radio_group(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "value": value,
         },
     )
@@ -863,6 +893,7 @@ def file_upload(
     required: bool | None = None,
     help: str | None = None,
     disabled: bool | None = None,
+    visibleWhen: dict[str, Any] | None = None,
     accept: list[str] | None = None,
     multiple: bool | None = None,
 ) -> Node:
@@ -873,6 +904,7 @@ def file_upload(
     required (optional)
     help (optional)
     disabled (optional)
+    visibleWhen (optional)
     accept (optional)
     multiple (optional)
     """
@@ -885,6 +917,7 @@ def file_upload(
             "required": required,
             "help": help,
             "disabled": disabled,
+            "visibleWhen": visibleWhen,
             "accept": accept,
             "multiple": multiple,
         },

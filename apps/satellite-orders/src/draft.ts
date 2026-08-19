@@ -148,6 +148,11 @@ export function readDraft(body: unknown, today: string): DraftResult {
     if (unknownTag !== undefined) fieldErrors["tags"] = `${unknownTag} is not a label we use.`;
   }
 
+  const expediteReason = text(input["expediteReason"]);
+  if (expediteReason.length > 200) {
+    fieldErrors["expediteReason"] = "Keep this under 200 characters.";
+  }
+
   const parsedExpedited = asBoolean(input["expedited"]);
   const expedited = parsedExpedited ?? false;
   if (parsedExpedited === null) fieldErrors["expedited"] = "Tick this box or leave it clear.";
@@ -204,6 +209,11 @@ export function readDraft(body: unknown, today: string): DraftResult {
       priority,
       ...(tagsGiven ? { tags } : {}),
       expedited,
+      // Kept only when it applies. A reason typed before the box was cleared
+      // would otherwise be stored against an order that is not expedited: the
+      // field was hidden, and its value can still reach here, because the form
+      // decides what is drawn and the satellite decides what is true.
+      ...(expedited && expediteReason !== "" ? { expediteReason } : {}),
       ...(notes === "" ? {} : { notes }),
     },
   };

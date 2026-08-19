@@ -468,3 +468,53 @@ describe("what an external principal is offered", () => {
     expect(detail).toContain("orders.edit");
   });
 });
+
+
+describe("conditional fields", () => {
+  // The form draws `notes` only for a hazmat order and `expediteReason` only
+  // once expedite is ticked. That is presentation. These check the server does
+  // not believe it.
+  it("declares the conditions on the fields the hub will evaluate", async () => {
+    const form = JSON.stringify((await screen("orders.new")).body.ui);
+    expect(form).toContain('"visibleWhen":{"field":"tags","oneOf":["hazmat"]}');
+    expect(form).toContain('"visibleWhen":{"field":"expedited","equals":true}');
+  });
+
+  it("still refuses a hazmat order with no notes, hidden field or not", async () => {
+    // The field the user never saw. A caller can post straight to the action,
+    // so the rule has to live here as well as in the form.
+    const response = await post("orders.create", { ...validDraft, tags: ["hazmat"], notes: "" });
+    expect(response.body.outcome).toBe("validation");
+    expect(response.body.fieldErrors["notes"]).toMatch(/hazmat/i);
+  });
+
+  it("drops a reason posted for an order that is not expedited", async () => {
+    // Ticking expedite, typing a reason, then unticking leaves the value in
+    // the DOM. Storing it would describe an order that is not expedited.
+    const response = await post("orders.create", {
+      ...validDraft,
+      priority: "standard",
+      expedited: false,
+      expediteReason: "signed off by finance",
+    });
+
+    expect(response.body.outcome).toBe("ok");
+    const created = repository.get("acme", response.body.navigate.params["id"] ?? "");
+    expect(created?.expediteReason).toBeUndefined();
+  });
+
+  it("keeps the reason when the order really is expedited", async () => {
+    const response = await post("orders.create", {
+      ...validDraft,
+      expedited: true,
+      priority: "express",
+      expediteReason: "signed off by finance",
+    });
+
+    // Asserted before reading the record: without this, a validation failure
+    // reads as "the field was not stored" and the test blames the wrong thing.
+    expect(response.body.outcome, JSON.stringify(response.body.fieldErrors)).toBe("ok");
+    const created = repository.get("acme", response.body.navigate.params["id"] ?? "");
+    expect(created?.expediteReason).toBe("signed off by finance");
+  });
+});

@@ -507,7 +507,7 @@ public static class Ui
             });
 
     /// <summary>TextField.</summary>
-    public static Node TextField(string name, string label, bool? required = null, string? help = null, bool? disabled = null, string? value = null, string? placeholder = null) =>
+    public static Node TextField(string name, string label, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, string? value = null, string? placeholder = null) =>
         NodeBuilder.Build(
             "TextField",
             new Dictionary<string, object?>
@@ -517,12 +517,13 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["value"] = value,
             ["placeholder"] = placeholder,
             });
 
     /// <summary>TextArea.</summary>
-    public static Node TextArea(string name, string label, bool? required = null, string? help = null, bool? disabled = null, string? value = null, int? rows = null) =>
+    public static Node TextArea(string name, string label, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, string? value = null, int? rows = null) =>
         NodeBuilder.Build(
             "TextArea",
             new Dictionary<string, object?>
@@ -532,12 +533,13 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["value"] = value,
             ["rows"] = rows,
             });
 
     /// <summary>NumberField.</summary>
-    public static Node NumberField(string name, string label, bool? required = null, string? help = null, bool? disabled = null, double? value = null, double? min = null, double? max = null, double? step = null) =>
+    public static Node NumberField(string name, string label, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, double? value = null, double? min = null, double? max = null, double? step = null) =>
         NodeBuilder.Build(
             "NumberField",
             new Dictionary<string, object?>
@@ -547,6 +549,7 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["value"] = value,
             ["min"] = min,
             ["max"] = max,
@@ -554,7 +557,7 @@ public static class Ui
             });
 
     /// <summary>Select.</summary>
-    public static Node Select(string name, string label, IReadOnlyList<IReadOnlyDictionary<string, object?>> options, bool? required = null, string? help = null, bool? disabled = null, string? value = null) =>
+    public static Node Select(string name, string label, IReadOnlyList<IReadOnlyDictionary<string, object?>> options, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, string? value = null) =>
         NodeBuilder.Build(
             "Select",
             new Dictionary<string, object?>
@@ -565,11 +568,12 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["value"] = value,
             });
 
     /// <summary>MultiSelect.</summary>
-    public static Node MultiSelect(string name, string label, IReadOnlyList<IReadOnlyDictionary<string, object?>> options, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyList<string>? value = null) =>
+    public static Node MultiSelect(string name, string label, IReadOnlyList<IReadOnlyDictionary<string, object?>> options, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, IReadOnlyList<string>? value = null) =>
         NodeBuilder.Build(
             "MultiSelect",
             new Dictionary<string, object?>
@@ -580,11 +584,12 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["value"] = value,
             });
 
     /// <summary>DateField.</summary>
-    public static Node DateField(string name, string label, bool? required = null, string? help = null, bool? disabled = null, string? value = null) =>
+    public static Node DateField(string name, string label, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, string? value = null) =>
         NodeBuilder.Build(
             "DateField",
             new Dictionary<string, object?>
@@ -594,11 +599,12 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["value"] = value,
             });
 
     /// <summary>DateRange.</summary>
-    public static Node DateRange(string name, string label, bool? required = null, string? help = null, bool? disabled = null, string? from = null, string? to = null) =>
+    public static Node DateRange(string name, string label, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, string? from = null, string? to = null) =>
         NodeBuilder.Build(
             "DateRange",
             new Dictionary<string, object?>
@@ -608,12 +614,13 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["from"] = from,
             ["to"] = to,
             });
 
     /// <summary>Checkbox.</summary>
-    public static Node Checkbox(string name, string label, bool? required = null, string? help = null, bool? disabled = null, bool? @checked = null) =>
+    public static Node Checkbox(string name, string label, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, bool? @checked = null) =>
         NodeBuilder.Build(
             "Checkbox",
             new Dictionary<string, object?>
@@ -623,11 +630,12 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["checked"] = @checked,
             });
 
     /// <summary>Switch.</summary>
-    public static Node Switch(string name, string label, bool? required = null, string? help = null, bool? disabled = null, bool? @checked = null) =>
+    public static Node Switch(string name, string label, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, bool? @checked = null) =>
         NodeBuilder.Build(
             "Switch",
             new Dictionary<string, object?>
@@ -637,11 +645,12 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["checked"] = @checked,
             });
 
     /// <summary>RadioGroup.</summary>
-    public static Node RadioGroup(string name, string label, IReadOnlyList<IReadOnlyDictionary<string, object?>> options, bool? required = null, string? help = null, bool? disabled = null, string? value = null) =>
+    public static Node RadioGroup(string name, string label, IReadOnlyList<IReadOnlyDictionary<string, object?>> options, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, string? value = null) =>
         NodeBuilder.Build(
             "RadioGroup",
             new Dictionary<string, object?>
@@ -652,11 +661,12 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["value"] = value,
             });
 
     /// <summary>FileUpload.</summary>
-    public static Node FileUpload(string name, string label, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyList<string>? accept = null, bool? multiple = null) =>
+    public static Node FileUpload(string name, string label, bool? required = null, string? help = null, bool? disabled = null, IReadOnlyDictionary<string, object?>? visibleWhen = null, IReadOnlyList<string>? accept = null, bool? multiple = null) =>
         NodeBuilder.Build(
             "FileUpload",
             new Dictionary<string, object?>
@@ -666,6 +676,7 @@ public static class Ui
             ["required"] = required,
             ["help"] = help,
             ["disabled"] = disabled,
+            ["visibleWhen"] = visibleWhen,
             ["accept"] = accept,
             ["multiple"] = multiple,
             });

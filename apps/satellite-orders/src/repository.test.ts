@@ -66,3 +66,39 @@ describe("OrderRepository tenant scoping", () => {
     expect(repo().get("acme", pending.id)?.status).toBe("pending");
   });
 });
+
+
+describe("every field of a draft reaches the record", () => {
+  // Create and update copy field by field rather than spreading, so that an
+  // absent optional is cleared rather than left behind. The cost is that a new
+  // field has to be added in two more places — and it was not, the first time.
+  // This is the guard for the next one.
+  it("stores every key a draft can carry", () => {
+    const repository = new OrderRepository(seedOrders());
+    const draft = {
+      customer: "Every Field Ltd",
+      contactEmail: "every@field.test",
+      total: 12.5,
+      currency: "USD",
+      dueBy: "2027-01-01",
+      priority: "critical" as const,
+      tags: ["retail"],
+      expedited: true,
+      expediteReason: "signed off",
+      notes: "handle with care",
+    };
+
+    const created = repository.create("acme", draft);
+    for (const [key, value] of Object.entries(draft)) {
+      expect(created[key as keyof typeof created], `create dropped ${key}`).toEqual(value);
+    }
+
+    const changed = { ...draft, customer: "Changed Ltd", expediteReason: "re-approved" };
+    const updated = repository.update("acme", created.id, changed);
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    for (const [key, value] of Object.entries(changed)) {
+      expect(updated.order[key as keyof typeof updated.order], `update dropped ${key}`).toEqual(value);
+    }
+  });
+});

@@ -87,6 +87,55 @@ const isHttpUrl = (value: string): boolean => {
   }
 };
 
+/**
+ * When a field is shown, expressed as data rather than a condition.
+ *
+ * `{ field, equals }` and `{ field, oneOf }` are the whole language, and that
+ * is the point. A satellite declaring "show the reason box once they tick
+ * expedite" needs no code in the hub and no code of its own; anything richer —
+ * an expression, a callback, a rule engine — would put satellite logic back in
+ * the browser, which is the thing this architecture refuses.
+ *
+ * For a multi-select, `oneOf` means the selection *includes* one of these. For
+ * everything else it is membership of the single current value.
+ *
+ * **Presentation only.** A hidden field is not rendered and therefore is not
+ * submitted, but nothing stops a caller posting it directly — the action
+ * endpoint is an HTTP endpoint. Every rule this mirrors must also exist in the
+ * satellite's own validation, and `orders` has a test that posts a hidden
+ * field's value to prove the server still refuses it.
+ */
+const VisibleWhen = z
+  .object({
+    field: z.string(),
+    equals: z.union([z.string(), z.boolean()]).optional(),
+    oneOf: z.array(z.string()).optional(),
+  })
+  .strict()
+  // Refinements rather than `.min(1)` and `.nonempty()`: this catalog has to
+  // stay expressible in structured outputs, which reject length and range
+  // keywords, and its own test enforces that. A refinement checks the same
+  // things without emitting one.
+  .superRefine((rule, ctx) => {
+    // Exactly one test. Both would need a rule about how they combine, and
+    // neither describes anything at all.
+    const given = [rule.equals !== undefined, rule.oneOf !== undefined].filter(Boolean).length;
+    if (given !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "visibleWhen needs exactly one of `equals` or `oneOf`",
+      });
+    }
+    if (rule.field.trim() === "") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["field"], message: "field is required" });
+    }
+    if (rule.oneOf !== undefined && rule.oneOf.length === 0) {
+      // An empty list matches nothing, so the field is simply never shown —
+      // which reads as a bug in the satellite rather than a choice.
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["oneOf"], message: "oneOf needs a value" });
+    }
+  });
+
 const field = <T extends z.ZodRawShape>(shape: T) =>
   z
     .object({
@@ -95,6 +144,7 @@ const field = <T extends z.ZodRawShape>(shape: T) =>
       required: z.boolean().optional(),
       help: z.string().optional(),
       disabled: z.boolean().optional(),
+      visibleWhen: VisibleWhen.optional(),
       ...shape,
     })
     .strict();

@@ -131,6 +131,45 @@ test.describe("filling in a form", () => {
     await page.getByLabel("Due by").fill(over["dueBy"] ?? future);
   }
 
+  test("shows a field only when the condition it declares is met", async ({ page }) => {
+    // The expressiveness question this design is bet against: can a fixed
+    // vocabulary carry a form whose shape depends on its own answers, without
+    // the satellite shipping any JavaScript? The satellite sent
+    // `{ field: "expedited", equals: true }` and nothing else.
+    await page.goto("/orders/orders.new");
+
+    await expect(page.getByLabel("Why is this expedited?")).toHaveCount(0);
+    await page.getByLabel("Expedite this order").check();
+    await expect(page.getByLabel("Why is this expedited?")).toBeVisible();
+
+    await page.getByLabel("Expedite this order").uncheck();
+    await expect(page.getByLabel("Why is this expedited?")).toHaveCount(0);
+  });
+
+  test("drives a condition from a multi-select, not just a checkbox", async ({ page }) => {
+    await page.goto("/orders/orders.new");
+
+    await expect(page.getByLabel("Handling notes")).toHaveCount(0);
+    await page.getByLabel("Labels").selectOption("hazmat");
+    await expect(page.getByLabel("Handling notes")).toBeVisible();
+  });
+
+  test("does not submit a field the condition is hiding", async ({ page }) => {
+    // Typed, then hidden. The value is gone from the DOM, so it is gone from
+    // the payload — and the satellite drops it besides, because a form decides
+    // what is drawn and the satellite decides what is true.
+    await fill(page);
+    await page.getByLabel("Expedite this order").check();
+    await page.getByLabel("Why is this expedited?").fill("signed off by finance");
+    await page.getByLabel("Expedite this order").uncheck();
+
+    await page.getByRole("radio", { name: "express" }).check();
+    await page.getByRole("button", { name: "Create order" }).click();
+
+    await expect(page).toHaveURL(/orders\.detail/);
+    await expect(page.getByText("signed off by finance")).toHaveCount(0);
+  });
+
   test("renders every input the catalog offers for this form", async ({ page }) => {
     await page.goto("/orders/orders.new");
 
@@ -139,7 +178,10 @@ test.describe("filling in a form", () => {
     await expect(page.getByLabel("Due by")).toHaveAttribute("type", "date");
     await expect(page.getByLabel("Expedite this order")).toHaveAttribute("type", "checkbox");
     await expect(page.getByRole("radio", { name: "critical" })).toBeVisible();
-    await expect(page.getByLabel("Notes")).toBeVisible();
+    await expect(page.getByLabel("Labels")).toBeVisible();
+    // `Handling notes` is deliberately absent here: it carries a `visibleWhen`
+    // and appears once the order is labelled hazmat. The test above proves it.
+    await expect(page.getByLabel("Handling notes")).toHaveCount(0);
   });
 
   test("creates an order and lands on the one it created", async ({ page }) => {

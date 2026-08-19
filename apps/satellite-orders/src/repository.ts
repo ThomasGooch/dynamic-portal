@@ -27,6 +27,8 @@ export interface Order {
   /** Free-form labels, chosen from a fixed list — a `MultiSelect` on the form. */
   tags: string[];
   expedited: boolean;
+  /** Only ever set on an expedited order; see `readDraft`. */
+  expediteReason?: string;
   notes?: string;
   blockedByVehicleId?: string;
 }
@@ -51,6 +53,7 @@ export interface OrderDraft {
    */
   tags?: string[];
   expedited: boolean;
+  expediteReason?: string;
   notes?: string;
 }
 
@@ -207,6 +210,7 @@ export class OrderRepository {
       // A create has nothing to preserve, so an absent list really is no labels.
       tags: draft.tags === undefined ? [] : [...draft.tags],
       expedited: draft.expedited,
+      ...(draft.expediteReason === undefined ? {} : { expediteReason: draft.expediteReason }),
       ...(draft.notes === undefined ? {} : { notes: draft.notes }),
       id: this.#nextId(),
       tenantId,
@@ -249,6 +253,11 @@ export class OrderRepository {
     // cannot express the field must not silently erase it.
     if (draft.tags !== undefined) order.tags = [...draft.tags];
     order.expedited = draft.expedited;
+    // Cleared when absent, unlike `tags`: the validator only returns this for
+    // an expedited order, so absent means "this order is not expedited any
+    // more" rather than "the caller could not say".
+    if (draft.expediteReason === undefined) delete order.expediteReason;
+    else order.expediteReason = draft.expediteReason;
     if (draft.notes === undefined) delete order.notes;
     else order.notes = draft.notes;
 

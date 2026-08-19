@@ -19,7 +19,7 @@ drift from it; everything else is hand-written and tracks the protocol.
 """
 
 from . import envelopes, protocol, ui
-from .node import Node, with_id, with_source
+from .node import Node, visible_when, with_id, with_source
 from .protocol import PROTOCOL
 
 __all__ = [
@@ -28,6 +28,7 @@ __all__ = [
     "envelopes",
     "protocol",
     "ui",
+    "visible_when",
     "with_id",
     "with_source",
 ]

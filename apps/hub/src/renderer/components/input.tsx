@@ -1,9 +1,15 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useRender } from "../context";
 import { collectFormValues } from "../formValues";
 import type { Renderer } from "../kinds";
+import type { COMPONENTS } from "@portal/catalog";
+import type { z } from "zod";
+
+/** Derived from the catalog, so a change there is a compile error here. */
+type VisibleWhen = NonNullable<z.infer<(typeof COMPONENTS)["TextField"]>["visibleWhen"]>;
 
 /**
  * Inputs, and the `Form` that submits them.
@@ -28,6 +34,7 @@ interface FieldShell {
   readonly label: string;
   readonly required?: boolean | undefined;
   readonly help?: string | undefined;
+  readonly visibleWhen?: VisibleWhen | undefined;
 }
 
 function Field({
@@ -42,6 +49,12 @@ function Field({
 }) {
   const { fieldErrors } = useRender();
   const error = fieldErrors[meta.name];
+  const values = useContext(FormValues);
+
+  // One place, so every input gets this rather than each remembering to.
+  // Returning null removes it from the DOM, which is also what keeps it out of
+  // the submission — `collectFormValues` reads the form's own elements.
+  if (!isVisible(meta.visibleWhen, values)) return null;
 
   const caption = (
     <>
@@ -95,8 +108,55 @@ function useAria(meta: FieldShell) {
   return aria(meta.name, meta.help !== undefined, fieldErrors[meta.name] !== undefined);
 }
 
+/**
+ * The current value of every field in this form, for the fields that ask.
+ *
+ * Empty outside a form, which is what makes a `visibleWhen` on a stray field
+ * render it rather than hide it: a condition that can never be evaluated
+ * should not silently remove a control.
+ */
+const FormValues = createContext<Record<string, unknown>>({});
+
+/**
+ * Whether a field is shown right now.
+ *
+ * `undefined` when the rule names a field that is not in this form. That is a
+ * satellite bug, and the choice is between hiding the control — which reads as
+ * "the feature is missing" — and showing it. Showing it is recoverable.
+ */
+function isVisible(rule: VisibleWhen | undefined, values: Record<string, unknown>): boolean {
+  if (rule === undefined) return true;
+  if (!Object.hasOwn(values, rule.field)) return true;
+
+  const value = values[rule.field];
+  if (rule.equals !== undefined) return value === rule.equals;
+  if (rule.oneOf === undefined) return true;
+
+  // A multi-select holds several values at once, so membership means the
+  // selection *includes* one of these rather than equals it.
+  return Array.isArray(value)
+    ? value.some((entry) => rule.oneOf!.includes(entry as string))
+    : rule.oneOf.includes(value as string);
+}
+
 export const Form: Renderer<"Form"> = ({ props, children }) => {
   const { dispatch, busy } = useRender();
+  const form = useRef<HTMLFormElement>(null);
+  const [values, setValues] = useState<Record<string, unknown>>({});
+
+  // Read from the DOM rather than held per field: the fields stay uncontrolled,
+  // which is what keeps `defaultValue` working and the renderer free of a
+  // state tree mirroring every input. `change` bubbles, so one handler sees
+  // them all — and `input` as well, so typing into a text field updates a
+  // condition without waiting for blur.
+  const sync = () => {
+    if (form.current !== null) setValues(collectFormValues(form.current));
+  };
+
+  // Once on mount, so a field whose condition is already satisfied by a
+  // prefilled value — editing an order that is already expedited — is visible
+  // before anything is touched.
+  useEffect(sync, []);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     // The hub posts through its own proxy; a real form submission would take
@@ -104,14 +164,16 @@ export const Form: Renderer<"Form"> = ({ props, children }) => {
     event.preventDefault();
     dispatch({
       actionId: props.actionId,
+      // Collected from the DOM, so a hidden field is absent because it is not
+      // rendered — not because anything filtered it out.
       payload: collectFormValues(event.currentTarget),
       ...(props.confirm === undefined ? {} : { confirm: props.confirm }),
     });
   };
 
   return (
-    <form className="r-form" onSubmit={onSubmit} noValidate>
-      {children}
+    <form className="r-form" onSubmit={onSubmit} onChange={sync} onInput={sync} ref={form} noValidate>
+      <FormValues.Provider value={values}>{children}</FormValues.Provider>
       <div className="r-formActions">
         <button type="submit" className="r-button" data-variant="primary" disabled={busy}>
           {busy ? "Working…" : (props.submitLabel ?? "Submit")}

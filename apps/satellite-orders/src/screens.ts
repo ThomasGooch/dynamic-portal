@@ -408,10 +408,29 @@ export function orderForm(options: {
       ...(order ? { checked: order.expedited } : {}),
     }),
 
+    // The other direction: a field that appears once a box is ticked. Between
+    // them these cover both shapes a conditional form takes — one driven by a
+    // multi-select, one by a boolean.
+    ui.TextField({
+      name: "expediteReason",
+      label: "Why is this expedited?",
+      visibleWhen: { field: "expedited", equals: true },
+      placeholder: "Who approved the surcharge?",
+    }),
+
+    // Shown only when the order is labelled hazmat, which is exactly when the
+    // satellite requires it. The condition is data — `{ field, oneOf }` — so
+    // the hub evaluates it and no JavaScript crosses from here.
+    //
+    // The rule still lives in `readDraft`. This decides what is *drawn*; a
+    // caller can post whatever it likes to the action endpoint, and there is a
+    // test that does.
     ui.TextArea({
       name: "notes",
-      label: "Notes",
+      label: "Handling notes",
+      help: "Required for hazmat orders.",
       rows: 3,
+      visibleWhen: { field: "tags", oneOf: ["hazmat"] },
       ...(order?.notes ? { value: order.notes } : {}),
     }),
   );
