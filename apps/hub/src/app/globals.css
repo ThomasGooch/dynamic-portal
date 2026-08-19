@@ -48,6 +48,56 @@
   --nav-width: 248px;
 }
 
+/*
+ * A second brand, selected at runtime by `PORTAL_BRAND`.
+ *
+ * The claim above — "change a value here and every satellite's screens change
+ * with it" — was true and unprovable: there was one palette and no way to swap
+ * it without editing this file and rebuilding. A platform team rebranding the
+ * portal is an ordinary thing to want, and it is the shortest demonstration
+ * that satellites ship no styling: all three restyle at once, none of them is
+ * redeployed, and none of them is even told.
+ *
+ * Only the tokens are redefined. Nothing below reads a brand, which is the
+ * point — a component that needed to know would mean the tokens were not
+ * carrying the weight.
+ *
+ * **A brand redefines every colour the default defines, in both schemes.** Not
+ * tidiness: `[data-brand]` scores higher than the bare `:root` the dark block
+ * uses, so a token this brand sets wins in dark mode and a token it leaves out
+ * does not. Setting the backgrounds here and skipping `--chart-*` therefore
+ * produced a genuinely broken screen rather than a slightly-off one — Contoso's
+ * near-white surface carrying the dark scheme's pastel series colours, which is
+ * unreadable rather than unfashionable. Charts are the tokens with no textual
+ * fallback, so they are the ones that must not be forgotten.
+ */
+:root[data-brand="contoso"] {
+  --bg: #f7f9fb;
+  --surface: #ffffff;
+  --surface-sunken: #eef2f7;
+  --border: #d7e0ea;
+  --border-strong: #b6c4d4;
+
+  --text: #10202f;
+  --text-muted: #5a6b7c;
+  --text-inverse: #ffffff;
+
+  --tone-neutral: #3d4a57;
+  --tone-info: #1f6fb2;
+  --tone-success: #12715a;
+  --tone-warning: #8a5a00;
+  --tone-danger: #b02a37;
+
+  --accent: #0f5c8c;
+
+  --chart-1: #1f6fb2;
+  --chart-2: #12715a;
+  --chart-3: #8a5a00;
+  --chart-4: #6b4a9c;
+  --chart-5: #b02a37;
+  --chart-6: #217f8a;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #16150f;
@@ -72,6 +122,44 @@
     --chart-4: #c093d6;
     --chart-5: #e2807f;
     --chart-6: #6fc6cd;
+  }
+
+  /*
+   * Contoso after dark.
+   *
+   * Below the block above rather than beside it, and that ordering is the whole
+   * mechanism: both selectors score `[attr]` on `:root`, so the later one wins
+   * and the earlier one supplies nothing. Without this the brand had no dark
+   * scheme at all — it forced its light surfaces onto anyone whose system asked
+   * for dark, which is the one preference a portal should not overrule to put
+   * its logo colours on screen. A brand chooses the palette; the reader still
+   * chooses the scheme.
+   */
+  :root[data-brand="contoso"] {
+    --bg: #0d1620;
+    --surface: #131e2a;
+    --surface-sunken: #1a2634;
+    --border: #2a3948;
+    --border-strong: #3b4d5e;
+
+    --text: #e8eef5;
+    --text-muted: #94a6b8;
+    --text-inverse: #0d1620;
+
+    --tone-neutral: #8fa1b3;
+    --tone-info: #6fa8dc;
+    --tone-success: #5cbf9c;
+    --tone-warning: #d6a35c;
+    --tone-danger: #e2848c;
+
+    --accent: #6fa8dc;
+
+    --chart-1: #6fa8dc;
+    --chart-2: #5cbf9c;
+    --chart-3: #d6a35c;
+    --chart-4: #b39ae0;
+    --chart-5: #e2848c;
+    --chart-6: #63c3cc;
   }
 }
 

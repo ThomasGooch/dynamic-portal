@@ -417,6 +417,8 @@ Two satellites in two languages: the polyglot claim is the political argument, s
 
 ## Known limits to state up front
 
+- **The composed home asks on every visit.** No cache, so a model call happens per page load — slow and billable per view. The fix is a per-tenant cache with a short TTL; it is not built.
+
 - **Every screen becomes an agent tool, including forms.** The PUP→MCP shim projects each screen as a read, deliberately: requiring a registry entry per screen would mean adding a screen needed a hub deploy, which is the promise this design makes loudest. The cost is that `orders.new` — a blank form — is a tool a model can call and learn nothing from. At three satellites that is noise; at twenty it is surface every model pays for on every turn. The fix is a screen-level hint in the manifest rather than a registry entry, and it is not built.
 
 - **Expressiveness ceiling is real.** Tables/forms/dashboards, not maps, diagram editors, or canvases. Confirmed not needed. The escape hatch is a registered full-page iframe with hub nav and SSO — bounded, never the default.

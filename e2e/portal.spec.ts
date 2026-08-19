@@ -361,6 +361,128 @@ test.describe("the assistant panel between screens", () => {
   });
 });
 
+test.describe("the brand", () => {
+  // "The hub owns every pixel" was true and unprovable: one palette, no way to
+  // swap it. These read the *computed* colour rather than the attribute, so a
+  // brand that is set and does nothing fails.
+  const accentOn = async (page: import("@playwright/test").Page, path: string) => {
+    await page.goto(path);
+    return page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
+    );
+  };
+
+  test("dresses every satellite the same, whichever brand is on", async ({ page }) => {
+    const [orders, fleet, depots] = [
+      await accentOn(page, "/orders"),
+      await accentOn(page, "/fleet"),
+      await accentOn(page, "/depots"),
+    ];
+
+    expect(orders).not.toBe("");
+    // Three languages, one palette. None of them ships a stylesheet, so this
+    // can only be true because the hub decided it.
+    expect(fleet).toBe(orders);
+    expect(depots).toBe(orders);
+  });
+
+  test("ships two palettes that actually differ, and wears the one it was told to", async ({
+    page,
+  }) => {
+    // Named for what it checks. It was "changes what a satellite looks like
+    // without redeploying it", which is the feature's claim and half a
+    // stylesheet away from what the body proves: swapping `data-brand` in the
+    // browser exercises the CSS, and says nothing about whether `PORTAL_BRAND`
+    // ever reaches that attribute. Both halves are below, and the second is
+    // only meaningful on a stack that has a brand configured — which is why the
+    // env-to-attribute step is also covered where it can be asserted
+    // unconditionally, in the hub's own suite.
+    //
+    // Navigate first: reading the brand before the page loads reports whatever
+    // the previous document had, which sent the swap below the wrong way and
+    // made this pass by changing nothing.
+    const accent = await accentOn(page, "/orders");
+    const brand = await page.evaluate(() => document.documentElement.dataset["brand"] ?? "");
+
+    // Whichever way the stack is running, the two palettes must differ — a
+    // brand switch that changed nothing would pass every other assertion here.
+    const other = await page.evaluate((current: string) => {
+      const root = document.documentElement;
+      const previous = root.dataset["brand"];
+      if (current === "contoso") delete root.dataset["brand"];
+      else root.dataset["brand"] = "contoso";
+      const swapped = getComputedStyle(root).getPropertyValue("--accent").trim();
+      if (previous === undefined) delete root.dataset["brand"];
+      else root.dataset["brand"] = previous;
+      return swapped;
+    }, brand);
+
+    expect(other).not.toBe(accent);
+
+    // A brand the server put on the document has to be one the stylesheet
+    // knows. An unrecognised name renders in the default palette while the
+    // attribute insists otherwise, which is a rebrand that silently did not
+    // happen — the hub now refuses to start rather than serve that, and this
+    // is the assertion that would notice if it stopped.
+    if (brand !== "") expect(["contoso"]).toContain(brand);
+  });
+});
+
+test.describe("the home nobody wrote", () => {
+  test.describe.configure({ timeout: 240_000 });
+
+  let enabled = false;
+  test.beforeAll(async ({ request }) => {
+    enabled = await assistantConfigured(request);
+  });
+
+  test("serves the launcher without waiting for a model", async ({ page }) => {
+    // The property that makes this additive rather than load-bearing: the page
+    // is complete before the agent is asked, and stays complete if it never
+    // answers. Runs whether or not an assistant is configured.
+    const started = Date.now();
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await expect(page.getByRole("heading", { name: "Solutions" })).toBeVisible();
+    // Scoped to the launcher: the same name is in the nav, which every page has.
+    await expect(page.locator(".launcher a", { hasText: "Order Management" })).toBeVisible();
+    // Generous, because this asserts "did not wait for a model", not a budget.
+    expect(Date.now() - started).toBeLessThan(15_000);
+  });
+
+  test("fills in a screen composed across every solution", async ({ page }) => {
+    // Same gate as "composes a grounded screen the hub fills in", and for the
+    // same reason: this is screen composition, which needs the hosted model.
+    // Without this the local-provider run — the one `.env.example` documents as
+    // costing nothing — gained a second failing test rather than a second
+    // skipped one, and `assistantConfigured` cannot tell the two providers
+    // apart because it only asks whether *an* assistant answers.
+    test.skip(
+      process.env["PORTAL_MODEL_PROVIDER"] === "ollama",
+      "screen composition needs the hosted model; the local one answers in prose",
+    );
+    test.skip(!enabled, "no assistant in the running stack");
+    await page.goto("/");
+
+    await expect(page.getByRole("heading", { name: "Needs attention" })).toBeVisible();
+    // Provenance is not optional on a derived screen: every figure came from a
+    // tool call, and the page says which.
+    await expect(page.locator(".agentDerived")).toBeVisible({ timeout: 200_000 });
+    await expect(page.getByText("Reading across your solutions…")).toHaveCount(0);
+
+    // The claim that justifies the hub: no satellite could have produced this,
+    // because no satellite can see the others.
+    // Case-insensitive: the provenance line is uppercased by the stylesheet,
+    // and `innerText` reports what is rendered rather than what was sent.
+    const provenance = (await page.locator(".agentDerived").innerText()).toLowerCase();
+    // All three, which is the whole argument: a TypeScript, a Python and a C#
+    // solution in one view that none of them could have produced.
+    expect(provenance).toContain("orders__");
+    expect(provenance).toContain("fleet__");
+    expect(provenance).toContain("depots__");
+  });
+});
+
 test.describe("attaching a file", () => {
   // The last thing in the catalog that rendered and could not be used:
   // `FileUpload` drew an input with nowhere to send what it collected. This is

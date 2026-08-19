@@ -6,6 +6,7 @@ import { currentPrincipal, isDevSession } from "@/lib/session";
 import { Toaster } from "@/components/Toaster";
 import { AgentPanel } from "@/components/AgentPanel";
 import { isAgentEnabled } from "@/lib/agent";
+import { brandAttributes } from "@/lib/brand";
 import "./globals.css";
 import "./shell.css";
 import "@/renderer/renderer.css";
@@ -32,13 +33,34 @@ export const metadata = {
  * serve them to everyone — the exact failure the tenancy model exists to
  * prevent.
  */
+/**
+ * Which palette the portal wears, resolved once at startup.
+ *
+ * At module scope, not per request, which costs nothing — a brand is a
+ * property of the deployment and already changes only when the container is
+ * re-created — and which decides *when* a bad value is heard. An unrecognised `PORTAL_BRAND` throws
+ * here, so the module fails to evaluate, every route 500s, and the compose
+ * healthcheck never goes green: `docker compose up` stops on it and the log
+ * says which names are valid. Verified by running the stack with
+ * `PORTAL_BRAND=Contoso`. That is the loud end of the range on purpose. The
+ * quiet end — serving the default palette under a brand attribute nothing
+ * matches — is the failure that reaches a room full of people instead of a
+ * terminal.
+ *
+ * The resolving lives in `@/lib/brand` rather than here so it can be called
+ * without rendering a page — a claim nothing can call is a claim nothing can
+ * check, and the environment-to-attribute step is the half of this feature the
+ * e2e suite cannot assert against a stack that has no brand set.
+ */
+const BRAND_ATTRIBUTES = brandAttributes();
+
 export default async function RootLayout({ children }: { children: ReactNode }) {
   await connection();
   const principal = currentPrincipal();
   const nav = resolveNav(getPortal().registry, principal);
 
   return (
-    <html lang="en">
+    <html lang="en" {...BRAND_ATTRIBUTES}>
       <body>
         <div className="shell">
           <nav className="nav">

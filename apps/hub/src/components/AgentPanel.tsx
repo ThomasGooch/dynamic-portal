@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Citation, Message, PendingWrite } from "@portal/agent";
-import type { UiNode } from "@portal/protocol";
+import type { Message, PendingWrite } from "@portal/agent";
 import { AGENT_ENDPOINT, type AgentApiResult } from "@/lib/agentApi";
 import {
   CONVERSATION_STORAGE_KEY,
@@ -12,7 +11,7 @@ import {
   type Turn,
   type TurnResult,
 } from "@/lib/agentConversation";
-import { ScreenRenderer } from "@/renderer/ScreenRenderer";
+import { AgentScreen } from "@/components/AgentScreen";
 
 /**
  * The assistant, beside the portal rather than instead of it.
@@ -339,34 +338,9 @@ function Answer({
     );
   }
 
-  return <AgentScreen ui={result.ui} citations={result.citations} allowed={result.allowedSatelliteIds} />;
-}
-
-function AgentScreen({
-  ui,
-  citations,
-  allowed,
-}: {
-  ui: UiNode;
-  citations: readonly Citation[];
-  allowed: readonly string[];
-}) {
   return (
     <div className="agentScreen">
-      <p className="agentDerived">
-        Composed by the assistant from{" "}
-        {citations.length === 0 ? "no tool calls" : citations.map((c) => c.toolName).join(", ")}
-      </p>
-      <ScreenRenderer
-        ui={ui}
-        // No current satellite, on purpose: an agent-composed screen spans
-        // several, so a link that does not name one has nowhere to point and
-        // renders inert rather than guessing.
-        satelliteId=""
-        screenId=""
-        params={{}}
-        allowedSatelliteIds={allowed}
-      />
+      <AgentScreen ui={result.ui} citations={result.citations} allowed={result.allowedSatelliteIds} />
     </div>
   );
 }

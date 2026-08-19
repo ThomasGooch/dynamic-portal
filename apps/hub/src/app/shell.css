@@ -116,7 +116,13 @@
   margin-bottom: var(--gap-lg);
 }
 
-.screenHeader h1 {
+/* `h2` as well as `h1`: the composed home heads its section with an `h2`,
+   because the page already has an `h1` and a document with two is one a screen
+   reader cannot outline. Without this it fell back to the browser default —
+   24px and margins of its own, so the derived section shouted louder than the
+   page it hangs off. */
+.screenHeader h1,
+.screenHeader h2 {
   margin: 0;
   font-size: 22px;
   letter-spacing: -0.01em;
@@ -244,4 +250,37 @@
   gap: var(--gap-sm);
   padding: var(--gap-md);
   border-top: 1px solid var(--border);
+}
+
+/* The agent-composed home. Set apart from the launcher above it, because a
+   screen nobody wrote should not look like one a team maintains. */
+.composedHome {
+  margin-top: var(--gap-lg);
+  padding-top: var(--gap-lg);
+  border-top: 1px solid var(--border);
+}
+
+/* The launcher. Written here rather than inline, because "the hub owns every
+   pixel" is the claim this portal makes about satellites, and it reads poorly
+   when the hub's own markup carries style attributes. */
+.launcher {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--gap-sm);
+}
+
+.launcher a {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--gap-md);
+  text-decoration: none;
+}
+
+.launcher a span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 13px;
 }
