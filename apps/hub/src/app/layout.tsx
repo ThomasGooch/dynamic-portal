@@ -32,13 +32,27 @@ export const metadata = {
  * serve them to everyone — the exact failure the tenancy model exists to
  * prevent.
  */
+/**
+ * Which palette the portal wears, read at request time.
+ *
+ * A restart rather than a rebuild: both palettes ship in the stylesheet and
+ * this only picks one, so rebranding costs a container restart and nothing is
+ * recompiled. Absent means the default, because a portal with no brand
+ * configured should look like the portal rather than fail to render.
+ */
+const brandFromEnvironment = (): string | undefined => {
+  const brand = process.env["PORTAL_BRAND"];
+  return brand === undefined || brand.trim() === "" ? undefined : brand.trim();
+};
+
 export default async function RootLayout({ children }: { children: ReactNode }) {
   await connection();
   const principal = currentPrincipal();
+  const brand = brandFromEnvironment();
   const nav = resolveNav(getPortal().registry, principal);
 
   return (
-    <html lang="en">
+    <html lang="en" {...(brand === undefined ? {} : { "data-brand": brand })}>
       <body>
         <div className="shell">
           <nav className="nav">

@@ -48,6 +48,40 @@
   --nav-width: 248px;
 }
 
+/*
+ * A second brand, selected at runtime by `PORTAL_BRAND`.
+ *
+ * The claim above — "change a value here and every satellite's screens change
+ * with it" — was true and unprovable: there was one palette and no way to swap
+ * it without editing this file and rebuilding. A platform team rebranding the
+ * portal is an ordinary thing to want, and it is the shortest demonstration
+ * that satellites ship no styling: all three restyle at once, none of them is
+ * redeployed, and none of them is even told.
+ *
+ * Only the tokens are redefined. Nothing below reads a brand, which is the
+ * point — a component that needed to know would mean the tokens were not
+ * carrying the weight.
+ */
+:root[data-brand="contoso"] {
+  --bg: #f7f9fb;
+  --surface: #ffffff;
+  --surface-sunken: #eef2f7;
+  --border: #d7e0ea;
+  --border-strong: #b6c4d4;
+
+  --text: #10202f;
+  --text-muted: #5a6b7c;
+  --text-inverse: #ffffff;
+
+  --tone-neutral: #3d4a57;
+  --tone-info: #1f6fb2;
+  --tone-success: #12715a;
+  --tone-warning: #8a5a00;
+  --tone-danger: #b02a37;
+
+  --accent: #0f5c8c;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #16150f;

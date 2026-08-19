@@ -156,3 +156,17 @@ describe("the workspace itself", () => {
     }
   });
 });
+
+
+describe("the compose stack can actually demonstrate zero-deploy changes", () => {
+  it("mounts the registry into the hub instead of baking it in", () => {
+    // The loudest claim this design makes is that adding or renaming a
+    // satellite costs no deployment. `COPY . .` puts a copy of the registry in
+    // the hub image, so a hub restarted after an edit re-read its own stale
+    // copy and nothing changed — the claim was false in the one setup anyone
+    // would try it in, and a demo built on it would have failed live.
+    const compose = readFileSync(new URL("../../../docker-compose.yml", import.meta.url), "utf8");
+
+    expect(compose).toContain("./config/satellites.yaml:/repo/config/satellites.yaml:ro");
+  });
+});

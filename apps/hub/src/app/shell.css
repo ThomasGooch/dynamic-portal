@@ -245,3 +245,36 @@
   padding: var(--gap-md);
   border-top: 1px solid var(--border);
 }
+
+/* The agent-composed home. Set apart from the launcher above it, because a
+   screen nobody wrote should not look like one a team maintains. */
+.composedHome {
+  margin-top: var(--gap-lg);
+  padding-top: var(--gap-lg);
+  border-top: 1px solid var(--border);
+}
+
+/* The launcher. Written here rather than inline, because "the hub owns every
+   pixel" is the claim this portal makes about satellites, and it reads poorly
+   when the hub's own markup carries style attributes. */
+.launcher {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--gap-sm);
+}
+
+.launcher a {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--gap-md);
+  text-decoration: none;
+}
+
+.launcher a span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 13px;
+}
