@@ -834,12 +834,17 @@ test.describe("the assistant, switched on", () => {
 
   test("composes a grounded screen the hub fills in", async ({ request }) => {
     // `render_screen` is a 34-variant `oneOf` and every data-bearing node has
-    // to cite a tool call that grounding then verifies. A 7B model on a laptop
-    // does not do that — it answers in prose instead of calling the tool — so
-    // this is the one assistant test that still needs the hosted model.
+    // to cite a tool call that grounding then verifies. A 7B model manages it
+    // sometimes and not others — and because this provider runs at
+    // `temperature: 0`, "sometimes" is not random. It is deterministic per
+    // prompt: on one branch this passed three times out of three, and on
+    // another, with `tags` added to an unrelated tool's schema, it failed
+    // three out of three. Nothing about the screen changed; the tool list did.
     //
-    // Skipped rather than deleted or left red: the other six pass locally, and
-    // a suite that is red by design teaches everyone to ignore it.
+    // That is worse than flaky, because it looks stable until something
+    // unrelated moves. So it is skipped locally rather than trusted locally —
+    // the other six assistant tests pass, and this one keeps its meaning only
+    // against the hosted model.
     test.skip(
       process.env["PORTAL_MODEL_PROVIDER"] === "ollama",
       "screen composition needs the hosted model; the local one answers in prose",
