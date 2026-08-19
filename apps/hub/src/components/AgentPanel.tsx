@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 import type { Citation, Message, PendingWrite } from "@portal/agent";
 import type { UiNode } from "@portal/protocol";
 import { AGENT_ENDPOINT, type AgentApiResult } from "@/lib/agentApi";
+import {
+  CONVERSATION_STORAGE_KEY,
+  decodeConversation,
+  encodeConversation,
+  forDisplay,
+  type Turn,
+  type TurnResult,
+} from "@/lib/agentConversation";
 import { ScreenRenderer } from "@/renderer/ScreenRenderer";
 
 /**
@@ -15,12 +23,6 @@ import { ScreenRenderer } from "@/renderer/ScreenRenderer";
  * asks for provenance to be always rendered, and the cheapest way to keep that
  * true is for there to be no code path that draws an agent screen without it.
  */
-
-interface Turn {
-  readonly id: number;
-  readonly question: string;
-  readonly result: AgentApiResult | undefined;
-}
 
 /**
  * The largest question the panel will send.
@@ -40,66 +42,22 @@ function hasPendingCall(messages: readonly Message[]): boolean {
   return last?.role === "assistant" && last.content.some((block) => block.type === "tool_use");
 }
 
-/**
- * Where a conversation lives between screens.
- *
- * The panel is mounted in the layout, so client-side navigation would leave it
- * alone — but the renderer's `Link` is a real anchor and an action's
- * `navigate` is a real navigation, both by design: PLAN.md wants deep links,
- * the back button and copyable URLs, which is exactly what iframes and
- * micro-frontends break. Every one of those is a full page load, and a full
- * page load takes React state with it. Ask a question, click into an order,
- * and the thread was gone.
- *
- * `sessionStorage`, not `localStorage`: this is the browsing session's, and it
- * should end when the tab does. The conversation carries tool results — real
- * tenant data — so it has no business outliving the tab it was read in.
- *
- * If a different person signs in on the same tab, the restored history is
- * posted once, fails its signature check (which is bound to the subject since
- * the conversation was signed), and the panel clears itself on the 400. That
- * is the intended path rather than a lucky one, and it is why this can be
- * restored without knowing who is asking.
- */
-const STORAGE_KEY = "portal.assistant.conversation";
-
-interface Saved {
-  readonly open: boolean;
-  readonly messages: Message[];
-  readonly signature: string;
-  readonly turns: Turn[];
-}
-
-function restore(): Saved | undefined {
-  // Server-rendered first, so there is no `window` on the first pass.
-  if (typeof window === "undefined") return undefined;
-  try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    if (raw === null) return undefined;
-    const parsed = JSON.parse(raw) as Partial<Saved>;
-    // Shape-checked rather than trusted: this is storage another tab, an
-    // extension or a stale release could have written, and a malformed restore
-    // would break the panel on every load with no way back except devtools.
-    if (!Array.isArray(parsed.messages) || !Array.isArray(parsed.turns)) return undefined;
-    if (typeof parsed.signature !== "string") return undefined;
-    return {
-      open: parsed.open === true,
-      messages: parsed.messages,
-      signature: parsed.signature,
-      turns: parsed.turns,
-    };
-  } catch {
-    // Unreadable storage is no storage. A thrown parse here would take the
-    // whole shell down, for a convenience.
-    return undefined;
-  }
-}
-
-export function AgentPanel() {
+export function AgentPanel({ owner }: { owner: string }) {
   // Restored in one pass rather than in an effect: reading it after mount
   // would render an empty panel first and pop the conversation in a frame
-  // later, which reads as a bug even when it settles correctly.
-  const saved = useState(restore)[0];
+  // later, which reads as a bug even when it settles correctly. The rules the
+  // restore applies — whose thread this is, what shape it has to be in — live
+  // in `@/lib/agentConversation`, where a unit test can reach them.
+  const saved = useState(() => {
+    // Server-rendered first, so there is no `window` on the first pass.
+    if (typeof window === "undefined") return undefined;
+    try {
+      return decodeConversation(window.sessionStorage.getItem(CONVERSATION_STORAGE_KEY), owner);
+    } catch {
+      // Disabled or partitioned storage throws on read. No storage, then.
+      return undefined;
+    }
+  })[0];
 
   const [open, setOpen] = useState(saved?.open ?? false);
   const [question, setQuestion] = useState("");
@@ -110,6 +68,23 @@ export function AgentPanel() {
   const [signature, setSignature] = useState(saved?.signature ?? "");
   const [turns, setTurns] = useState<Turn[]>(saved?.turns ?? []);
   const [busy, setBusy] = useState(false);
+
+  /**
+   * Whether hydration has happened, which is what says the restored state may
+   * be *drawn*.
+   *
+   * The server had no `sessionStorage` to read, so it rendered the collapsed
+   * toggle. Painting the open panel on the first client pass instead is a
+   * hydration mismatch — Next's own guidance on client-only state says as much
+   * — and React answers one by discarding the server tree and client-rendering
+   * from the nearest boundary, of which this app has none above the layout.
+   *
+   * So the conversation is still restored in one pass, and only the open/closed
+   * state waits: the panel opens a frame late, already holding its turns,
+   * rather than opening on time and taking the shell's hydration with it.
+   */
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
 
   /**
    * Written on every change, so the next full page load finds it.
@@ -123,18 +98,18 @@ export function AgentPanel() {
     if (typeof window === "undefined") return;
     try {
       if (messages.length === 0 && turns.length === 0 && !open) {
-        window.sessionStorage.removeItem(STORAGE_KEY);
+        window.sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
         return;
       }
       window.sessionStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ open, messages, signature, turns }),
+        CONVERSATION_STORAGE_KEY,
+        encodeConversation({ owner, open, messages, signature, turns }),
       );
     } catch {
       // Full, disabled, or private-mode storage. The panel still works; it
       // just will not survive the next navigation.
     }
-  }, [open, messages, signature, turns]);
+  }, [owner, open, messages, signature, turns]);
 
   async function send(
     body: {
@@ -197,7 +172,13 @@ export function AgentPanel() {
         setMessages([]);
         setSignature("");
       }
-      setTurns((previous) => previous.map((turn) => (turn.id === id ? { ...turn, result } : turn)));
+      // `forDisplay` drops the signed conversation the result also carried: it
+      // is already held in state above, and a copy per turn is what makes a
+      // long thread outgrow the storage it is kept in.
+      const shown = forDisplay(result);
+      setTurns((previous) =>
+        previous.map((turn) => (turn.id === id ? { ...turn, result: shown } : turn)),
+      );
     } catch {
       setTurns((previous) =>
         previous.map((turn) =>
@@ -225,7 +206,7 @@ export function AgentPanel() {
     void send({ ask: asked, declinePending: hasPendingCall(messages) }, asked);
   }
 
-  if (!open) {
+  if (!open || !hydrated) {
     return (
       <button type="button" className="agentToggle" onClick={() => setOpen(true)}>
         Ask the portal
@@ -238,29 +219,38 @@ export function AgentPanel() {
       <header className="agentHead">
         <strong>Assistant</strong>
         {/*
-          A conversation now outlives the screen it started on, so there has to
-          be a way to end one. Before it was persisted, navigating anywhere did
-          that by accident — which was the bug, but it was also the only exit.
+          Grouped rather than dropped straight into the header, because the
+          header is `justify-content: space-between`: a third child lands in the
+          middle of it, and this one appears only once there is a turn — so the
+          close button would slide sideways the moment a question is asked.
         */}
-        {turns.length > 0 && (
-          <button
-            type="button"
-            className="r-button"
-            data-variant="ghost"
-            data-size="sm"
-            onClick={() => {
-              setMessages([]);
-              setSignature("");
-              setTurns([]);
-            }}
-            disabled={busy}
-          >
-            New conversation
+        <div className="agentHeadActions">
+          {/*
+            A conversation now outlives the screen it started on, so there has
+            to be a way to end one. Before it was persisted, navigating anywhere
+            did that by accident — which was the bug, but it was also the only
+            exit.
+          */}
+          {turns.length > 0 && (
+            <button
+              type="button"
+              className="r-button"
+              data-variant="ghost"
+              data-size="sm"
+              onClick={() => {
+                setMessages([]);
+                setSignature("");
+                setTurns([]);
+              }}
+              disabled={busy}
+            >
+              New conversation
+            </button>
+          )}
+          <button type="button" className="r-iconButton" onClick={() => setOpen(false)} aria-label="Close">
+            ×
           </button>
-        )}
-        <button type="button" className="r-iconButton" onClick={() => setOpen(false)} aria-label="Close">
-          ×
-        </button>
+        </div>
       </header>
 
       <div className="agentLog">
@@ -309,7 +299,7 @@ function Answer({
   onApprove,
   busy,
 }: {
-  result: AgentApiResult;
+  result: TurnResult;
   onApprove: (pending: PendingWrite) => void;
   busy: boolean;
 }) {

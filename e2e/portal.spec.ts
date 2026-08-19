@@ -237,6 +237,21 @@ test.describe("the assistant panel between screens", () => {
   test("keeps the conversation when you walk around the portal", async ({ page }) => {
     test.skip(!enabled, "no assistant in the running stack");
 
+    // The restore happens during hydration, so it is exactly the kind of
+    // client-only state that produces a mismatch if it is *drawn* on the first
+    // pass. React answers one by throwing the server HTML away and
+    // client-rendering the root, which no assertion below would notice.
+    // The error codes are here because a production React minifies the message
+    // away and logs a link instead — 418, 423 and 425 are the hydration ones —
+    // and the stack this suite runs against is a production build.
+    const hydrationError = /hydrat|react\.dev\/errors\/(418|423|425)/i;
+    const hydrationErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && hydrationError.test(message.text())) {
+        hydrationErrors.push(message.text());
+      }
+    });
+
     await page.goto("/orders/orders.list");
     await page.getByRole("button", { name: "Ask the portal" }).click();
     await page.getByLabel("Ask the assistant").fill("How many orders are pending?");
@@ -252,6 +267,13 @@ test.describe("the assistant panel between screens", () => {
 
     await expect(page.getByText("How many orders are pending?")).toBeVisible();
     await expect(page.locator(".agentTurn")).toHaveCount(1);
+    // The *answer*, not only the question. `turn.question` is a plain string
+    // and survives on its own; a turn whose result did not would come back
+    // reading "Working…" and satisfy every assertion above it.
+    await expect(page.getByText("Working…")).toHaveCount(0);
+    await expect(page.locator(".agentTurn .r-alert")).toHaveCount(0);
+
+    expect(hydrationErrors).toEqual([]);
   });
 
   test("survives a reload, and ends when asked", async ({ page }) => {
@@ -260,6 +282,11 @@ test.describe("the assistant panel between screens", () => {
     await page.getByRole("button", { name: "Ask the portal" }).click();
     await page.getByLabel("Ask the assistant").fill("How many orders are pending?");
     await page.getByRole("button", { name: "Ask", exact: true }).click();
+    // The turn first, *then* the absence of "Working…". On its own the second
+    // assertion passes the instant it is evaluated — before React has even
+    // added the pending turn — and the reload below would then happen
+    // mid-request, leaving a test that asserts nothing it means to.
+    await expect(page.locator(".agentTurn")).toHaveCount(1, { timeout: 120_000 });
     await expect(page.getByText("Working…")).toHaveCount(0, { timeout: 120_000 });
 
     await page.reload();
@@ -270,6 +297,9 @@ test.describe("the assistant panel between screens", () => {
     await expect(page.locator(".agentTurn")).toHaveCount(0);
 
     await page.reload();
+    // Open first: with the panel closed there are no turns either, so the
+    // count below passes just as well when the restore broke altogether.
+    await expect(page.locator('aside[aria-label="Assistant"]')).toBeVisible();
     await expect(page.locator(".agentTurn")).toHaveCount(0);
   });
 });

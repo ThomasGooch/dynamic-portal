@@ -169,8 +169,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--gap-sm);
   padding: var(--gap-md);
   border-bottom: 1px solid var(--border);
+}
+
+/* Keeps the header at two children whether or not there is a conversation to
+   end, so `space-between` puts the title at one edge and the controls at the
+   other instead of stranding "New conversation" in the middle. */
+.agentHeadActions {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
 }
 
 .agentLog {
