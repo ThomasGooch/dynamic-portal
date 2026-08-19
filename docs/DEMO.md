@@ -29,6 +29,19 @@ create and files you attach persist until the container restarts:
 docker compose restart satellite-orders satellite-fleet satellite-depots
 ```
 
+**Decide the model before you start**, and check what the hub actually has —
+do not infer it from what you set:
+
+```bash
+docker compose logs hub | grep assistant:
+# assistant: qwen2.5:7b on http://host.docker.internal:11434 (local, no API cost)
+# assistant: claude-opus-5 via the Anthropic API (metered — every turn is billed)
+# assistant: off (no ANTHROPIC_API_KEY — …)
+```
+
+The provider is read from `.env`. A hub that falls back to the metered API does
+so silently otherwise, which is how this line came to exist.
+
 **Decide the model before you start.** The assistant beats need one:
 
 | | Setup | Composition | Notes |

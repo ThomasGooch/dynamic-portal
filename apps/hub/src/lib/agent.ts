@@ -11,68 +11,27 @@ import {
 } from "@portal/mcp-gateway";
 import { visibleSatellites } from "@portal/registry";
 import { auditKeyFor, recordAudit } from "./audit";
+import { resolveModel } from "./model";
 import { getPortal } from "./portal";
 
 /**
- * The agent, as the hub sees it.
+ * The agent, as the hub sees it: the tool surface, the audited invoker, and
+ * the client that carries a turn to a model.
  *
- * **Strictly additive, and off unless switched on.** PLAN.md makes this a
- * property rather than a preference: the deterministic portal has to work with
- * the agent disabled, per tenant as well as globally, which is at once an
- * availability property, a compliance control and a cost control. So the
- * default is off, a missing key is off, and a tenant on the disabled list is
- * off — and none of those paths touch anything the screens use.
+ * Whether an agent runs at all, and which model it would be, lives in
+ * `./model` — everything there is a `process.env` read, which is what keeps it
+ * importable from `instrumentation.ts` without pulling this file's filesystem
+ * and vendor dependencies into the edge bundle. It is re-exported below so
+ * that split is this file's problem and nobody else's.
  */
 
-/** Tenants that have not agreed to AI processing, or have withdrawn it. */
-function disabledTenants(): ReadonlySet<string> {
-  return new Set(
-    (process.env["PORTAL_AGENT_DISABLED_TENANTS"] ?? "")
-      .split(",")
-      .map((tenant) => tenant.trim())
-      .filter((tenant) => tenant !== ""),
-  );
-}
-
-/**
- * Whether this tenant has agreed to be served by an agent at all.
- *
- * Split from `isAgentEnabled` because the two questions had been one, and the
- * combined answer was wrong for the outward MCP endpoint. That endpoint needs
- * no `ANTHROPIC_API_KEY` — the model belongs to whoever is connecting — so
- * asking "is *our* agent configured" would have left it open to a tenant that
- * had withdrawn consent, which is the control's whole purpose. It is an
- * agent-facing surface either way, and consent governs the surface rather than
- * whose model reaches it.
- */
-export function isAgentAllowedForTenant(principal: Principal): boolean {
-  if (process.env["PORTAL_AGENT"] === "off") return false;
-  return !disabledTenants().has(principal.tenantId);
-}
-
-/**
- * Whether *a* model is configured for the hub's own assistant.
- *
- * "Configured" is not "keyed". `PORTAL_MODEL_PROVIDER=ollama` needs no key of
- * ours — the model is on this machine — and asking only about
- * `ANTHROPIC_API_KEY` would have answered 404 "the assistant is not enabled"
- * to the very setup the local provider exists to make cheap. This has to agree
- * with `modelClient()` below: the two are the same question asked once for the
- * gate and once for the client, and a disagreement is either a dead assistant
- * or a throw inside the turn.
- */
-function isModelConfigured(): boolean {
-  if (isLocalProvider()) return true;
-  // A key that is not there is not a misconfiguration to warn about — running
-  // without an agent is a supported way to run this portal.
-  return Boolean(process.env["ANTHROPIC_API_KEY"]);
-}
-
-export function isAgentEnabled(principal?: Principal): boolean {
-  if (!isModelConfigured()) return false;
-  if (principal !== undefined) return isAgentAllowedForTenant(principal);
-  return process.env["PORTAL_AGENT"] !== "off";
-}
+export {
+  describeModel,
+  isAgentAllowedForTenant,
+  isAgentEnabled,
+  resolveModel,
+  type ResolvedModel,
+} from "./model";
 
 /**
  * What this principal's agent may call.
@@ -198,65 +157,18 @@ export function agentInvoker(principal: Principal, surface: ToolSurface): AgentI
 }
 
 /**
- * Which model answers, and why the default is the paid one.
- *
- * `PORTAL_MODEL_PROVIDER=ollama` points the agent at a model on this machine.
- * That exists because testing the assistant against a metered API turned a
- * regression suite into a bill, which is a poor incentive to test the agent at
- * all.
- *
- * The default stays Anthropic deliberately. PLAN.md picks `claude-opus-5`
- * because it is zero-data-retention eligible and regulated data reaches the
- * model through tool results — a compliance decision before a capability one.
- * A local model answers that question differently and nobody has reviewed it,
- * so it turns on by choice and never by omission.
+ * The client this turn will talk to, built from the same resolution the
+ * startup line reports — which is the only arrangement where a log cannot
+ * describe a configuration the hub is not running.
  */
-/**
- * Trimmed, because this arrives from a `.env` file compose reads verbatim and
- * `PORTAL_MODEL_PROVIDER=ollama ` with a trailing space is not a typo anyone
- * can see.
- */
-function provider(): string {
-  return (process.env["PORTAL_MODEL_PROVIDER"] ?? "").trim();
-}
-
-function isLocalProvider(): boolean {
-  return provider() === "ollama";
-}
-
 export function modelClient(): ModelClient {
-  // A value nobody recognises used to fall through to the paid client, which
-  // is the worst available answer: `PORTAL_MODEL_PROVIDER=ollma` asked for a
-  // free model and quietly got a metered one, and the only evidence was the
-  // invoice. This whole feature exists to stop testing costing money, so a
-  // misspelling of it has to fail rather than bill.
-  const chosen = provider();
-  if (chosen !== "" && chosen !== "ollama" && chosen !== "anthropic") {
-    throw new Error(
-      `PORTAL_MODEL_PROVIDER="${chosen}" is not a provider. Use "ollama", or leave it unset for Anthropic.`,
-    );
-  }
+  const resolved = resolveModel();
 
-  if (isLocalProvider()) {
-    // Empty is absent. Compose writes `PORTAL_OLLAMA_MODEL: ${VAR:-}` for
-    // every optional setting, so an unset variable arrives as "" rather than
-    // undefined — and `??` only catches null. That sent `model: ""` to Ollama,
-    // which rejected it in three milliseconds while the hub reported only that
-    // the assistant "could not complete that request".
-    const set = (name: string): string | undefined => {
-      const value = process.env[name];
-      return value === undefined || value === "" ? undefined : value;
-    };
-
-    const baseUrl = set("PORTAL_OLLAMA_URL");
-    const model = set("PORTAL_OLLAMA_MODEL");
-    return ollamaClient({
-      ...(baseUrl === undefined ? {} : { baseUrl }),
-      ...(model === undefined ? {} : { model }),
-    });
+  if (resolved.provider === "ollama") {
+    return ollamaClient({ baseUrl: resolved.baseUrl, model: resolved.model });
   }
 
   const apiKey = process.env["ANTHROPIC_API_KEY"];
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is required to run the agent");
-  return anthropicClient({ apiKey });
+  return anthropicClient({ apiKey, model: resolved.model });
 }

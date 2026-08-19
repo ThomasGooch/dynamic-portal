@@ -23,6 +23,8 @@
  * first lines of the log rather than in the five-hundredth request.
  */
 
+import { describeModel } from "@/lib/model";
+
 /** Named so the failure says what to do, not merely what is absent. */
 const REQUIRED: readonly { readonly name: string; readonly why: string }[] = [
   {
@@ -45,7 +47,10 @@ export function register(): void {
   if (process.env["NEXT_RUNTIME"] !== "nodejs") return;
 
   const missing = REQUIRED.filter(({ name }) => !process.env[name]);
-  if (missing.length === 0) return;
+  if (missing.length === 0) {
+    announceModel();
+    return;
+  }
 
   throw new Error(
     [
@@ -56,4 +61,41 @@ export function register(): void {
       "here is a control that looks present and is not.",
     ].join("\n"),
   );
+}
+
+/**
+ * Says which model will answer, once, at startup.
+ *
+ * This exists because the answer was not visible from outside the process and
+ * was wrong twice: the provider is chosen per `docker compose` invocation, an
+ * omitted variable falls back to the metered API, and nothing anywhere said
+ * so. The evidence that a hub was billing arrived as an invoice.
+ *
+ * The sentence itself is `describeModel()`, next to the resolution and the
+ * gate it reports on, so this cannot describe a configuration the hub is not
+ * running. What belongs here is only *when* to say it, and that saying it can
+ * never be the reason a hub fails to start.
+ *
+ * Deliberately not silent when the assistant is off: "no assistant" is itself
+ * the fact worth knowing, and a missing line reads as a missing feature.
+ */
+function announceModel(): void {
+  let line: string;
+  try {
+    line = describeModel();
+  } catch (error) {
+    // A provider nobody recognises throws here rather than on the first
+    // question, which is the earlier and cheaper place to find out. It is
+    // reported rather than rethrown: the settings above are what the hub
+    // cannot serve without, and an assistant it cannot configure is not one
+    // of them — every deterministic screen works with no assistant at all.
+    line = `assistant: misconfigured — ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  // `console.log` rather than `process.stdout.write`, which reads as the more
+  // deliberate choice and is the wrong one here: this file is compiled for the
+  // edge runtime too, where `process.stdout` does not exist, and naming it is
+  // a build-time error there even though the guard above means it is never
+  // reached. `console` exists in both, and Next's own startup lines use it.
+  console.log(line);
 }
