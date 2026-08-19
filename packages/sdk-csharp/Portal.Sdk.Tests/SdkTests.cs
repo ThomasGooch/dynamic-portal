@@ -86,6 +86,33 @@ public class BuildingNodes
         var serialised = PortalJson.Serialize(Ui.Badge(label: "Zürich"));
         Assert.Contains("Zürich", serialised);
     }
+
+    [Fact]
+    public void AVisibilityRuleReachesAFieldAsTheCatalogSpellsIt()
+    {
+        // The generated builder takes an untyped dictionary, so the helper is
+        // the only thing standing between a satellite and a misspelled key it
+        // would first hear about from the hub.
+        var json = Json(Ui.TextField(
+            name: "expediteReason",
+            label: "Why?",
+            visibleWhen: Visibility.WhenEquals("expedited", true)));
+        var rule = json.GetProperty("props").GetProperty("visibleWhen");
+
+        Assert.Equal("expedited", rule.GetProperty("field").GetString());
+        Assert.True(rule.GetProperty("equals").GetBoolean());
+
+        var membership = Json(Visibility.WhenOneOf("tags", "hazmat"));
+        Assert.Equal("hazmat", membership.GetProperty("oneOf")[0].GetString());
+    }
+
+    [Fact]
+    public void RefusesAMembershipRuleThatMatchesNothing()
+    {
+        // An empty list shows the field never, which reads as a missing feature
+        // rather than a choice.
+        Assert.Throws<ArgumentException>(() => Visibility.WhenOneOf("tags"));
+    }
 }
 
 public class Provenance

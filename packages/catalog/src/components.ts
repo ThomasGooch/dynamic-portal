@@ -99,6 +99,19 @@ const isHttpUrl = (value: string): boolean => {
  * For a multi-select, `oneOf` means the selection *includes* one of these. For
  * everything else it is membership of the single current value.
  *
+ * `field` names another field of the same form, by the `name` it was given —
+ * or one half of a `DateRange`, as `window.from`, because that is how the two
+ * controls of a range are collected. Both tests compare against the value the
+ * field *collects*, which is why they are a string or a boolean and not a
+ * number: a `NumberField` collects a number, and a condition on one would
+ * silently never match. Drive a condition from a `Select`, a `RadioGroup`, a
+ * `MultiSelect` or a `Checkbox`.
+ *
+ * A rule naming a field the form does not have leaves the control on the
+ * screen rather than removing it — a typo should be a visible bug, not a
+ * feature that quietly disappears. Naming a field that is *itself* hidden does
+ * hide this one, so a chain of conditions collapses in the right direction.
+ *
  * **Presentation only.** A hidden field is not rendered and therefore is not
  * submitted, but nothing stops a caller posting it directly — the action
  * endpoint is an HTTP endpoint. Every rule this mirrors must also exist in the

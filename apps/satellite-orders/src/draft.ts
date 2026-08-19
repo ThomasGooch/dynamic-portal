@@ -149,7 +149,16 @@ export function readDraft(body: unknown, today: string): DraftResult {
   }
 
   const expediteReason = text(input["expediteReason"]);
-  if (expediteReason.length > 200) {
+  // Typed like `notes`, and for the same reason: `text` answers `""` for a
+  // number, so `expediteReason: 42` would be stored as no reason at all and
+  // nobody told — the silent alteration this file exists to refuse.
+  if (
+    input["expediteReason"] !== undefined &&
+    input["expediteReason"] !== null &&
+    typeof input["expediteReason"] !== "string"
+  ) {
+    fieldErrors["expediteReason"] = "A reason is text.";
+  } else if (expediteReason.length > 200) {
     fieldErrors["expediteReason"] = "Keep this under 200 characters.";
   }
 

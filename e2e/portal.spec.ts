@@ -158,6 +158,10 @@ test.describe("filling in a form", () => {
     // Typed, then hidden. The value is gone from the DOM, so it is gone from
     // the payload — and the satellite drops it besides, because a form decides
     // what is drawn and the satellite decides what is true.
+    //
+    // Read with the test below it: that one proves this detail screen *does*
+    // show a reason it was given, which is what stops this assertion from
+    // holding for the boring reason that nothing here ever shows one.
     await fill(page);
     await page.getByLabel("Expedite this order").check();
     await page.getByLabel("Why is this expedited?").fill("signed off by finance");
@@ -168,6 +172,17 @@ test.describe("filling in a form", () => {
 
     await expect(page).toHaveURL(/orders\.detail/);
     await expect(page.getByText("signed off by finance")).toHaveCount(0);
+  });
+
+  test("submits a conditional field that is still on the screen", async ({ page }) => {
+    await fill(page);
+    await page.getByRole("radio", { name: "express" }).check();
+    await page.getByLabel("Expedite this order").check();
+    await page.getByLabel("Why is this expedited?").fill("signed off by finance");
+    await page.getByRole("button", { name: "Create order" }).click();
+
+    await expect(page).toHaveURL(/orders\.detail/);
+    await expect(page.getByText("signed off by finance")).toBeVisible();
   });
 
   test("renders every input the catalog offers for this form", async ({ page }) => {
