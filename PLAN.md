@@ -232,7 +232,7 @@ The hub exposes its aggregated, RBAC- and audience-filtered tool surface as an M
 
 ## Part 3 — The agent
 
-Model: **`claude-opus-5`** via `@anthropic-ai/sdk` (ZDR-eligible — see the regulated-data section). No `thinking` parameter is sent: `claude-opus-5` thinks adaptively when it is absent, while an explicit `{type: "adaptive"}` is refused outright — the whole request — by anything older than 4.6, which made the seam unusable for every other model. The vendor sits behind a single interface with one implementation, because the model is the fastest-decaying dependency in the table above.
+Model: **`claude-opus-5`** via `@anthropic-ai/sdk` (ZDR-eligible — see the regulated-data section). `thinking: {type: "disabled"}` is sent explicitly. Omitting the parameter does *not* turn thinking off — `claude-opus-5` thinks adaptively when it is absent — and `{type: "adaptive"}` is refused outright, the whole request, by anything older than 4.6, which made the seam unusable for every other model. `disabled` is accepted across generations and composition still succeeds without it, because what makes a composed screen trustworthy is the strict `render_screen` schema and the grounding validator rather than a reasoning budget. The vendor sits behind a single interface with one implementation, because the model is the fastest-decaying dependency in the table above.
 
 **The loop is hand-written, and `toolRunner` is deliberately not used.** Its per-turn hooks are the right tool when a loop runs to completion in one process. Ours cannot: a write pauses for a human to approve it, and that pause crosses an HTTP boundary and possibly a container restart. Keeping a runner alive server-side, keyed by a session, would make the hub stateful for exactly the feature most likely to be interrupted. So the conversation *is* the state and it travels with the request — which also makes resuming free, since the loop simply looks for a tool call nobody has answered yet and finds the approved write sitting there.
 
@@ -323,7 +323,7 @@ A dedicated platform team makes this viable; it does not make it automatic. The 
 | JSON-tree renderer | **Ours** — `apps/hub/src/renderer`. See the reversal note below |
 | Hub framework | **Next.js App Router** — route handlers give us the BFF proxy with no separate service |
 | Components / tokens | **Hand-written CSS + custom properties** — `globals.css` holds the tokens, `renderer.css` the rules. See the reversal note below |
-| Agent | **`@anthropic-ai/sdk`**, `claude-opus-5`, no `thinking` parameter (adaptive is that model's default), hand-written loop (see above) |
+| Agent | **`@anthropic-ai/sdk`**, `claude-opus-5`, `thinking: {type: "disabled"}` (omitting it leaves adaptive on), hand-written loop (see above) |
 | MCP | **`@modelcontextprotocol/sdk`** (client + server) + `@modelcontextprotocol/ext-apps` |
 | Charts | **Recharts** — the one UI dependency taken. Colours are CSS custom properties, so charts re-theme with everything else |
 | Table / forms / fetching | None. Server-rendered tables, uncontrolled form controls read on submit, fetching in server components |
