@@ -300,10 +300,44 @@
   text-decoration: none;
 }
 
-.launcher a span {
+/* Classed rather than matched as `.launcher a span`, which now also catches the
+   title row and the tag inside it — a selector that broadened as the markup
+   grew, and would have been answered with `!important` three rules later. */
+.solutionDescription {
   display: block;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.solutionTitle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+}
+
+/* How the agent reaches this solution. A chip rather than a coloured word,
+   because it is a category and not a state — the pill below it is the thing
+   that changes. */
+.solutionTag {
+  display: inline-block;
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+/* The one that is unusual gets the colour. Most solutions are shimmed and
+   should read as unremarkable, because that is the point being made. */
+.solutionTag[data-reach="mcp"] {
+  color: var(--tone-info);
+  border-color: currentColor;
 }
 
 /* Pushed to the bottom of the card, so the pills line up across a row whatever

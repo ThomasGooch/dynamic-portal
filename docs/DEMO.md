@@ -212,6 +212,10 @@ hub draws a confirmation card.
 This beat exists because someone in the room is researching MCP and will ask
 whether this is a portal strategy or an integration strategy. It is one thing.
 
+Point at the tags on the landing page first — **MCP** on Order Management,
+**Non-MCP** on the other two. That ratio is the argument, and it is on screen
+before you say anything.
+
 Ask the assistant: **"Which pending orders are critical?"** It answers, and the
 tool it used was `orders.search` — which is **not** one of Order Management's
 screens. That satellite hosts its own MCP server, and this is a capability with

@@ -60,6 +60,13 @@ sidebar — the cards below *are* the navigation, grouped and ordered by the
 `nav: { section, order }` each satellite declares. The wordmark is the way back
 to them from any screen.
 
+Each card is tagged **MCP** or **Non-MCP** — how the agent reaches that
+solution. It is read from the registry's `mcpUrl`, never the manifest's, so a
+satellite cannot advertise an integration the platform team did not grant it by
+editing a file it owns. The tag is a property of the deployment, not a health
+check: a solution whose MCP server is down is still an MCP solution, and the
+pill beside it is what changes.
+
 The landing page is a card per solution: its health, and the figures it chose to
 be summarised by. Neither half is hardcoded. Health comes from the `healthPath`
 in each manifest, plus the hub's own circuit breaker — which is the one thing a

@@ -4,6 +4,7 @@ import { findSatellite, resolveNav } from "@portal/registry";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 import { isAgentEnabled } from "@/lib/agent";
+import { agentReach, REACH_DETAIL, REACH_LABEL } from "@/lib/integration";
 import { ComposedHome } from "@/components/ComposedHome";
 import { SolutionStatus, SolutionStatusPending } from "@/components/SolutionStatus";
 
@@ -62,11 +63,27 @@ export default async function Home() {
                 const satellite = findSatellite(registry, item.satelliteId);
                 if (satellite === undefined) return null;
 
+                const reach = agentReach(satellite);
+
                 return (
                   <li key={satellite.id} className="solutionCard">
                     <a href={`/${satellite.id}`}>
-                      <strong>{satellite.displayName}</strong>
-                      {satellite.description !== undefined && <span>{satellite.description}</span>}
+                      <span className="solutionTitle">
+                        <strong>{satellite.displayName}</strong>
+                        {/*
+                          Outside the Suspense boundary below, deliberately.
+                          How a solution is integrated comes from the registry
+                          and needs no request, so it is on screen with the
+                          name — and it must not flicker with the network the
+                          way a health pill should.
+                        */}
+                        <span className="solutionTag" data-reach={reach} title={REACH_DETAIL[reach]}>
+                          {REACH_LABEL[reach]}
+                        </span>
+                      </span>
+                      {satellite.description !== undefined && (
+                        <span className="solutionDescription">{satellite.description}</span>
+                      )}
                     </a>
 
                     {/*
