@@ -40,10 +40,24 @@ export function anthropicClient(options: AnthropicClientOptions): ModelClient {
         model,
         max_tokens: MAX_TOKENS,
         system,
-        // Adaptive rather than a token budget: `budget_tokens` is rejected
-        // outright on this model generation, and the work here varies from
-        // "answer from one lookup" to "compose a cross-satellite screen".
-        thinking: { type: "adaptive" },
+        // Thinking off, and said rather than assumed.
+        //
+        // This was `{ type: "adaptive" }`, which only exists from 4.6 — asked
+        // of anything older the API refuses the whole request, so pointing the
+        // portal at `claude-haiku-4-5` made every turn fail.
+        //
+        // Deleting the parameter was the first fix and it was not one: with no
+        // `thinking` key, `claude-opus-5` thinks adaptively anyway. Measured —
+        // a bare request comes back with a `thinking` block and non-zero
+        // `thinking_tokens` — so omitting it changed nothing except on the
+        // models that used to 400. "We removed thinking" would have been a
+        // comment describing something that never happened.
+        //
+        // `disabled` is accepted by every model checked, 4.5 and 5 alike, so it
+        // says what is wanted without reintroducing the version problem. What
+        // makes a composed screen trustworthy here is the strict `render_screen`
+        // schema and the grounding validator, not a reasoning budget.
+        thinking: { type: "disabled" },
         tools: tools.map((tool) => ({
           name: tool.name,
           description: tool.description,

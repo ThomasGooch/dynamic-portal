@@ -126,7 +126,12 @@ export type ResolvedModel =
  * complete that request".
  */
 const set = (name: string): string | undefined => {
-  const value = process.env[name];
+  // Trimmed, like the provider name above it. `PORTAL_OLLAMA_MODEL=` in a
+  // compose file is how a passthrough looks when the host has not set it, and
+  // some shells hand that through as whitespace rather than as empty. Neither
+  // caller — a model name and a URL — ever means to carry padding, and an
+  // untrimmed URL reaches `new URL()` as a parse error nobody explains.
+  const value = process.env[name]?.trim();
   return value === undefined || value === "" ? undefined : value;
 };
 
@@ -234,4 +239,3 @@ export function describeModel(): string {
   if (optedOut === 0) return line;
   return `${line}; off for ${optedOut} tenant${optedOut === 1 ? "" : "s"} (PORTAL_AGENT_DISABLED_TENANTS)`;
 }
-
