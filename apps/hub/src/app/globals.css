@@ -26,8 +26,8 @@
      `palette.test.ts` does the compositing and holds every tone to 4.5:1. */
   --tone-neutral: #4a463f;
   --tone-info: #2b5f9e;
-  --tone-success: #1e7449;
-  --tone-warning: #8b5910;
+  --tone-success: #1d7047;
+  --tone-warning: #875710;
   --tone-danger: #a3282a;
 
   --accent: #2b4f7d;
@@ -89,9 +89,9 @@
   --text-inverse: #ffffff;
 
   --tone-neutral: #3d4a57;
-  --tone-info: #1d69a9;
-  --tone-success: #12715a;
-  --tone-warning: #8a5a00;
+  --tone-info: #1c65a3;
+  --tone-success: #126f59;
+  --tone-warning: #855600;
   --tone-danger: #b02a37;
 
   --accent: #0f5c8c;
