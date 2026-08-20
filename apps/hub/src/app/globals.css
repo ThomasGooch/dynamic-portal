@@ -18,10 +18,16 @@
   --text-muted: #6b655c;
   --text-inverse: #ffffff;
 
+  /* Darker than they need to be as plain text, because a tone is used twice:
+     as a label's colour, and as the *ink* of a badge whose ground is the same
+     colour washed to 16-18%. That wash lifts the ground toward the ink, so a
+     tone comfortable on white can be marginal on its own badge — `success` was
+     4.28:1 and `warning` 4.00:1 that way while reading fine everywhere else.
+     `palette.test.ts` does the compositing and holds every tone to 4.5:1. */
   --tone-neutral: #4a463f;
   --tone-info: #2b5f9e;
-  --tone-success: #1f7a4d;
-  --tone-warning: #9a6212;
+  --tone-success: #1e7449;
+  --tone-warning: #8b5910;
   --tone-danger: #a3282a;
 
   --accent: #2b4f7d;
@@ -83,7 +89,7 @@
   --text-inverse: #ffffff;
 
   --tone-neutral: #3d4a57;
-  --tone-info: #1f6fb2;
+  --tone-info: #1d69a9;
   --tone-success: #12715a;
   --tone-warning: #8a5a00;
   --tone-danger: #b02a37;
@@ -99,27 +105,31 @@
 }
 
 /*
- * A third palette, taken from a real organisation's public site.
+ * A second sample palette.
+ *
+ * It exists to prove the token layer carries a genuinely different look rather
+ * than a hue rotation of the default — so it is built the way a real brand is,
+ * with four colours doing distinct jobs: navy carries text and headings,
+ * magenta is reserved for the thing you are meant to click, and orange and
+ * blue appear as secondary accents.
+ *
+ * Magenta is therefore `--accent`, which pushes `--tone-danger` to a true red
+ * so a destructive control never reads as merely the primary one. That is the
+ * constraint worth demonstrating: a palette whose call-to-action colour is
+ * already warm cannot reuse it for danger, and a token layer that did not
+ * separate the two would have no way to express the difference.
  *
  * Named generically on purpose. This repository is public, and a brand key
  * carrying a real company's name reads as an affiliation to anyone who finds
- * it — the other palette here is `contoso`, which is Microsoft's canonical
- * *fictional* company, and breaking that convention was the mistake. The
- * colours are a close likeness of a real palette rather than its official
- * values; a design team correcting the exact hexes is this one block, which is
- * the point the brand exists to make.
- *
- * The identity is four colours doing distinct jobs: navy carries text and
- * headings, magenta is reserved for the thing you are meant to click, and
- * orange and blue appear as secondary accents. Magenta is therefore `--accent`
- * — matching what the brand itself treats as its call to action — which pushes
- * `--tone-danger` to a true red so a destructive control never reads as merely
- * the primary one.
+ * it — the other palette here is `contoso`, Microsoft's canonical *fictional*
+ * company, and breaking that convention was the mistake. Swapping in an
+ * organisation's actual values is this one block, which is the point the
+ * palette exists to make.
  */
 :root[data-brand="partner"] {
   --bg: #ffffff;
   --surface: #ffffff;
-  /* The blush the site uses behind its utility bar. */
+  /* A blush tint, for the utility strip above the shell. */
   --surface-sunken: #fdf1ec;
   --border: #e7dcd6;
   --border-strong: #c9b8ae;
@@ -131,8 +141,9 @@
   --tone-neutral: #4a5764;
   /* Darker than the site's own blue, green and orange, and deliberately so: a
      tone is a text colour, and it is also the *ink* of a badge whose ground is
-     the same colour at 16-18%. The marketing orange (#e8873a) reached 2.6:1 on
-     white; these clear 4.5:1 both plain and tinted. */
+     the same colour at 16-18%. A warm marketing orange reached 2.6:1 on white;
+     these clear 4.5:1 both plain and tinted, which `palette.test.ts` checks by
+     compositing the wash rather than by anyone's eye. */
   --tone-info: #2b6499;
   --tone-success: #18704e;
   --tone-warning: #974d12;
