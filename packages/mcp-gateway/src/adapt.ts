@@ -40,6 +40,12 @@ export function adaptMcpResult(result: McpResultLike): ExtractedData {
     // "null" would put a fact on the screen that the satellite did not state.
     if (value === null || value === undefined) continue;
 
+    // An empty list is not a fact either. `isRowArray` cannot know whether an
+    // empty `matches` was rows or scalars, so it falls through to here and
+    // would render as `matches: ` — a blank line in a model's context, the same
+    // thing empty `content` is dropped for above.
+    if (Array.isArray(value) && value.length === 0) continue;
+
     facts.push({ label: key, value: render(value) });
   }
 

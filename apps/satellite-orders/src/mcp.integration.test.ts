@@ -1,4 +1,4 @@
-import type { Server } from "node:http";
+import { createServer, type Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Principal } from "@portal/identity";
 import { SatelliteSchema } from "@portal/registry";
@@ -103,6 +103,66 @@ describe("listing", () => {
       "priority",
       "status",
     ]);
+  });
+
+  it("refuses a principal from an audience this satellite is not declared to", async () => {
+    // The satellite's manifest says `internal`, and every PUP route resolves
+    // that before it answers — the conformance suite has a check named for it.
+    // An MCP door that skipped it would be the same data behind a weaker lock,
+    // which is the failure this file's header names out loud.
+    const listed = await listSatelliteTools(satellite, principal({ audience: "external" }), options);
+    expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+      "orders.reconcile",
+      "orders.search",
+    ]);
+
+    const result = await callSatelliteTool(
+      satellite,
+      principal({ audience: "external" }),
+      options,
+      "orders.search",
+      { filters: {} },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.kind).toBe("refused");
+  });
+
+  it("gives up on a satellite that answers nothing, rather than holding the turn", async () => {
+    // Not the dead-port case, which fails fast on its own: a port that accepts
+    // the connection and then says nothing. The surface is rebuilt on every
+    // agent turn, so an unbounded wait here is one stopped satellite holding up
+    // every request in the hub — which is the failure `timeoutMs` exists in the
+    // registry to bound.
+    const silent = createServer(() => {
+      /* accepts the request and never answers */
+    });
+    await new Promise<void>((resolve) => silent.listen(0, resolve));
+    const address = silent.address();
+    if (address === null || typeof address === "string") throw new Error("no port");
+
+    const stalled = SatelliteSchema.parse({
+      id: "orders",
+      displayName: "Order Management",
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      mcpUrl: `http://127.0.0.1:${address.port}/mcp`,
+      owner: "fulfillment-team",
+    });
+
+    const started = Date.now();
+    const listed = await listSatelliteTools(stalled, principal(), {
+      ...options,
+      timeoutMs: 150,
+    });
+
+    expect(listed.tools).toEqual([]);
+    expect(listed.reason).toBeDefined();
+    expect(Date.now() - started).toBeLessThan(3_000);
+    await new Promise<void>((resolve) => {
+      silent.closeAllConnections();
+      silent.close(() => resolve());
+    });
   });
 
   it("refuses a caller with no credential", async () => {

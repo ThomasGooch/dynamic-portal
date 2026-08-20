@@ -61,6 +61,11 @@ export async function buildAgentSurface(principal: Principal): Promise<ToolSurfa
 
       const listed = await listSatelliteTools(satellite, principal, {
         principalSecret: portal.principalSecret,
+        // The same patience the PUP client is given, from the same line of the
+        // registry. A satellite that is slow on one surface is slow on both,
+        // and the surface is rebuilt on every turn — an unbounded wait here is
+        // one stopped satellite holding up every agent request in the hub.
+        timeoutMs: satellite.timeoutMs,
       });
       if (listed.reason !== undefined) {
         // Loud, and only that. A satellite whose MCP server is down keeps every
@@ -162,7 +167,7 @@ export function agentInvokerDeps(principal: Principal): InvokerDeps {
         return callSatelliteTool(
           satellite,
           who,
-          { principalSecret: portal.principalSecret },
+          { principalSecret: portal.principalSecret, timeoutMs: satellite.timeoutMs },
           toolName,
           args,
         );

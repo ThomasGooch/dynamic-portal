@@ -83,6 +83,21 @@ describe("adaptMcpResult", () => {
     expect(data.facts).toEqual([{ label: "ids", value: "A-1, A-2" }]);
   });
 
+  it("drops an empty list rather than reporting a fact with no value", () => {
+    // A tool that matched nothing sends `matches: []`, which is not rows and is
+    // not a list of anything either. Rendered as a fact it reads `matches: `,
+    // which is a blank line in a model's context — the same thing empty
+    // `content` is dropped for.
+    const data = adaptMcpResult({
+      ok: true,
+      content: "No orders matched.",
+      structured: { matches: [], total: 0 },
+    });
+
+    expect(data.tables).toEqual([]);
+    expect(data.facts).toEqual([{ label: "total", value: "0" }]);
+  });
+
   it("ignores null, which JSON has and the extracted shape does not", () => {
     const data = adaptMcpResult({ ok: true, content: "", structured: { note: null } });
     expect(data.facts).toEqual([]);

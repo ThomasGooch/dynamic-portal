@@ -39,9 +39,22 @@ export interface SatelliteMcpTool {
 
 export interface McpClientOptions {
   readonly principalSecret: string;
-  /** A satellite on a laptop is slow; a satellite that has stopped is silent. */
+  /**
+   * A satellite on a laptop is slow; a satellite that has stopped is silent.
+   *
+   * The registry's `timeoutMs` exists so that "a satellite that omits this must
+   * not be able to hang the hub" holds, and it has to hold on this surface too:
+   * a port that accepts a connection and then never answers is the case a dead
+   * port does not cover, and the surface is rebuilt on every agent turn. Absent
+   * means the SDK's own default, which is a minute — far past the point where a
+   * turn should have given up on one satellite.
+   */
   readonly timeoutMs?: number;
 }
+
+/** Every request in a session is bounded by the same budget. */
+const bounded = (options: McpClientOptions): { timeout?: number } =>
+  options.timeoutMs === undefined ? {} : { timeout: options.timeoutMs };
 
 async function connect(
   satellite: Satellite,
@@ -73,7 +86,10 @@ async function connect(
   // this repository compiles with `exactOptionalPropertyTypes`. Cast here, in
   // one line, rather than relax the setting for every package — the mismatch is
   // in the dependency's own types, not in what it does.
-  await client.connect(transport as unknown as Parameters<Client["connect"]>[0]);
+  // The handshake is bounded too, not only the calls after it: a satellite that
+  // completes a TCP connection and then says nothing would otherwise hold the
+  // turn open for the SDK's default minute before anything else could run.
+  await client.connect(transport as unknown as Parameters<Client["connect"]>[0], bounded(options));
   return { client, close: () => client.close() };
 }
 
@@ -93,7 +109,7 @@ export async function listSatelliteTools(
   let session: { client: Client; close: () => Promise<void> } | undefined;
   try {
     session = await connect(satellite, principal, options);
-    const listed = await session.client.listTools();
+    const listed = await session.client.listTools(undefined, bounded(options));
 
     return {
       tools: listed.tools.map((tool) => ({
@@ -156,7 +172,11 @@ export async function callSatelliteTool(
   let session: { client: Client; close: () => Promise<void> } | undefined;
   try {
     session = await connect(satellite, principal, options);
-    const result = await session.client.callTool({ name, arguments: { ...args } });
+    const result = await session.client.callTool(
+      { name, arguments: { ...args } },
+      undefined,
+      bounded(options),
+    );
 
     // `isError` is the protocol's way of saying the tool ran and refused, which
     // is different from the call failing. Both reach the model as text, but only

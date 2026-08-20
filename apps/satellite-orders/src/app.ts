@@ -214,7 +214,8 @@ export function createApp({
    * otherwise be reachable unauthenticated, and a surface that will tell an
    * anonymous caller what tools exist has already said more than the PUP
    * endpoints do. The scope check happens per tool rather than here, because
-   * the read and the write want different scopes.
+   * the read and the write want different scopes. The audience is checked per
+   * tool for the same reason, next to the tool that declares it.
    */
   app.post("/mcp", authenticate, (req: AuthedRequest, res, next) => {
     handleMcpRequest({ repository }, req.principal!, req, res, req.body).catch(next);

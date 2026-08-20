@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { authorize, type Principal } from "@portal/identity";
+import type { Audience } from "@portal/protocol";
 import { z } from "zod";
 import type { Order, OrderRepository } from "./repository";
 
@@ -93,6 +94,23 @@ export interface McpServerOptions {
 }
 
 /**
+ * Who these tools are declared to.
+ *
+ * Per tool rather than per satellite, because this satellite's manifest
+ * declares `["internal", "external"]` and then *narrows* per resource — every
+ * write on it is `["internal"]`. Checking the satellite's own audience here
+ * would therefore be an audience check that never refuses anybody, and
+ * `orders.reconcile` is a bulk write, so it would be the widest thing on the
+ * satellite reachable by the narrowest credential.
+ *
+ * `internal` is also exactly what the hub's `adopt.ts` defaults an adopted MCP
+ * tool to, so the two sides agree by construction rather than by coincidence.
+ * Widening one without the other refuses, which is the direction a
+ * disagreement should fail in.
+ */
+const DECLARED_AUDIENCE: readonly Audience[] = ["internal"];
+
+/**
  * A server per request.
  *
  * Stateless is the right shape here: the hub opens a connection, lists or calls,
@@ -121,7 +139,7 @@ export function createMcpServer(options: McpServerOptions, principal: Principal)
       annotations: { readOnlyHint: true },
     },
     async ({ filters, limit }) => {
-      const denied = refuse(principal, ["orders.read"]);
+      const denied = refuse(principal, DECLARED_AUDIENCE, ["orders.read"]);
       if (denied !== undefined) return denied;
 
       const all = options.repository.list(principal.tenantId).filter((order) => {
@@ -169,7 +187,7 @@ export function createMcpServer(options: McpServerOptions, principal: Principal)
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
     async ({ vehiclesBackInService, dryRun }) => {
-      const denied = refuse(principal, ["orders.write"]);
+      const denied = refuse(principal, DECLARED_AUDIENCE, ["orders.write"]);
       if (denied !== undefined) return denied;
 
       const cleared = options.repository.unblock(
@@ -208,9 +226,10 @@ export function createMcpServer(options: McpServerOptions, principal: Principal)
  */
 function refuse(
   principal: Principal,
+  audience: readonly Audience[],
   rbacScopes: readonly string[],
 ): { content: { type: "text"; text: string }[]; isError: true } | undefined {
-  const decision = authorize(principal, { audience: ["internal", "external"], rbacScopes });
+  const decision = authorize(principal, { audience, rbacScopes });
   if (decision.allowed) return undefined;
   return {
     content: [{ type: "text", text: decision.reason }],

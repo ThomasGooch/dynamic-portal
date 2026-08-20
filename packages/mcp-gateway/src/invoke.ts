@@ -192,7 +192,11 @@ export async function invokeTool(
 
     const result = await deps.callMcpTool(tool.satelliteId, tool.targetId, dispatchArgs, principal);
     if (!result.ok) {
-      record(tool.satelliteId, "error", "upstream-error");
+      // The reason distinguishes the two, as it does on the screen path: a
+      // satellite that ran the tool and refused is "an agent was stopped from
+      // doing this", and recording that as an upstream error makes it look like
+      // an outage in the one log that is read to find out which it was.
+      record(tool.satelliteId, "error", result.kind === "refused" ? "refused" : "upstream-error");
       return {
         ok: false,
         reason: "upstream-error",

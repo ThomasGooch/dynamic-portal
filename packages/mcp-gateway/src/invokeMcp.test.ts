@@ -283,6 +283,28 @@ describe("audit", () => {
     // reason an MCP tool's nested arguments are safe to pass through at all.
     expect(JSON.stringify(audits[0])).not.toContain("blocked");
   });
+
+  it("says whether the satellite refused or could not be reached", async () => {
+    await invokeTool(
+      surfaceOf([searchTool]),
+      "orders__orders_search",
+      {},
+      principal,
+      deps({ ok: false, kind: "refused", message: "missing scope orders.read" }),
+    );
+    await invokeTool(
+      surfaceOf([searchTool]),
+      "orders__orders_search",
+      {},
+      principal,
+      deps({ ok: false, kind: "unreachable", message: "connect ECONNREFUSED" }),
+    );
+
+    // A satellite that ran the tool and said no is "an agent was stopped from
+    // doing this"; a satellite that never answered is an outage. A log that
+    // spells them the same way cannot be asked which one happened.
+    expect(audits.map((event) => event.outcome.reason)).toEqual(["refused", "upstream-error"]);
+  });
 });
 
 describe("when a satellite offers the same id twice", () => {
