@@ -20,8 +20,10 @@ const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
  * merely mentions. Comments are stripped first, then a token counts only where
  * a value follows it.
  */
+const declarationsIn = (block: string): string => block.replace(/\/\*[\s\S]*?\*\//g, "");
+
 const tokensIn = (block: string): Set<string> =>
-  new Set(block.replace(/\/\*[\s\S]*?\*\//g, "").match(/--[a-z0-9-]+(?=\s*:)/g) ?? []);
+  new Set(declarationsIn(block).match(/--[a-z0-9-]+(?=\s*:)/g) ?? []);
 
 const blockFor = (pattern: RegExp): string => {
   const match = css.match(pattern);
@@ -29,10 +31,25 @@ const blockFor = (pattern: RegExp): string => {
   return match![1]!;
 };
 
-/** Layout and typography are shared; only colour is a brand's business. */
-const COLOURS = [...tokensIn(blockFor(/^:root \{([\s\S]*?)\n\}/m))].filter(
-  (token) => !/^--(radius|gap|font|nav)/.test(token),
-);
+const DEFAULT_LIGHT = /^:root \{([\s\S]*?)\n\}/m;
+const DEFAULT_DARK = /^  :root \{([\s\S]*?)\n  \}/m;
+
+/**
+ * Layout and typography are shared; only colour is a brand's business.
+ *
+ * Both default blocks, not just the daylight one. A token the dark `:root`
+ * introduces and the light one never mentions is the worst case of the rule
+ * this file exists to enforce — a brand's *light* block outscores the dark
+ * `:root`, so such a token would take its daylight value after dark with no
+ * block required to redefine it, and a list drawn from `:root` alone would
+ * never ask.
+ */
+const COLOURS = [
+  ...new Set([
+    ...tokensIn(blockFor(DEFAULT_LIGHT)),
+    ...tokensIn(blockFor(DEFAULT_DARK)),
+  ]),
+].filter((token) => !/^--(radius|gap|font|nav)/.test(token));
 
 const missingFrom = (block: string): string[] => {
   const defined = tokensIn(block);
@@ -46,8 +63,19 @@ const lightBlock = (brand: string) =>
 const darkBlock = (brand: string) =>
   blockFor(new RegExp(`^  :root\\[data-brand="${brand}"\\] \\{([\\s\\S]*?)\\n  \\}`, "m"));
 
+/**
+ * Comments stripped first, for the same reason `tokensIn` strips them.
+ *
+ * Reading the raw text takes the first `--tone-danger:` in the block, and in a
+ * stylesheet whose comments quote tokens by name that is routinely not the one
+ * that ships — `/* rejected: --tone-danger: #b3261e; too orange *\/` above the
+ * real declaration made the assertions below read the rejected colour and
+ * agree, while the delete button rendered in exactly the primary magenta.
+ */
 const valueIn = (block: string, token: string) =>
-  block.match(new RegExp(`${token}:\\s*([^;]+);`))?.[1]?.trim();
+  declarationsIn(block)
+    .match(new RegExp(`${token}:\\s*([^;]+);`))?.[1]
+    ?.trim();
 
 /**
  * The colour, not the text that spells it.
@@ -148,7 +176,7 @@ describe("a brand's palette", () => {
   // anything sensible. This is the block a brand's dark scheme has to outscore,
   // which makes it the worst one to leave incomplete.
   it("the default redefines every colour in dark", () => {
-    expect(missingFrom(blockFor(/^  :root \{([\s\S]*?)\n  \}/m))).toEqual([]);
+    expect(missingFrom(blockFor(DEFAULT_DARK))).toEqual([]);
   });
 
   for (const brand of BRANDS) {
@@ -172,7 +200,6 @@ describe("a brand's palette", () => {
         const scoped = block(brand);
         expect(colourIn(scoped, "--accent")).not.toBe(colourIn(scoped, "--tone-danger"));
       });
-
     }
   }
 
@@ -189,18 +216,34 @@ describe("a brand's palette", () => {
    * brand block overrides and the one every deployment starts on, and two of
    * the three failures this first caught were in it — a per-brand loop would
    * have shipped them.
+   *
+   * **The ground is `--surface`, and that is narrower than it reads.** A
+   * badge's wash is mixed with `transparent`, so what sits behind it is
+   * whichever container it lands in — `--surface` for the card, table and stat
+   * tile it is used in today, but `--bg` for a badge placed straight on the
+   * page and `--surface-sunken` inside an alert, a toast or a table head. Both
+   * of those grounds are darker than the card, and several tones clear 4.5:1
+   * on `--surface` while landing in the 4.0-4.5 band on them. So this passing
+   * is not a promise that a badge is legible anywhere it is put; it is a
+   * promise about where badges are put now. Move one, and check it again.
    */
+  // Thunks, resolved inside the test that needs them. Calling `blockFor` out
+  // here asserts at collection time, and a brand added to `BRANDS` before its
+  // dark block exists then takes the whole file down to *no tests* — the other
+  // palettes' contrast stops being checked at the moment somebody is editing
+  // palettes. Deferred, that same mistake fails one named test.
   const PALETTES = [
-    ["default", blockFor(/^:root \{([\s\S]*?)\n\}/m), blockFor(/^  :root \{([\s\S]*?)\n  \}/m)],
-    ...BRANDS.map((brand) => [brand, lightBlock(brand), darkBlock(brand)] as const),
+    ["default", () => blockFor(DEFAULT_LIGHT), () => blockFor(DEFAULT_DARK)],
+    ...BRANDS.map((brand) => [brand, () => lightBlock(brand), () => darkBlock(brand)] as const),
   ] as const;
 
   for (const [name, light, dark] of PALETTES) {
-    for (const [scheme, scoped] of [
+    for (const [scheme, blockOf] of [
       ["light", light],
       ["dark", dark],
     ] as const) {
       it(`${name} badge ink is legible on its own tint in ${scheme}`, () => {
+        const scoped = blockOf();
         const surface = colourIn(scoped, "--surface");
 
         // Collected rather than asserted one at a time: stopping at the first
