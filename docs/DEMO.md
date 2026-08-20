@@ -65,9 +65,22 @@ complete page, and beat 6 is the only beat that can be cut.
 
 ## The spine
 
-### 1 · One portal, three solutions (1 min)
+### 1 · One portal, three solutions (2 min)
 
-Open `/`. Click **Orders**, then **Fleet**, then **Depots**.
+Open `/`. Every solution is a card: whether it is up, how fast it answered, and
+the figures that matter to it today. Let it settle for a second — the cards
+paint immediately and each one's status fills in on its own.
+
+> "One page for the estate. Is everything up, and what does today look like."
+
+Then the line that matters, because it is the one they will not expect:
+
+> "The hub has no idea what an order is. It does not know what a vehicle is
+> either. Every number there is a figure the team already puts on their own
+> screen — the hub just reads the screen they nominated. Adding a fourth
+> solution changes nothing on this page."
+
+Click **Orders**, then **Fleet**, then **Depots**.
 
 > "Three solutions, one portal. Same shell, same table, same badges."
 
@@ -160,8 +173,14 @@ satellite, which records what arrived.
 docker compose stop satellite-fleet
 ```
 
-Reload the portal. Fleet shows a scoped error card; Orders and Depots are
-untouched; navigation still works.
+Reload the portal. **The front page tells you first** — Fleet's card goes red
+and says so, while Orders and Depots keep their figures. Open Fleet and it is a
+scoped error card; the wordmark still takes you home.
+
+If you want the sharper version, `docker compose pause satellite-fleet` instead:
+the container accepts connections and never answers, which is the failure that
+actually hangs systems. The card waits out its three-second budget and gives up;
+the other two are already on screen.
 
 ```bash
 docker compose start satellite-fleet
@@ -192,6 +211,10 @@ hub draws a confirmation card.
 
 This beat exists because someone in the room is researching MCP and will ask
 whether this is a portal strategy or an integration strategy. It is one thing.
+
+Point at the tags on the landing page first — **MCP** on Order Management,
+**Non-MCP** on the other two. That ratio is the argument, and it is on screen
+before you say anything.
 
 Ask the assistant: **"Which pending orders are critical?"** It answers, and the
 tool it used was `orders.search` — which is **not** one of Order Management's
@@ -246,7 +269,9 @@ in one file.
 | Assistant says it could not complete | No API credit, or model unreachable | Skip to beat 7; the deterministic portal is unaffected |
 | A screen shows an error card | That satellite is stopped | `docker compose start satellite-<name>` |
 | Form shows stale data | In-memory state from a rehearsal | `docker compose restart satellite-orders` |
-| Home never fills in | Composition failed | Say so and move on — the launcher is a complete page |
+| Home never fills in | Composition failed | Say so and move on — the cards above it are a complete page |
+| A card is stuck on "Checking…" | That satellite is slow | It resolves or gives up within its timeout; the other cards are unaffected, which is beat 5 arriving early |
+| A card shows no figures | That satellite nominates no summary screen, or the account cannot read it | Expected, not broken — the card still shows health |
 | `orders.search` not found | The orders MCP server is unreachable | Skip beat 6b — the other tools are unaffected, which is itself the point of beat 5 |
 
 **Do not** run `docker compose down` in the room. Restarting a service keeps

@@ -162,7 +162,12 @@ services:
       satellite-depots:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/"]
+      # `/healthz`, not `/`. The landing page now asks every satellite for its
+      # manifest, health and summary screen, so probing it every five seconds
+      # put the whole estate under permanent load and filled the audit log with
+      # machine-generated reads attributed to a person. Liveness is a question
+      # about this process.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/healthz"]
       interval: 5s
       timeout: 5s
       retries: 12

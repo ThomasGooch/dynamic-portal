@@ -41,6 +41,8 @@ export {
 export {
   SatelliteClient,
   type Failure,
+  type HealthReport,
+  type HealthStatus,
   type Result,
   type SatelliteClientOptions,
 } from "./client";

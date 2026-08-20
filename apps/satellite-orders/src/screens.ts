@@ -186,6 +186,10 @@ export function manifest(): Manifest {
     ],
     nav: [{ screenId: "orders.list", label: "Orders", section: "Operations", order: 10 }],
     healthPath: "/healthz",
+    // The screen this satellite is happy to be judged by on the front page. Its
+    // stat tiles are read straight off it, so there is no second set of figures
+    // to maintain and no way for the two to disagree.
+    summary: { screenId: "orders.list" },
   });
 }
 

@@ -1,32 +1,73 @@
 .shell {
+  /* Rows, not columns: the sidebar went when the landing page grew a card per
+     solution, and the wordmark is now the only persistent navigation. */
   display: grid;
-  grid-template-columns: var(--nav-width) 1fr;
+  grid-template-rows: auto 1fr;
   min-height: 100vh;
 }
 
-.nav {
-  border-right: 1px solid var(--border);
+/* The rule spans the window; its contents line up with the page. Without the
+   inner width the wordmark sat 40px left of the "Solutions" heading below it,
+   which reads as two grids rather than one. */
+.topbar {
+  border-bottom: 1px solid var(--border);
   background: var(--surface-sunken);
-  padding: var(--gap-lg) var(--gap-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-lg);
 }
 
+.topbarInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  /* Matches `.main` exactly — same max-width, same padding, same centring. */
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+  padding: var(--gap-sm) var(--gap-lg);
+}
+
+/* The way home from anywhere, so it is a link and looks like one on hover
+   rather than a heading that happens to sit in the corner. */
 .brand {
   font-weight: 650;
   letter-spacing: -0.01em;
   font-size: 15px;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--radius);
+  padding: 4px 6px;
+  margin-left: -6px;
 }
 
-.brand small {
-  display: block;
-  font-weight: 400;
-  color: var(--text-muted);
+.brand:hover {
+  background: var(--surface);
+}
+
+.topbarMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
   font-size: 12px;
+  color: var(--text-muted);
 }
 
-.navSection h2 {
+.tenantTag {
+  font-variant-numeric: tabular-nums;
+}
+
+.main {
+  padding: var(--gap-lg);
+  max-width: 1100px;
+  /* Centred now that it is no longer pushed across by a sidebar. */
+  margin: 0 auto;
+  width: 100%;
+}
+
+.solutionSection + .solutionSection {
+  margin-top: var(--gap-lg);
+}
+
+.solutionSection h2 {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -35,49 +76,15 @@
   font-weight: 600;
 }
 
-.navSection ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.navSection a {
-  display: block;
-  padding: 6px var(--gap-sm);
-  border-radius: var(--radius);
-  text-decoration: none;
-  color: var(--text);
-}
-
-.navSection a:hover {
-  background: var(--surface);
-}
-
-.navEmpty {
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.main {
-  padding: var(--gap-lg);
-  max-width: 1100px;
-}
-
+/* Kept as a warning rather than a badge: it says this portal is running with a
+   development identity, which is exactly the thing that should look out of
+   place. The full detail is in its `title`, so the bar stays one line. */
 .sessionBanner {
-  margin-top: auto;
-  font-size: 12px;
-  color: var(--text-muted);
+  color: var(--tone-warning);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
-  padding: var(--gap-sm);
-}
-
-.sessionBanner strong {
-  color: var(--tone-warning);
-  display: block;
+  padding: 2px var(--gap-sm);
+  cursor: help;
 }
 
 /*
@@ -211,7 +218,70 @@
 
 .agentText {
   margin: 0;
+  /* Preserved for the fallback path, where an answer that parsed to nothing is
+     shown exactly as it arrived. Parsed prose gets its spacing from the blocks
+     below instead. */
   white-space: pre-wrap;
+}
+
+/* The assistant's prose. Spacing lives here rather than on the elements so a
+   list following a paragraph reads as one answer, not two. */
+.agentProse {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.agentProse .agentText {
+  white-space: normal;
+}
+
+.agentHeading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  /* Sized here rather than by tag: the panel is a narrow column, and an `h3`
+     at document scale would shout. */
+  color: var(--text);
+}
+
+.agentHeading[data-level="3"] {
+  color: var(--text-muted);
+}
+
+.agentList {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agentProse code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+.agentCode {
+  margin: 0;
+  padding: var(--gap-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* A model quoting JSON should not widen the panel; the block scrolls, the
+     page does not. */
+  overflow-x: auto;
+  font-size: 12px;
+}
+
+.agentCode code {
+  background: none;
+  border: none;
+  padding: 0;
 }
 
 /*
@@ -268,19 +338,138 @@
   padding: 0;
   display: grid;
   gap: var(--gap-sm);
+  /* Cards, once they carry status and figures rather than just a name. `auto-fit`
+     rather than a fixed count: the registry decides how many solutions there
+     are, so the grid has to answer for three or for thirty without this file
+     knowing which. */
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.solutionCard {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  /* The status fills in after the card paints, so the height changes once. A
+     minimum keeps the grid from reflowing under the pointer as each satellite
+     answers. */
+  min-height: 9.5rem;
 }
 
 .launcher a {
   display: block;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  padding: var(--gap-md);
+  padding: var(--gap-md) var(--gap-md) var(--gap-sm);
   text-decoration: none;
 }
 
-.launcher a span {
+/* Classed rather than matched as `.launcher a span`, which now also catches the
+   title row and the tag inside it — a selector that broadened as the markup
+   grew, and would have been answered with `!important` three rules later. */
+.solutionDescription {
   display: block;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.solutionTitle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+}
+
+/* How the agent reaches this solution. A chip rather than a coloured word,
+   because it is a category and not a state — the pill below it is the thing
+   that changes. */
+.solutionTag {
+  display: inline-block;
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+/* The one that is unusual gets the colour. Most solutions are shimmed and
+   should read as unremarkable, because that is the point being made. */
+.solutionTag[data-reach="mcp"] {
+  color: var(--tone-info);
+  border-color: currentColor;
+}
+
+/* `margin-top: auto` takes up the slack, so the status block — pill, reason,
+   figures — sits at the foot of the card whatever length the description above
+   it is. The pills themselves do not line up across a row: a card carrying
+   figures renders them below the pill, which lifts it by exactly that much. */
+.solutionHealth {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 var(--gap-sm);
+  margin: auto 0 0;
+  padding: var(--gap-sm) var(--gap-md);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.solutionPill {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  /* Tone tokens, so this follows every palette and both schemes without a
+     second set of colours to keep in step. */
+  background: var(--tone-neutral);
+  flex: none;
+}
+
+.solutionHealth[data-status="ok"] .solutionPill { background: var(--tone-success); }
+.solutionHealth[data-status="down"] .solutionPill { background: var(--tone-danger); }
+
+/* Colour is never the only signal: the label beside the dot already names the
+   state in words, and this carries it into the text for the one that is not
+   "fine". A portal that says "something is wrong" only in red says nothing to
+   a reader who cannot see red. */
+.solutionHealth[data-status="down"] { color: var(--tone-danger); }
+
+/* Said, not left blank. An empty card reads as "this solution nominates no
+   summary screen", which is the opposite of what happened. */
+.solutionWithheld {
+  margin: 0;
+  padding: 0 var(--gap-md) var(--gap-md);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.solutionWhy {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.solutionStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-sm) var(--gap-md);
+  margin: 0;
+  padding: 0 var(--gap-md) var(--gap-md);
+}
+
+.solutionStats dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.solutionStats dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  /* Figures across a row of cards read as a set, so they line up like one. */
+  font-variant-numeric: tabular-nums;
 }

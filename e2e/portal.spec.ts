@@ -107,14 +107,17 @@ test.describe("one shell, three solutions", () => {
   });
 
   test("shows only the solutions this principal may see", async ({ page }) => {
-    await page.goto("/orders");
-    const nav = page.locator("nav.nav");
+    // The landing page, not a screen: the sidebar went and the cards are the
+    // navigation now. `resolveNav` still does the filtering, so this is the
+    // same claim about the same function, asked where it is rendered.
+    await page.goto("/");
+    const launcher = page.locator(".launcher");
     // Labels come from the registry, which is the hub's file — a satellite does
     // not get to name itself in someone else's navigation.
-    await expect(nav.getByRole("link", { name: "Order Management" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Fleet Operations" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Depot Operations" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: /payroll/i })).toHaveCount(0);
+    await expect(launcher.getByRole("link", { name: "Order Management" })).toBeVisible();
+    await expect(launcher.getByRole("link", { name: "Fleet Operations" })).toBeVisible();
+    await expect(launcher.getByRole("link", { name: "Depot Operations" })).toBeVisible();
+    await expect(launcher.getByRole("link", { name: /payroll/i })).toHaveCount(0);
   });
 });
 
@@ -486,7 +489,8 @@ test.describe("the home nobody wrote", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     await expect(page.getByRole("heading", { name: "Solutions" })).toBeVisible();
-    // Scoped to the launcher: the same name is in the nav, which every page has.
+    // Scoped to the launcher: the assistant's own answer below names the same
+    // solutions, and this asserts the cards were served without it.
     await expect(page.locator(".launcher a", { hasText: "Order Management" })).toBeVisible();
     // Generous, because this asserts "did not wait for a model", not a budget.
     expect(Date.now() - started).toBeLessThan(15_000);
@@ -750,7 +754,9 @@ test.describe("blast radius", () => {
     await expect(card).toContainText("Other solutions are unaffected");
 
     // The part that matters: the shell and every other solution are untouched.
-    await expect(page.locator("nav.nav")).toBeVisible();
+    // With the sidebar gone the wordmark is the only persistent navigation, so
+    // it is the thing that has to survive a satellite being unreachable.
+    await expect(page.locator("header.topbar a.brand")).toBeVisible();
     await page.goto("/orders");
     await expect(page.locator("table.r-table")).toBeVisible();
   });

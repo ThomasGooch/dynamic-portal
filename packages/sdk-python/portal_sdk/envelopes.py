@@ -272,6 +272,7 @@ def manifest(
     nav: list[dict[str, Any]] | None = None,
     mcp_url: str | None = None,
     health_path: str | None = None,
+    summary_screen_id: str | None = None,
 ) -> dict[str, Any]:
     """A ``GET /portal/manifest`` response.
 
@@ -293,6 +294,13 @@ def manifest(
         ("nav", nav),
         ("mcpUrl", mcp_url),
         ("healthPath", health_path),
+        # `is not None`, like every other field here: an empty screen id is a
+        # mistake worth failing on at the hub, not one to quietly drop the
+        # summary for and leave a card with no figures and nothing to explain it.
+        (
+            "summary",
+            {"screenId": summary_screen_id} if summary_screen_id is not None else None,
+        ),
     ):
         if value is not None:
             body[key] = value

@@ -44,11 +44,13 @@ export {
   NavEntrySchema,
   ScreenDescriptorSchema,
   ScreenParamSchema,
+  SummarySchema,
   type ActionDescriptor,
   type ActionParam,
   type Manifest,
   type NavEntry,
   type ScreenDescriptor,
+  type Summary,
 } from "./manifest";
 
 export {

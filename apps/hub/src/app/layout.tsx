@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { connection } from "next/server";
-import { resolveNav } from "@portal/registry";
-import { getPortal } from "@/lib/portal";
 import { currentPrincipal, isDevSession } from "@/lib/session";
 import { Toaster } from "@/components/Toaster";
 import { AgentPanel } from "@/components/AgentPanel";
@@ -17,11 +16,19 @@ export const metadata = {
 };
 
 /**
- * The shell, rendered per request and never prerendered.
+ * The shell: a bar with the way home, and the page.
  *
- * Nav is resolved server-side from the registry for *this* principal, so a
- * satellite they cannot reach never reaches the browser — not hidden with CSS,
- * not filtered on the client, simply absent from the response.
+ * There was a sidebar listing every solution. It went when the landing page
+ * started carrying a card per solution — the same list, twice on screen, and
+ * the copy in the sidebar was the one with less to say. What it *declared* did
+ * not go with it: `resolveNav` still groups and orders the cards on the front
+ * page, so the `nav: { section, order }` in every registry entry and manifest
+ * keeps the reader it always had. Deleting a panel is cheap; quietly orphaning
+ * a declaration three satellites maintain is the expensive kind of tidying.
+ *
+ * The wordmark is the way back. With no sidebar it is the only persistent
+ * navigation, so it is a real link rather than a heading that happens to sit in
+ * the corner.
  *
  * `await connection()` is how Next 16 expresses this: the `dynamic` route
  * segment option was removed in v16, so the old `export const dynamic =
@@ -52,48 +59,59 @@ export const metadata = {
  * check, and the environment-to-attribute step is the half of this feature the
  * e2e suite cannot assert against a stack that has no brand set.
  */
+/**
+ * Internal navigation keeps the document alive.
+ *
+ * A plain `<a href>` replaces the whole document, which takes the assistant
+ * panel with it — ask a question, click into a solution while it thinks, and
+ * the request dies with the page. The conversation survived that already
+ * (`sessionStorage`), but the in-flight turn could not, so the panel had to say
+ * "the page changed before this answer arrived".
+ *
+ * `<Link>` navigates within the same layout, so the panel — which lives in the
+ * layout — is never unmounted and its `fetch` resolves normally. This is also
+ * what the renderer already does for an action's `navigate`: `router.push`.
+ * Links were the one path still reloading the world.
+ *
+ * `prefetch={false}` deliberately. Next prefetches a link when it scrolls into
+ * view, and a prefetched screen route is a *real* screen read: it reaches the
+ * satellite and writes an audit entry. Solutions nobody clicked would appear in
+ * the log as read, which is the same defect the healthcheck had — a machine
+ * generating records that read as a person's activity.
+ */
 const BRAND_ATTRIBUTES = brandAttributes();
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   await connection();
   const principal = currentPrincipal();
-  const nav = resolveNav(getPortal().registry, principal);
 
   return (
     <html lang="en" {...BRAND_ATTRIBUTES}>
       <body>
         <div className="shell">
-          <nav className="nav">
-            <div className="brand">
-              Dynamic Portal
-              <small>{principal.tenantId}</small>
-            </div>
+          <header className="topbar">
+            <div className="topbarInner">
+              {/* Every screen in the portal is under this. It is the only
+                  navigation that survives a satellite being unreachable, which
+                  is exactly when someone needs a way out of the page they are
+                  looking at. */}
+              <Link className="brand" href="/" prefetch={false}>
+                Dynamic Portal
+              </Link>
 
-            {nav.length === 0 ? (
-              <p className="navEmpty">No solutions are available to you.</p>
-            ) : (
-              nav.map((section) => (
-                <div className="navSection" key={section.section}>
-                  <h2>{section.section}</h2>
-                  <ul>
-                    {section.items.map((item) => (
-                      <li key={item.satelliteId}>
-                        <a href={`/${item.satelliteId}`}>{item.label}</a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))
-            )}
-
-            {isDevSession() && (
-              <div className="sessionBanner">
-                <strong>Development session</strong>
-                Signed in as {principal.sub} ({principal.audience}). Replace with
-                OIDC before deploying.
+              <div className="topbarMeta">
+                <span className="tenantTag">{principal.tenantId}</span>
+                {isDevSession() && (
+                  <span
+                    className="sessionBanner"
+                    title={`Signed in as ${principal.sub} (${principal.audience}). Replace with OIDC before deploying.`}
+                  >
+                    Development session
+                  </span>
+                )}
               </div>
-            )}
-          </nav>
+            </div>
+          </header>
 
           <main className="main">
             {/* Toasts live above the route so a satellite's `navigate` does not

@@ -34,6 +34,30 @@ export type Failure =
 
 export type Result<T> = { readonly ok: true; readonly value: T } | Failure;
 
+/**
+ * What the portal can say about a satellite without a user clicking anything.
+ *
+ * Three states, and the question they answer is "can this be used", not "is the
+ * process alive". `down` therefore covers both a satellite that did not answer
+ * and one the hub has stopped sending requests to — different causes, and the
+ * `detail` below says which, but the same answer to the only question the front
+ * page is asking.
+ *
+ * There was a fourth, `degraded`, for a satellite that answers its probe while
+ * the hub's traffic to it fails. A review found it could not occur: the caller
+ * reads the manifest first, that read goes through the same breaker, so by the
+ * time health is probed the breaker is always closed. A state that cannot
+ * happen is worse than one that does not exist, because it reads as coverage.
+ */
+export type HealthStatus = "ok" | "down" | "unknown";
+
+export interface HealthReport {
+  readonly status: HealthStatus;
+  readonly latencyMs?: number;
+  /** Why, when it is not `ok`. Safe to show: no upstream body reaches this. */
+  readonly detail?: string;
+}
+
 export interface SatelliteClientOptions {
   readonly satellite: Satellite;
   readonly principalSecret: string;
@@ -60,6 +84,60 @@ export class SatelliteClient {
 
   get breaker(): CircuitBreaker {
     return this.#breaker;
+  }
+
+  /**
+   * Whether this satellite is up, and whether the hub's traffic to it is
+   * working — which are different questions.
+   *
+   * `healthPath` has been in the manifest and all three SDKs since the
+   * protocol was written, with nothing reading it. This is its first consumer,
+   * and the reason the front page can say anything at all before a user clicks.
+   *
+   * **The breaker is not consulted at all, in either direction.** A liveness
+   * probe is an observation, not traffic. Recording a success would let a
+   * satellite with a cheap `/healthz` and broken screens have its circuit
+   * reopened by every visit to the front page; recording a failure would let a
+   * flaky probe take a working satellite's screens offline. And it is not
+   * *read* either, since the only caller reaches this after a manifest fetch
+   * that already required a closed circuit — reading it could return exactly
+   * one answer.
+   */
+  async checkHealth(healthPath: string): Promise<HealthReport> {
+    // Nothing here consults `#breaker`, and nothing here should: see the note
+    // above. The one caller only arrives after a manifest fetch that already
+    // required a closed circuit, so a probe never runs against an open one —
+    // which is what makes the read pointless rather than merely unwanted.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.#satellite.timeoutMs);
+    const started = Date.now();
+
+    try {
+      const response = await this.#fetch(`${this.#satellite.baseUrl}${healthPath}`, {
+        method: "GET",
+        signal: controller.signal,
+      });
+      const latencyMs = Date.now() - started;
+
+      // Nothing here reads the body, and an undrained one holds its socket
+      // until the `Response` is collected — a probe per satellite per view is
+      // enough of those to matter, and the next real request to that satellite
+      // waits behind them. Only the status was ever wanted.
+      void response.body?.cancel().catch(() => {});
+
+      if (!response.ok) {
+        return { status: "down", latencyMs, detail: `answered ${response.status}` };
+      }
+
+      return { status: "ok", latencyMs };
+    } catch {
+      const latencyMs = Date.now() - started;
+      return controller.signal.aborted
+        ? { status: "down", latencyMs, detail: `timed out after ${this.#satellite.timeoutMs}ms` }
+        : { status: "down", latencyMs, detail: "could not be reached" };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async fetchManifest(): Promise<Result<Manifest>> {

@@ -222,7 +222,8 @@ public static class Envelopes
         string? description = null,
         IReadOnlyList<IReadOnlyDictionary<string, object?>>? nav = null,
         string? mcpUrl = null,
-        string? healthPath = null)
+        string? healthPath = null,
+        string? summaryScreenId = null)
     {
         var body = new Dictionary<string, object?>
         {
@@ -237,6 +238,8 @@ public static class Envelopes
         if (nav is not null) body["nav"] = nav;
         if (mcpUrl is not null) body["mcpUrl"] = mcpUrl;
         if (healthPath is not null) body["healthPath"] = healthPath;
+        if (summaryScreenId is not null)
+            body["summary"] = new Dictionary<string, object?> { ["screenId"] = summaryScreenId };
         return body;
     }
 

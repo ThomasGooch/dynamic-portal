@@ -1,5 +1,6 @@
 "use client";
 
+import NextLink from "next/link";
 import { useRender } from "../context";
 import { formatValue } from "../format";
 import type { Renderer, PropsOf } from "../kinds";
@@ -122,7 +123,13 @@ function Cell({
     { currentSatelliteId: ctx.satelliteId, allowedSatelliteIds: ctx.allowedSatelliteIds },
   );
 
-  return link.kind === "internal" ? <a href={link.href}>{body}</a> : <>{body}</>;
+  return link.kind === "internal" ? (
+    <NextLink href={link.href} prefetch={false}>
+      {body}
+    </NextLink>
+  ) : (
+    <>{body}</>
+  );
 }
 
 const TONES = new Set(["neutral", "muted", "info", "success", "warning", "danger"]);
@@ -168,12 +175,20 @@ function Pager({ page, pageSize, total, dataSource }: PropsOf<"Table">) {
       {previous === undefined ? (
         <span className="r-pagerDisabled">Previous</span>
       ) : (
-        <a href={previous}>Previous</a>
+        <NextLink href={previous} prefetch={false}>
+          Previous
+        </NextLink>
       )}
       <span className="r-pagerStatus">
         Page {current} of {lastPage} · {total} total
       </span>
-      {next === undefined ? <span className="r-pagerDisabled">Next</span> : <a href={next}>Next</a>}
+      {next === undefined ? (
+        <span className="r-pagerDisabled">Next</span>
+      ) : (
+        <NextLink href={next} prefetch={false}>
+          Next
+        </NextLink>
+      )}
     </nav>
   );
 }

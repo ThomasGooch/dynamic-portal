@@ -1,5 +1,6 @@
 "use client";
 
+import NextLink from "next/link";
 import { useState } from "react";
 import { useRender } from "../context";
 import type { Renderer } from "../kinds";
@@ -80,9 +81,9 @@ export const Link: Renderer<"Link"> = ({ props }) => {
   }
 
   return (
-    <a className="r-link" href={link.href}>
+    <NextLink className="r-link" href={link.href} prefetch={false}>
       {props.label}
-    </a>
+    </NextLink>
   );
 };
 
@@ -131,9 +132,9 @@ function MenuItem({
       { currentSatelliteId: ctx.satelliteId, allowedSatelliteIds: ctx.allowedSatelliteIds },
     );
     return link.kind === "internal" ? (
-      <a className="r-menuItem" role="menuitem" href={link.href}>
+      <NextLink className="r-menuItem" role="menuitem" href={link.href} prefetch={false}>
         {item.label}
-      </a>
+      </NextLink>
     ) : (
       <span className="r-menuItem" data-inert="" title={link.kind === "inert" ? link.reason : ""}>
         {item.label}

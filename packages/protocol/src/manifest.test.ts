@@ -148,6 +148,59 @@ describe("Manifest", () => {
       ).toThrow(/unknown screen/);
     });
 
+    it("rejects a summary pointing at a screen that does not exist", () => {
+      // The landing page renders this screen's figures for every account that
+      // can see the satellite. A typo here is a blank card on the front door,
+      // discovered by whoever opens the portal rather than by whoever shipped.
+      expect(() =>
+        ManifestSchema.parse({
+          ...validManifest,
+          summary: { screenId: "orders.lst" },
+        }),
+      ).toThrow(/summary references unknown screen/);
+    });
+
+    it("accepts a summary pointing at a declared screen", () => {
+      expect(() =>
+        ManifestSchema.parse({
+          ...validManifest,
+          summary: { screenId: "orders.list" },
+        }),
+      ).not.toThrow();
+    });
+
+    it("treats a summary as optional, because most satellites will not have one", () => {
+      const parsed = ManifestSchema.parse(validManifest);
+      expect(parsed.summary).toBeUndefined();
+    });
+
+    it("refuses a summary screen that takes required parameters", () => {
+      // The hub calls this with no arguments — it has none to give, and
+      // inventing one would be the per-satellite knowledge this design exists
+      // to keep out of the hub. A screen that needs an id cannot be a summary.
+      expect(() =>
+        ManifestSchema.parse({
+          ...validManifest,
+          screens: [
+            { id: "orders.list", title: "Orders" },
+            { id: "orders.detail", title: "Order", params: [{ name: "id", required: true }] },
+          ],
+          summary: { screenId: "orders.detail" },
+        }),
+        // Unquoted: Zod serialises the issue, so the id arrives escaped.
+      ).toThrow(/summary screen .* requires parameters \(id\)/);
+    });
+
+    it("allows a summary screen whose parameters are all optional", () => {
+      expect(() =>
+        ManifestSchema.parse({
+          ...validManifest,
+          screens: [{ id: "orders.list", title: "Orders", params: [{ name: "q" }] }],
+          summary: { screenId: "orders.list" },
+        }),
+      ).not.toThrow();
+    });
+
     it("accepts a nav entry pointing at a declared screen", () => {
       expect(() =>
         ManifestSchema.parse({

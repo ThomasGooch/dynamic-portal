@@ -53,9 +53,31 @@ Running services:
 | `satellite-fleet` | Python | 4002 | **none, deliberately** | `GET /healthz` |
 | `satellite-depots` | C# / .NET | 4003 | **none, deliberately** | `GET /healthz` |
 
-Open <http://localhost:3000>. The nav is built from `config/satellites.yaml`
-for the current principal, so a satellite you cannot reach is absent from the
-response rather than hidden in the browser.
+Open <http://localhost:3000>. The landing page is built from
+`config/satellites.yaml` for the current principal, so a satellite you cannot
+reach is absent from the response rather than hidden in the browser. There is no
+sidebar — the cards below *are* the navigation, grouped and ordered by the
+`nav: { section, order }` each satellite declares. The wordmark is the way back
+to them from any screen.
+
+Each card is tagged **MCP** or **Non-MCP** — how the agent reaches that
+solution. It is read from the registry's `mcpUrl`, never the manifest's, so a
+satellite cannot advertise an integration the platform team did not grant it by
+editing a file it owns. The tag is a property of the deployment, not a health
+check: a solution whose MCP server is down is still an MCP solution, and the
+pill beside it is what changes.
+
+The landing page is a card per solution: its health, and the figures it chose to
+be summarised by. Neither half is hardcoded. Health comes from the `healthPath`
+in each manifest — probed by the hub, deliberately without touching the circuit
+breaker: a liveness probe is an observation, not traffic, and recording either
+outcome against the breaker would let a cheap `/healthz` reopen a circuit or a
+flaky one close it. The figures are the
+stat tiles on a screen the satellite nominates with `summary`, read with the
+same extractor the agent's read tools use. So the front page can show no number
+a team is not already showing its own users, nothing is declared twice, and
+adding a fourth solution needs no hub change. Each card resolves in its own
+`<Suspense>` boundary, so one slow satellite delays one card.
 
 Three languages is not decoration. The protocol is a wire format, not a shared
 library, and `satellite-fleet` shares no code with `@portal/protocol` — the e2e
