@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { visibleSatellites } from "@portal/registry";
+import { findSatellite, resolveNav } from "@portal/registry";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal } from "@/lib/session";
 import { isAgentEnabled } from "@/lib/agent";
@@ -14,7 +14,11 @@ import { SolutionStatus, SolutionStatusPending } from "@/components/SolutionStat
  * page.
  *
  * **The cards** come from the registry alone — name, description, link, no I/O.
- * They render server-side and are a complete, usable front door on their own.
+ * They render server-side and are a complete, usable front door on their own,
+ * grouped and ordered by `resolveNav`. That grouping used to be the sidebar's
+ * job; when the sidebar went, the reading of those declarations came here
+ * rather than going with it. `nav: { section, order }` is maintained by three
+ * satellite teams, and a field nothing reads is a field that rots.
  *
  * **The status** fills in per card, inside its own `<Suspense>` boundary. A
  * satellite that is slow or stopped delays its own card and nothing else, which
@@ -32,7 +36,11 @@ import { SolutionStatus, SolutionStatusPending } from "@/components/SolutionStat
 export default async function Home() {
   await connection();
   const principal = currentPrincipal();
-  const satellites = visibleSatellites(getPortal().registry, principal);
+  const registry = getPortal().registry;
+  // Already filtered to what this principal may see, grouped by section and
+  // ordered within it — so a satellite they cannot reach never reaches the
+  // browser, rather than being hidden once it is there.
+  const sections = resolveNav(registry, principal);
 
   return (
     <>
@@ -40,29 +48,43 @@ export default async function Home() {
         <h1>Solutions</h1>
       </div>
 
-      {satellites.length === 0 ? (
+      {sections.length === 0 ? (
         <p>Nothing is available to your account.</p>
       ) : (
-        <ul className="launcher">
-          {satellites.map((satellite) => (
-            <li key={satellite.id} className="solutionCard">
-              <a href={`/${satellite.id}`}>
-                <strong>{satellite.displayName}</strong>
-                {satellite.description !== undefined && <span>{satellite.description}</span>}
-              </a>
+        sections.map((section) => (
+          <section className="solutionSection" key={section.section}>
+            {/* Shown only when there is more than one, because a lone heading
+                over every card on the page labels nothing. */}
+            {sections.length > 1 && <h2>{section.section}</h2>}
 
-              {/*
-                Keyed by satellite and given its own boundary, so the three
-                requests are independent. A shared boundary would make the whole
-                grid wait for the slowest satellite — which is the behaviour the
-                error card on a screen exists to avoid, reintroduced one page up.
-              */}
-              <Suspense fallback={<SolutionStatusPending />}>
-                <SolutionStatus satellite={satellite} principal={principal} />
-              </Suspense>
-            </li>
-          ))}
-        </ul>
+            <ul className="launcher">
+              {section.items.map((item) => {
+                const satellite = findSatellite(registry, item.satelliteId);
+                if (satellite === undefined) return null;
+
+                return (
+                  <li key={satellite.id} className="solutionCard">
+                    <a href={`/${satellite.id}`}>
+                      <strong>{satellite.displayName}</strong>
+                      {satellite.description !== undefined && <span>{satellite.description}</span>}
+                    </a>
+
+                    {/*
+                      Keyed by satellite and given its own boundary, so the
+                      requests are independent. A shared boundary would make the
+                      whole grid wait for the slowest satellite — which is the
+                      behaviour the error card on a screen exists to avoid,
+                      reintroduced one page up.
+                    */}
+                    <Suspense fallback={<SolutionStatusPending />}>
+                      <SolutionStatus satellite={satellite} principal={principal} />
+                    </Suspense>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))
       )}
 
       {/* Rendered only where the assistant is available at all, so a portal

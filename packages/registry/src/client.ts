@@ -37,13 +37,19 @@ export type Result<T> = { readonly ok: true; readonly value: T } | Failure;
 /**
  * What the portal can say about a satellite without a user clicking anything.
  *
- * Four states rather than up/down, because two of them come from different
- * places. `ok` and `down` are the satellite's answer; `degraded` is the hub's
- * own memory of failing traffic to a process that still claims to be alive;
- * `unknown` is a satellite that declared no `healthPath`, which is a fact about
- * the manifest and not a fault.
+ * Three states, and the question they answer is "can this be used", not "is the
+ * process alive". `down` therefore covers both a satellite that did not answer
+ * and one the hub has stopped sending requests to — different causes, and the
+ * `detail` below says which, but the same answer to the only question the front
+ * page is asking.
+ *
+ * There was a fourth, `degraded`, for a satellite that answers its probe while
+ * the hub's traffic to it fails. A review found it could not occur: the caller
+ * reads the manifest first, that read goes through the same breaker, so by the
+ * time health is probed the breaker is always closed. A state that cannot
+ * happen is worse than one that does not exist, because it reads as coverage.
  */
-export type HealthStatus = "ok" | "degraded" | "down" | "unknown";
+export type HealthStatus = "ok" | "down" | "unknown";
 
 export interface HealthReport {
   readonly status: HealthStatus;
@@ -88,13 +94,14 @@ export class SatelliteClient {
    * protocol was written, with nothing reading it. This is its first consumer,
    * and the reason the front page can say anything at all before a user clicks.
    *
-   * **The breaker is deliberately untouched, in both directions.** A liveness
-   * probe is an observation, not traffic. Counting a success would let a
+   * **The breaker is not consulted at all, in either direction.** A liveness
+   * probe is an observation, not traffic. Recording a success would let a
    * satellite with a cheap `/healthz` and broken screens have its circuit
-   * reopened by every visit to the front page — the hub repairing its own view
-   * of something still failing. Counting a failure is worse: a flaky probe
-   * would take a working satellite's screens offline. So this reads the
-   * breaker and never writes it.
+   * reopened by every visit to the front page; recording a failure would let a
+   * flaky probe take a working satellite's screens offline. And it is not
+   * *read* either, since the only caller reaches this after a manifest fetch
+   * that already required a closed circuit — reading it could return exactly
+   * one answer.
    */
   async checkHealth(healthPath: string): Promise<HealthReport> {
     // Probed even when the breaker is open, deliberately. One cheap liveness
@@ -112,21 +119,17 @@ export class SatelliteClient {
       });
       const latencyMs = Date.now() - started;
 
+      // Nothing here reads the body, and an undrained one holds its socket
+      // until the `Response` is collected — a probe per satellite per view is
+      // enough of those to matter, and the next real request to that satellite
+      // waits behind them. Only the status was ever wanted.
+      void response.body?.cancel().catch(() => {});
+
       if (!response.ok) {
         return { status: "down", latencyMs, detail: `answered ${response.status}` };
       }
 
-      // Alive, but the hub's own screen traffic has been failing. A green pill
-      // here would sit on a solution nobody can actually open.
-      //
-      // `state`, never `allowsRequest()` — that method *mutates*. It moves an
-      // open breaker to half-open and claims the single probe slot, and this
-      // method never records an outcome, so asking it would wedge the breaker
-      // half-open until the probe expired: the front page refusing a
-      // satellite's real traffic once per visit, by looking at it.
-      return this.#breaker.state === "closed"
-        ? { status: "ok", latencyMs }
-        : { status: "degraded", latencyMs, detail: "recent requests to this solution failed" };
+      return { status: "ok", latencyMs };
     } catch {
       const latencyMs = Date.now() - started;
       return controller.signal.aborted

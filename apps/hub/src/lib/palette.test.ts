@@ -310,6 +310,27 @@ describe("a brand's palette", () => {
 
         expect(failures, `${name} ${scheme}`).toEqual([]);
       });
+
+      /**
+       * The two states that also colour their *text*.
+       *
+       * `.solutionHealth[data-status="down"]` sets `color` to the tone, so on
+       * that card the tone is no longer a non-text indicator and 3:1 is the
+       * wrong bar. Checked separately rather than by raising the loop above,
+       * because the other tones are only ever dots and holding them to a text
+       * ratio would be a rule the code does not need.
+       */
+      it(`${name} status wording is legible on the card in ${scheme}`, () => {
+        const block = scoped();
+        const surface = colourIn(block, "--surface");
+
+        const failures = ["danger"].flatMap((tone) => {
+          const ratio = contrast(colourIn(block, `--tone-${tone}`), surface);
+          return ratio >= 4.5 ? [] : [`${tone} ${ratio.toFixed(2)}:1 on --surface`];
+        });
+
+        expect(failures, `${name} ${scheme}`).toEqual([]);
+      });
     }
   }
 });

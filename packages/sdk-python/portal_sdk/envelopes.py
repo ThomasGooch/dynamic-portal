@@ -294,7 +294,13 @@ def manifest(
         ("nav", nav),
         ("mcpUrl", mcp_url),
         ("healthPath", health_path),
-        ("summary", {"screenId": summary_screen_id} if summary_screen_id else None),
+        # `is not None`, like every other field here: an empty screen id is a
+        # mistake worth failing on at the hub, not one to quietly drop the
+        # summary for and leave a card with no figures and nothing to explain it.
+        (
+            "summary",
+            {"screenId": summary_screen_id} if summary_screen_id is not None else None,
+        ),
     ):
         if value is not None:
             body[key] = value

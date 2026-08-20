@@ -53,9 +53,12 @@ Running services:
 | `satellite-fleet` | Python | 4002 | **none, deliberately** | `GET /healthz` |
 | `satellite-depots` | C# / .NET | 4003 | **none, deliberately** | `GET /healthz` |
 
-Open <http://localhost:3000>. The nav is built from `config/satellites.yaml`
-for the current principal, so a satellite you cannot reach is absent from the
-response rather than hidden in the browser.
+Open <http://localhost:3000>. The landing page is built from
+`config/satellites.yaml` for the current principal, so a satellite you cannot
+reach is absent from the response rather than hidden in the browser. There is no
+sidebar — the cards below *are* the navigation, grouped and ordered by the
+`nav: { section, order }` each satellite declares. The wordmark is the way back
+to them from any screen.
 
 The landing page is a card per solution: its health, and the figures it chose to
 be summarised by. Neither half is hardcoded. Health comes from the `healthPath`

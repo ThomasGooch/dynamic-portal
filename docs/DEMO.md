@@ -175,7 +175,7 @@ docker compose stop satellite-fleet
 
 Reload the portal. **The front page tells you first** — Fleet's card goes red
 and says so, while Orders and Depots keep their figures. Open Fleet and it is a
-scoped error card; navigation still works.
+scoped error card; the wordmark still takes you home.
 
 If you want the sharper version, `docker compose pause satellite-fleet` instead:
 the container accepts connections and never answers, which is the failure that

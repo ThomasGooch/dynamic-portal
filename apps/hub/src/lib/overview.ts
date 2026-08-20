@@ -1,7 +1,7 @@
 import type { Principal } from "@portal/identity";
 import { extractData, type ExtractedStat } from "@portal/mcp-gateway";
 import type { Manifest, ScreenResponse } from "@portal/protocol";
-import type { HealthReport, Result } from "@portal/registry";
+import type { Failure, HealthReport, Result } from "@portal/registry";
 
 /**
  * What the portal can say about one solution before anybody clicks it.
@@ -65,6 +65,20 @@ export interface SatelliteOverview {
 
 const UNREACHABLE: HealthReport = { status: "down", detail: "did not answer" };
 
+/**
+ * Why the manifest could not be read, in the card's words.
+ *
+ * `unavailable` is the breaker refusing the hub's own request — the satellite
+ * was never contacted, so "did not answer" would be the portal reporting a
+ * silence it never listened for. It is still `down`, because with no manifest
+ * there is no `healthPath` to probe and the portal genuinely does not know.
+ */
+function unreachable(failure: Failure): HealthReport {
+  return failure.reason === "unavailable"
+    ? { status: "down", detail: "not contacted: recent requests to this solution failed" }
+    : UNREACHABLE;
+}
+
 export async function satelliteOverview(
   source: OverviewSource,
   principal: Principal,
@@ -73,7 +87,7 @@ export async function satelliteOverview(
     // The manifest first, because it names both of the things below. A
     // satellite whose manifest will not load has nothing else worth asking.
     const manifest = await source.fetchManifest();
-    if (!manifest.ok) return { health: UNREACHABLE, stats: [] };
+    if (!manifest.ok) return { health: unreachable(manifest), stats: [] };
 
     const { healthPath, summary } = manifest.value;
 
@@ -104,12 +118,22 @@ async function summaryStats(
   screenId: string,
   principal: Principal,
 ): Promise<readonly ExtractedStat[]> {
-  // No parameters, because the hub has none to give. `ManifestSchema` refuses a
-  // summary screen that requires any, so this is a fact rather than a hope.
-  const screen = await source.fetchScreen(screenId, {}, principal);
-  if (!screen.ok) return [];
+  // Contained here rather than left to the caller's catch. The figures are the
+  // lesser half of the card: a satellite that answered its health probe must
+  // still read `ok`, and letting a throw from here — `fetchScreen`, or
+  // `extractData` walking a tree the satellite controls — reject the
+  // `Promise.all` above would discard that measured health and report a
+  // demonstrably live solution as down.
+  try {
+    // No parameters, because the hub has none to give. `ManifestSchema` refuses
+    // a summary screen that requires any, so this is a fact rather than a hope.
+    const screen = await source.fetchScreen(screenId, {}, principal);
+    if (!screen.ok) return [];
 
-  // Stats only. A summary is the figures a team chose to headline, not a scrape
-  // of everything on the screen — the tables and charts stay where they are.
-  return extractData(screen.value.ui).stats.slice(0, MAX_SUMMARY_STATS);
+    // Stats only. A summary is the figures a team chose to headline, not a
+    // scrape of everything on the screen — tables and charts stay where they are.
+    return extractData(screen.value.ui).stats.slice(0, MAX_SUMMARY_STATS);
+  } catch {
+    return [];
+  }
 }

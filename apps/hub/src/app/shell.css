@@ -1,32 +1,73 @@
 .shell {
+  /* Rows, not columns: the sidebar went when the landing page grew a card per
+     solution, and the wordmark is now the only persistent navigation. */
   display: grid;
-  grid-template-columns: var(--nav-width) 1fr;
+  grid-template-rows: auto 1fr;
   min-height: 100vh;
 }
 
-.nav {
-  border-right: 1px solid var(--border);
+/* The rule spans the window; its contents line up with the page. Without the
+   inner width the wordmark sat 40px left of the "Solutions" heading below it,
+   which reads as two grids rather than one. */
+.topbar {
+  border-bottom: 1px solid var(--border);
   background: var(--surface-sunken);
-  padding: var(--gap-lg) var(--gap-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-lg);
 }
 
+.topbarInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  /* Matches `.main` exactly — same max-width, same padding, same centring. */
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+  padding: var(--gap-sm) var(--gap-lg);
+}
+
+/* The way home from anywhere, so it is a link and looks like one on hover
+   rather than a heading that happens to sit in the corner. */
 .brand {
   font-weight: 650;
   letter-spacing: -0.01em;
   font-size: 15px;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--radius);
+  padding: 4px 6px;
+  margin-left: -6px;
 }
 
-.brand small {
-  display: block;
-  font-weight: 400;
-  color: var(--text-muted);
+.brand:hover {
+  background: var(--surface);
+}
+
+.topbarMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
   font-size: 12px;
+  color: var(--text-muted);
 }
 
-.navSection h2 {
+.tenantTag {
+  font-variant-numeric: tabular-nums;
+}
+
+.main {
+  padding: var(--gap-lg);
+  max-width: 1100px;
+  /* Centred now that it is no longer pushed across by a sidebar. */
+  margin: 0 auto;
+  width: 100%;
+}
+
+.solutionSection + .solutionSection {
+  margin-top: var(--gap-lg);
+}
+
+.solutionSection h2 {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -35,49 +76,15 @@
   font-weight: 600;
 }
 
-.navSection ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.navSection a {
-  display: block;
-  padding: 6px var(--gap-sm);
-  border-radius: var(--radius);
-  text-decoration: none;
-  color: var(--text);
-}
-
-.navSection a:hover {
-  background: var(--surface);
-}
-
-.navEmpty {
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.main {
-  padding: var(--gap-lg);
-  max-width: 1100px;
-}
-
+/* Kept as a warning rather than a badge: it says this portal is running with a
+   development identity, which is exactly the thing that should look out of
+   place. The full detail is in its `title`, so the bar stays one line. */
 .sessionBanner {
-  margin-top: auto;
-  font-size: 12px;
-  color: var(--text-muted);
+  color: var(--tone-warning);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
-  padding: var(--gap-sm);
-}
-
-.sessionBanner strong {
-  color: var(--tone-warning);
-  display: block;
+  padding: 2px var(--gap-sm);
+  cursor: help;
 }
 
 /*
@@ -324,14 +331,12 @@
 }
 
 .solutionHealth[data-status="ok"] .solutionPill { background: var(--tone-success); }
-.solutionHealth[data-status="degraded"] .solutionPill { background: var(--tone-warning); }
 .solutionHealth[data-status="down"] .solutionPill { background: var(--tone-danger); }
 
 /* Colour is never the only signal: the label beside the dot already names the
-   state in words, and these carry it into the text for the two that are not
+   state in words, and this carries it into the text for the one that is not
    "fine". A portal that says "something is wrong" only in red says nothing to
    a reader who cannot see red. */
-.solutionHealth[data-status="degraded"] { color: var(--tone-warning); }
 .solutionHealth[data-status="down"] { color: var(--tone-danger); }
 
 .solutionWhy {

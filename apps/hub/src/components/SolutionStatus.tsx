@@ -16,7 +16,6 @@ import { getPortal } from "@/lib/portal";
 
 const LABEL: Record<string, string> = {
   ok: "Available",
-  degraded: "Degraded",
   down: "Unavailable",
   unknown: "No health check",
 };
@@ -53,8 +52,11 @@ export async function SolutionStatus({
 
       {stats.length > 0 && (
         <dl className="solutionStats">
-          {stats.map((stat) => (
-            <div key={stat.label}>
+          {stats.map((stat, index) => (
+            // Keyed by position, not by label: the label is a string the
+            // satellite chose and nothing stops one screen carrying two tiles
+            // that share it, which as a key is a duplicate React mis-reconciles.
+            <div key={`${index}-${stat.label}`}>
               <dt>{stat.label}</dt>
               <dd>{stat.value}</dd>
             </div>

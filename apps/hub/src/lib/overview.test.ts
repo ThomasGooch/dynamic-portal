@@ -88,14 +88,14 @@ describe("a solution's card", () => {
       source({
         checkHealth: async (path) => {
           asked.push(path);
-          return { status: "degraded", detail: "recent requests failed" };
+          return { status: "down", detail: "answered 503" };
         },
       }),
       principal,
     );
 
     expect(asked).toEqual(["/healthz"]);
-    expect(overview.health.status).toBe("degraded");
+    expect(overview.health.status).toBe("down");
   });
 });
 
@@ -168,6 +168,38 @@ describe("when something is wrong", () => {
 
     // A card with a green pill and no figures is honest and still useful. One
     // failing screen must not cost the solution its place on the page.
+    expect(overview.health.status).toBe("ok");
+    expect(overview.stats).toEqual([]);
+  });
+
+  it("does not claim silence from a satellite it never contacted", async () => {
+    const overview = await satelliteOverview(
+      source({
+        fetchManifest: async () =>
+          ({ ok: false, reason: "unavailable", retryAfterMs: 20_000 }) as Result<Manifest>,
+      }),
+      principal,
+    );
+
+    // The breaker refused the hub's own request, so nothing was asked and
+    // nothing failed to answer. Still down — with no manifest there is no
+    // health path to probe — but the card must say which of the two it is.
+    expect(overview.health.status).toBe("down");
+    expect(overview.health.detail).toMatch(/recent requests/);
+  });
+
+  it("keeps the health it measured when reading the figures throws", async () => {
+    const overview = await satelliteOverview(
+      source({
+        fetchScreen: async () => {
+          throw new Error("boom");
+        },
+      }),
+      principal,
+    );
+
+    // The figures are the lesser half. A satellite that answered its health
+    // probe is up, whatever its summary screen did on the way back.
     expect(overview.health.status).toBe("ok");
     expect(overview.stats).toEqual([]);
   });
