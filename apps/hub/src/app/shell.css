@@ -373,6 +373,16 @@
    a reader who cannot see red. */
 .solutionHealth[data-status="down"] { color: var(--tone-danger); }
 
+/* Said, not left blank. An empty card reads as "this solution nominates no
+   summary screen", which is the opposite of what happened. */
+.solutionWithheld {
+  margin: 0;
+  padding: 0 var(--gap-md) var(--gap-md);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .solutionWhy {
   color: var(--text-muted);
   font-size: 12px;

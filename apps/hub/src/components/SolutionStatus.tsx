@@ -1,5 +1,6 @@
-import type { Principal } from "@portal/identity";
+import { screenRead, type Principal } from "@portal/identity";
 import type { Satellite } from "@portal/registry";
+import { auditKeyFor, auditStamp, recordAudit } from "@/lib/audit";
 import { satelliteOverview } from "@/lib/overview";
 import { getPortal } from "@/lib/portal";
 
@@ -28,11 +29,28 @@ export async function SolutionStatus({
   principal: Principal;
 }) {
   const client = getPortal().clientFor(satellite);
-  const { health, stats } = await satelliteOverview(
+  const { health, stats, figuresWithheld } = await satelliteOverview(
     {
       fetchManifest: () => client.fetchManifest(),
       checkHealth: (path) => client.checkHealth(path),
       fetchScreen: (screenId, params, who) => client.fetchScreen(screenId, params, who),
+      // The same record the screen route writes, because it is the same read of
+      // the same tenant-scoped data by the same hub — it merely arrived by the
+      // front page. `params` is empty by construction; the summary screen is
+      // refused at the protocol if it requires any.
+      recordRead: ({ screenId, outcome, reason, latencyMs }) =>
+        recordAudit(
+          screenRead({
+            ...auditStamp(),
+            principal,
+            auditKey: auditKeyFor(principal),
+            satelliteId: satellite.id,
+            screenId,
+            params: {},
+            outcome: reason === undefined ? { status: outcome } : { status: outcome, reason },
+            latencyMs,
+          }),
+        ),
     },
     principal,
   );
@@ -49,6 +67,10 @@ export async function SolutionStatus({
           <span className="solutionWhy">{health.latencyMs} ms</span>
         )}
       </p>
+
+      {figuresWithheld !== undefined && <p className="solutionWithheld">{figuresWithheld}</p>}
+
+      {figuresWithheld !== undefined && <p className="solutionWithheld">{figuresWithheld}</p>}
 
       {stats.length > 0 && (
         <dl className="solutionStats">

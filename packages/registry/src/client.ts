@@ -104,10 +104,10 @@ export class SatelliteClient {
    * one answer.
    */
   async checkHealth(healthPath: string): Promise<HealthReport> {
-    // Probed even when the breaker is open, deliberately. One cheap liveness
-    // request is not the hammering a breaker exists to stop, and it is how a
-    // recovery gets noticed at all — a satellite whose circuit is open would
-    // otherwise be reported dead until somebody clicked into it.
+    // Nothing here consults `#breaker`, and nothing here should: see the note
+    // above. The one caller only arrives after a manifest fetch that already
+    // required a closed circuit, so a probe never runs against an open one —
+    // which is what makes the read pointless rather than merely unwanted.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.#satellite.timeoutMs);
     const started = Date.now();

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Principal } from "@portal/identity";
 import { CURRENT_PROTOCOL_VERSION, type Manifest } from "@portal/protocol";
 import type { HealthReport, Result } from "@portal/registry";
@@ -42,8 +42,18 @@ const screenWith = (children: unknown[]) => ({
 
 const tile = (label: string, value: string) => ({ type: "StatTile", props: { label, value } });
 
+/** Every read this file makes, so a test can assert what was recorded. */
+let recorded: { screenId: string; outcome: string; reason?: string }[] = [];
+
+beforeEach(() => {
+  recorded = [];
+});
+
 function source(over: Partial<OverviewSource> = {}): OverviewSource {
   return {
+    recordRead: async ({ screenId, outcome, reason }) => {
+      recorded.push({ screenId, outcome, ...(reason === undefined ? {} : { reason }) });
+    },
     fetchManifest: async () => ({ ok: true, value: manifest() }) as Result<Manifest>,
     checkHealth: async () => ({ status: "ok", latencyMs: 4 }) as HealthReport,
     fetchScreen: async () =>
@@ -138,6 +148,50 @@ describe("a satellite that declares less", () => {
   });
 });
 
+describe("a summary screen this principal may not see", () => {
+  const internalOnly = manifest({
+    screens: [{ id: "orders.internal", title: "Internal", audience: ["internal"] }],
+    summary: { screenId: "orders.internal" },
+  });
+
+  it("is not fetched, and shows no figures", async () => {
+    let fetched = false;
+    const overview = await satelliteOverview(
+      source({
+        fetchManifest: async () => ({ ok: true, value: internalOnly }),
+        fetchScreen: async () => {
+          fetched = true;
+          return {
+            ok: true,
+            value: screenWith([tile("Total orders", "3")]),
+          } as unknown as Result<never>;
+        },
+      }),
+      { ...principal, audience: "external" },
+    );
+
+    // The screen route filters a satellite's screens by their declared audience
+    // before it will fetch one. This is the same hub reading the same data, so
+    // it answers to the same rule — a screen an external principal would be
+    // 404'd for must not arrive on their card because they came in the front
+    // door instead. The satellite refuses too; that is not a reason for the hub
+    // not to ask the question.
+    expect(fetched).toBe(false);
+    expect(overview.stats).toEqual([]);
+    // Health is the hub's own question and is unaffected by any of this.
+    expect(overview.health.status).toBe("ok");
+  });
+
+  it("is fetched for a principal whose audience the screen declares", async () => {
+    const overview = await satelliteOverview(
+      source({ fetchManifest: async () => ({ ok: true, value: internalOnly }) }),
+      principal,
+    );
+
+    expect(overview.stats).toHaveLength(2);
+  });
+});
+
 describe("when something is wrong", () => {
   it("reports down and skips the screen when the manifest cannot be read", async () => {
     let fetched = false;
@@ -186,6 +240,42 @@ describe("when something is wrong", () => {
     // health path to probe — but the card must say which of the two it is.
     expect(overview.health.status).toBe("down");
     expect(overview.health.detail).toMatch(/recent requests/);
+  });
+
+  it("does not say a satellite was silent when it answered badly", async () => {
+    const overview = await satelliteOverview(
+      source({
+        fetchManifest: async () =>
+          ({ ok: false, reason: "upstream-error", status: 500 }) as Result<Manifest>,
+      }),
+      principal,
+    );
+
+    // Still down — with no manifest there is no health path to probe — but a
+    // process that answered 500 is a deploy to look at, and "did not answer"
+    // sends whoever is on call to the host instead.
+    expect(overview.health.status).toBe("down");
+    expect(overview.health.detail).toMatch(/answered 500/);
+  });
+
+  it("does not put a satellite's own words on the card", async () => {
+    const overview = await satelliteOverview(
+      source({
+        fetchManifest: async () =>
+          ({
+            ok: false,
+            reason: "invalid-response",
+            detail: "screens.0.type: <script>alert(1)</script>",
+          }) as Result<Manifest>,
+      }),
+      principal,
+    );
+
+    // The detail on an `invalid-response` quotes strings the satellite chose,
+    // and this one is rendered on the front page for every account that can see
+    // the solution. The card says what happened in the hub's words.
+    expect(overview.health.detail).not.toMatch(/script/);
+    expect(overview.health.detail).toMatch(/not a manifest/);
   });
 
   it("keeps the health it measured when reading the figures throws", async () => {
@@ -256,5 +346,57 @@ describe("what a satellite may put on the page", () => {
     // A summary is the figures a team chose to headline, not a scrape of the
     // whole screen. The table is a screen's content; the tile is its summary.
     expect(overview.stats).toEqual([{ label: "Pending", value: "2" }]);
+  });
+});
+
+describe("the audit record", () => {
+  it("records the summary read, like every other read of this data", async () => {
+    await satelliteOverview(source(), principal);
+
+    // The screen route, the agent's tools and the public façade all record.
+    // This was the fourth projection over the same tenant-scoped figures and
+    // the only one that did not, so a visit to the front page read three real
+    // order counts and left nothing to answer "who read what, when" with.
+    expect(recorded).toEqual([{ screenId: "orders.list", outcome: "ok" }]);
+  });
+
+  it("records a refused read too, not only the ones that worked", async () => {
+    await satelliteOverview(
+      source({ fetchScreen: async () => ({ ok: false, reason: "forbidden" }) as Result<never> }),
+      principal,
+    );
+
+    expect(recorded).toEqual([
+      { screenId: "orders.list", outcome: "error", reason: "forbidden" },
+    ]);
+  });
+
+  it("withholds the figures when the read cannot be recorded", async () => {
+    const overview = await satelliteOverview(
+      source({
+        recordRead: async () => {
+          throw new Error("audit log is not writable");
+        },
+      }),
+      principal,
+    );
+
+    // `lib/audit.ts` fails closed and the screen route says why: a read that
+    // cannot be recorded does not count as having happened. So the figures are
+    // dropped — and the card says so, because an empty space would read as a
+    // satellite that nominates no summary screen, which means the opposite.
+    expect(overview.stats).toEqual([]);
+    expect(overview.figuresWithheld).toMatch(/could not be recorded/);
+    // The page stays up: one card going quiet is not the front door failing.
+    expect(overview.health.status).toBe("ok");
+  });
+
+  it("records nothing when there was nothing to read", async () => {
+    await satelliteOverview(
+      source({ fetchManifest: async () => ({ ok: true, value: manifest({ summary: undefined }) }) }),
+      principal,
+    );
+
+    expect(recorded).toEqual([]);
   });
 });
