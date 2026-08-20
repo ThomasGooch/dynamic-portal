@@ -132,6 +132,9 @@ services:
       # localhost. The registry file defaults to localhost for a laptop and is
       # overridden here — one reviewed file, two environments.
       PORTAL_ORDERS_URL: http://satellite-orders:4001
+      # Same host, same port, same signed principal — a second protocol on the
+      # satellite, not a second deployment of it.
+      PORTAL_ORDERS_MCP_URL: http://satellite-orders:4001/mcp
       PORTAL_FLEET_URL: http://satellite-fleet:4002
       PORTAL_DEPOTS_URL: http://satellite-depots:4003
     # `host.docker.internal` is a Docker Desktop convenience; on Linux the name

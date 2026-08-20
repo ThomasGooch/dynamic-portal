@@ -63,12 +63,26 @@ export interface JsonObjectSchema {
 export interface ToolDescriptor {
   readonly name: string;
   readonly satelliteId: string;
+  /**
+   * Where this tool came from, and therefore how it is called.
+   *
+   * `pup` tools were derived from a manifest, so the gateway knows their
+   * schema and checks arguments before dispatching to a screen or action.
+   * `mcp` tools are the satellite's own: it declared them, it validates them,
+   * and the gateway forwards the call over MCP.
+   */
+  readonly source: "pup" | "mcp";
   readonly kind: ToolKind;
   /** The screen or action id this tool dispatches to. */
   readonly targetId: string;
   readonly title: string;
   readonly description: string;
-  readonly inputSchema: JsonObjectSchema;
+  /**
+   * A `pup` tool's schema is the narrow shape this gateway can validate. An
+   * `mcp` tool's is whatever its satellite declared, including the nesting
+   * `JsonObjectSchema` deliberately cannot express.
+   */
+  readonly inputSchema: JsonObjectSchema | Record<string, unknown>;
   readonly audience: readonly Audience[];
   readonly rbacScopes: readonly string[];
   readonly requiresConfirmation: boolean;
@@ -258,6 +272,7 @@ function build(input: BuildInput): ToolDescriptor | { reason: string } {
   return {
     name,
     satelliteId: input.satellite.id,
+    source: "pup",
     kind: input.kind,
     targetId: input.targetId,
     title: input.title,

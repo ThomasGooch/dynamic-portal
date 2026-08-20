@@ -11,6 +11,7 @@ import type { Manifest } from "@portal/protocol";
 import type { OrderRepository } from "./repository";
 import { readDraft } from "./draft";
 import { detailScreen, editScreen, listScreen, manifest, newScreen, ordersTable } from "./screens";
+import { handleMcpRequest } from "./mcp";
 
 /** Matches the hub's own upload ceiling; see apps/hub/src/lib/http.ts. */
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -204,6 +205,19 @@ export function createApp({
   // The manifest describes capabilities, not data, so it needs no principal.
   app.get("/portal/manifest", (_req, res) => {
     res.json(declared);
+  });
+
+  /**
+   * This satellite's MCP server, behind the same door as everything else.
+   *
+   * `authenticate` first, deliberately: MCP's own `initialize` handshake would
+   * otherwise be reachable unauthenticated, and a surface that will tell an
+   * anonymous caller what tools exist has already said more than the PUP
+   * endpoints do. The scope check happens per tool rather than here, because
+   * the read and the write want different scopes.
+   */
+  app.post("/mcp", authenticate, (req: AuthedRequest, res, next) => {
+    handleMcpRequest({ repository }, req.principal!, req, res, req.body).catch(next);
   });
 
   app.get(

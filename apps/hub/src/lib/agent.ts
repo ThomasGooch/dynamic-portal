@@ -3,7 +3,9 @@ import type { Principal } from "@portal/identity";
 import { anthropicClient, ollamaClient, type ModelClient } from "@portal/agent";
 import {
   buildSurface,
+  callSatelliteTool,
   invokeTool,
+  listSatelliteTools,
   type InvokeDeps,
   type ToolResult,
   type ToolSurface,
@@ -48,7 +50,26 @@ export async function buildAgentSurface(principal: Principal): Promise<ToolSurfa
   const entries = await Promise.all(
     satellites.map(async (satellite) => {
       const manifest = await portal.clientFor(satellite).fetchManifest();
-      return manifest.ok ? { satellite, manifest: manifest.value } : undefined;
+      if (!manifest.ok) return undefined;
+
+      // Only for the satellites that declare one, which is deliberately most of
+      // them not. A satellite with no `mcpUrl` costs nothing here — no
+      // connection is opened and nothing waits on one.
+      if (satellite.mcpUrl === undefined) {
+        return { satellite, manifest: manifest.value };
+      }
+
+      const listed = await listSatelliteTools(satellite, principal, {
+        principalSecret: portal.principalSecret,
+      });
+      if (listed.reason !== undefined) {
+        // Loud, and only that. A satellite whose MCP server is down keeps every
+        // tool the shim gives it, because those come from a manifest that was
+        // fetched successfully — one surface being unreachable must not cost
+        // the other. The same reasoning as the circuit breaker on screens.
+        console.warn(`mcp: ${satellite.id} listed no tools — ${listed.reason}`);
+      }
+      return { satellite, manifest: manifest.value, mcpTools: listed.tools };
     }),
   );
 
@@ -126,6 +147,24 @@ export function agentInvokerDeps(principal: Principal): InvokerDeps {
           recordAudit(event).catch((error: unknown) => {
             failure ??= error;
           }),
+        );
+      },
+      // One generic client for every satellite that hosts an MCP server. There
+      // is no per-satellite branch here and there must never be one: "the hub
+      // stays lightweight, with no custom code per solution" is the constraint
+      // the whole architecture is built around, and a gateway that knew what
+      // `orders.reconcile` meant would have broken it in the first file.
+      callMcpTool: async (satelliteId, toolName, args, who) => {
+        const satellite = portal.registry.find((entry) => entry.id === satelliteId);
+        if (satellite === undefined || satellite.mcpUrl === undefined) {
+          return { ok: false, kind: "unreachable", message: `no mcp server for ${satelliteId}` };
+        }
+        return callSatelliteTool(
+          satellite,
+          who,
+          { principalSecret: portal.principalSecret },
+          toolName,
+          args,
         );
       },
       now: () => Date.now(),

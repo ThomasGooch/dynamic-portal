@@ -48,19 +48,31 @@ Running services:
 
 | Service | Language | Port | MCP server | Health |
 |---|---|---|---|---|
-| `hub` | TypeScript / Next.js | 3000 | planned | `GET /` |
-| `satellite-orders` | TypeScript | 4001 | planned | `GET /healthz` |
+| `hub` | TypeScript / Next.js | 3000 | **outward**, `POST /api/mcp` | `GET /` |
+| `satellite-orders` | TypeScript | 4001 | **hosts one**, `POST /mcp` | `GET /healthz` |
 | `satellite-fleet` | Python | 4002 | **none, deliberately** | `GET /healthz` |
+| `satellite-depots` | C# / .NET | 4003 | **none, deliberately** | `GET /healthz` |
 
 Open <http://localhost:3000>. The nav is built from `config/satellites.yaml`
 for the current principal, so a satellite you cannot reach is absent from the
 response rather than hidden in the browser.
 
-Two languages is not decoration. The protocol is a wire format, not a shared
+Three languages is not decoration. The protocol is a wire format, not a shared
 library, and `satellite-fleet` shares no code with `@portal/protocol` — the e2e
 tier parses its responses with the TypeScript schemas, which is where that stops
-being a claim. `satellite-fleet` also ships no MCP server on purpose: it is the
-case that proves the hub's PUP-to-MCP shim has something to do.
+being a claim.
+
+The MCP column is the other deliberate split. Two of three satellites ship no
+MCP server, which is what keeps the hub's PUP-to-MCP shim exercised: a satellite
+is agent-reachable for free, from the manifest it already publishes, with no
+second server to run.
+
+`satellite-orders` hosts one anyway, and the bar for that is not "MCP is good".
+It is a capability PUP cannot express — `orders.search` takes a nested query,
+and `orders.reconcile` has no screen at all. What the hub gained for it is zero
+lines of satellite-specific code: `packages/mcp-gateway/src/client.ts` is
+generic, and governance still comes from `config/satellites.yaml`. See
+`apps/satellite-orders/src/mcp.ts` for the argument in full.
 
 ## Testing
 

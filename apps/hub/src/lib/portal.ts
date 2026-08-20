@@ -31,6 +31,17 @@ function requiredSecret(): string {
 interface Portal {
   readonly registry: Registry;
   readonly clientFor: (satellite: Satellite) => SatelliteClient;
+  /**
+   * The shared secret, for the one caller that does not go through a
+   * `SatelliteClient`.
+   *
+   * The MCP gateway builds its own transport — a different protocol on a
+   * different socket — but must present the *same* signed principal, because a
+   * satellite has to be able to answer "who is asking" identically on both
+   * surfaces. Exposed here rather than re-read from the environment there, so
+   * there is one place that decides what the hub signs with.
+   */
+  readonly principalSecret: string;
 }
 
 let portal: Portal | undefined;
@@ -48,6 +59,7 @@ export function getPortal(): Portal {
 
   portal = {
     registry,
+    principalSecret: secret,
     clientFor(satellite) {
       let client = clients.get(satellite.id);
       if (client === undefined) {
