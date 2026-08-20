@@ -9,10 +9,11 @@ import type { Failure, HealthReport, Result } from "@portal/registry";
  * Two halves, from two different owners, and keeping them apart is the whole
  * design:
  *
- * **Health is the hub's.** Whether a satellite answers, how fast, and whether
- * the hub's own traffic to it has been failing — that last one is something no
- * satellite can report about itself. It comes from `healthPath`, which has sat
- * in the manifest and all three SDKs with no consumer until now.
+ * **Health is the hub's.** Whether a satellite answers, and how fast. It comes
+ * from `healthPath`, which has sat in the manifest and all three SDKs with no
+ * consumer until now. The probe deliberately neither reads nor writes the
+ * circuit breaker — see `checkHealth` for why — so this says "it answered",
+ * never "the hub's traffic to it is healthy".
  *
  * **The figures are the satellite's.** Not fetched from a metrics endpoint and
  * not computed here: they are the stat tiles already on a screen the satellite

@@ -70,8 +70,6 @@ export async function SolutionStatus({
 
       {figuresWithheld !== undefined && <p className="solutionWithheld">{figuresWithheld}</p>}
 
-      {figuresWithheld !== undefined && <p className="solutionWithheld">{figuresWithheld}</p>}
-
       {stats.length > 0 && (
         <dl className="solutionStats">
           {stats.map((stat, index) => (

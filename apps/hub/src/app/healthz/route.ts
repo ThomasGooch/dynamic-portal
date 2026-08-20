@@ -1,4 +1,5 @@
 import { CURRENT_PROTOCOL_VERSION } from "@portal/protocol";
+import { brandAttributes } from "@/lib/brand";
 
 /**
  * Is this process serving? Nothing more.
@@ -22,9 +23,22 @@ import { CURRENT_PROTOCOL_VERSION } from "@portal/protocol";
  * because a solution is down would contradict the property the whole design
  * rests on — one satellite failing is one card, not an outage — and compose
  * already gates startup on the satellites' own healthchecks.
+ *
+ * **`brandAttributes()` is evaluated here, and that is not decoration.** A
+ * route handler is served without the root layout, so moving the compose probe
+ * off `/` would otherwise have taken the startup guard with it: an
+ * unrecognised `PORTAL_BRAND` throws when `layout.tsx` evaluates, every *page*
+ * 500s — and a probe that never renders a page would report the container
+ * healthy while nothing in it works. `docker compose up` would go green on a
+ * hub that cannot serve a single screen. This is the one piece of
+ * configuration the probe has to speak for; it reads the environment and
+ * nothing else, so it costs no request and writes no record.
  */
 export const dynamic = "force-dynamic";
 
 export function GET(): Response {
+  // Called rather than imported for effect: an unused import is the kind of
+  // line a later tidy-up deletes, and the guard would go with it silently.
+  brandAttributes();
   return Response.json({ status: "ok", protocol: CURRENT_PROTOCOL_VERSION });
 }

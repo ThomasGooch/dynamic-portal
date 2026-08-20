@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { getPortal } from "@/lib/portal";
 import { currentPrincipal, isDevSession } from "@/lib/session";
 import { Toaster } from "@/components/Toaster";
 import { AgentPanel } from "@/components/AgentPanel";

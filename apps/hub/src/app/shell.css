@@ -403,8 +403,10 @@
   border-color: currentColor;
 }
 
-/* Pushed to the bottom of the card, so the pills line up across a row whatever
-   length the descriptions above them are. */
+/* `margin-top: auto` takes up the slack, so the status block — pill, reason,
+   figures — sits at the foot of the card whatever length the description above
+   it is. The pills themselves do not line up across a row: a card carrying
+   figures renders them below the pill, which lifts it by exactly that much. */
 .solutionHealth {
   display: flex;
   align-items: center;

@@ -111,6 +111,20 @@ describe("inline", () => {
     });
   });
 
+  /**
+   * A model answering a question about this portal writes `summary_screen_id`
+   * and `health_path` in prose, not only in backticks. Without word boundaries
+   * the second underscore pair closed an emphasis span, the underscores
+   * vanished and one syllable came out italic — a field name silently rewritten
+   * in the middle of an answer about field names.
+   */
+  it("leaves snake_case alone", () => {
+    expect(parseMarkdown("set summary_screen_id on it")[0]).toEqual({
+      type: "paragraph",
+      inlines: [text("set summary_screen_id on it")],
+    });
+  });
+
   it("reads inline code", () => {
     expect(parseMarkdown("call `orders.search` now")[0]).toEqual({
       type: "paragraph",

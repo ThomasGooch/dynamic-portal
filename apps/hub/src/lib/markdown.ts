@@ -158,7 +158,13 @@ const MARKERS: readonly { readonly pattern: RegExp; readonly type: Inline["type"
   { pattern: /`([^`]+)`/, type: "code" },
   { pattern: /\*\*([^*]+)\*\*/, type: "bold" },
   { pattern: /(?<!\*)\*([^*]+)\*(?!\*)/, type: "italic" },
-  { pattern: /_([^_]+)_/, type: "italic" },
+  // Word boundaries on both sides, which CommonMark also requires and for the
+  // same reason: without them `summary_screen_id` — a field this portal's own
+  // manifest declares, and exactly the kind of name the assistant repeats back
+  // — matches `_screen_` and reaches the reader as "summaryscreenid" with one
+  // word mysteriously italic. `**` needs no such guard; intra-word `**` is
+  // legal emphasis and is not a naming convention anyone writes.
+  { pattern: /(?<![\p{L}\p{N}_])_([^_]+)_(?![\p{L}\p{N}_])/u, type: "italic" },
 ];
 
 export function parseInline(source: string): Inline[] {

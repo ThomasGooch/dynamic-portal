@@ -68,6 +68,30 @@ describe("the hub's healthcheck", () => {
     expect(() => readFileSync(served, "utf8")).not.toThrow();
   });
 
+  it("still refuses to answer under a brand the portal does not have", async () => {
+    // The guard this route inherited when the probe moved off `/`.
+    //
+    // `brandAttributes()` lives at module scope in the layout, and the layout
+    // does not run for a route handler — so pointing the healthcheck at
+    // `/healthz` quietly took a container from "never goes green under a bad
+    // PORTAL_BRAND" to "reports healthy while every page 500s". The route calls
+    // it back, and this is what stops a later tidy-up removing the call: the
+    // line looks like it does nothing.
+    const { GET } = await import("../app/healthz/route");
+    const before = process.env["PORTAL_BRAND"];
+
+    try {
+      process.env["PORTAL_BRAND"] = "Contoso";
+      expect(() => GET()).toThrow(/is not a brand/);
+
+      process.env["PORTAL_BRAND"] = "contoso";
+      expect(GET().status).toBe(200);
+    } finally {
+      if (before === undefined) delete process.env["PORTAL_BRAND"];
+      else process.env["PORTAL_BRAND"] = before;
+    }
+  });
+
   it("does not report on satellites", () => {
     // Comments stripped first. The route's own docblock explains that it does
     // not reach for the registry, and matching that sentence would have made

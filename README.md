@@ -69,9 +69,10 @@ pill beside it is what changes.
 
 The landing page is a card per solution: its health, and the figures it chose to
 be summarised by. Neither half is hardcoded. Health comes from the `healthPath`
-in each manifest, plus the hub's own circuit breaker — which is the one thing a
-satellite cannot report about itself, since "the process is alive" and "the
-hub's requests to it are working" are different questions. The figures are the
+in each manifest — probed by the hub, deliberately without touching the circuit
+breaker: a liveness probe is an observation, not traffic, and recording either
+outcome against the breaker would let a cheap `/healthz` reopen a circuit or a
+flaky one close it. The figures are the
 stat tiles on a screen the satellite nominates with `summary`, read with the
 same extractor the agent's read tools use. So the front page can show no number
 a team is not already showing its own users, nothing is declared twice, and

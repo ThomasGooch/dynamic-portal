@@ -12,6 +12,7 @@ import {
   type Audience,
   type Manifest,
   type ScreenResponse,
+  type Summary,
 } from "@portal/protocol";
 import { validateNested } from "@portal/catalog";
 import type { z } from "zod";
@@ -217,7 +218,7 @@ export interface ManifestInput {
    * page. Its figures are read from the screen itself, so there is nothing
    * extra to keep in step — and nothing to update when the screen changes.
    */
-  readonly summary?: { readonly screenId: string } | undefined;
+  readonly summary?: Summary | undefined;
 }
 
 /**
