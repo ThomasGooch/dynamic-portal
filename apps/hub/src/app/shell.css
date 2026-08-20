@@ -218,7 +218,70 @@
 
 .agentText {
   margin: 0;
+  /* Preserved for the fallback path, where an answer that parsed to nothing is
+     shown exactly as it arrived. Parsed prose gets its spacing from the blocks
+     below instead. */
   white-space: pre-wrap;
+}
+
+/* The assistant's prose. Spacing lives here rather than on the elements so a
+   list following a paragraph reads as one answer, not two. */
+.agentProse {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.agentProse .agentText {
+  white-space: normal;
+}
+
+.agentHeading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  /* Sized here rather than by tag: the panel is a narrow column, and an `h3`
+     at document scale would shout. */
+  color: var(--text);
+}
+
+.agentHeading[data-level="3"] {
+  color: var(--text-muted);
+}
+
+.agentList {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agentProse code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+.agentCode {
+  margin: 0;
+  padding: var(--gap-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* A model quoting JSON should not widen the panel; the block scrolls, the
+     page does not. */
+  overflow-x: auto;
+  font-size: 12px;
+}
+
+.agentCode code {
+  background: none;
+  border: none;
+  padding: 0;
 }
 
 /*

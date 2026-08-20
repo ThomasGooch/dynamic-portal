@@ -12,6 +12,7 @@ import {
   type TurnResult,
 } from "@/lib/agentConversation";
 import { AgentScreen } from "@/components/AgentScreen";
+import { Markdown } from "@/components/Markdown";
 
 /**
  * The assistant, beside the portal rather than instead of it.
@@ -310,7 +311,11 @@ function Answer({
     );
   }
 
-  if (result.kind === "answer") return <p className="agentText">{result.text}</p>;
+  // The model formats its answers whether or not it was asked to, so the panel
+  // was printing `**Order List**` and leaving the reader to imagine the bold.
+  // Rendered through a subset that has no HTML in it anywhere — see
+  // `lib/markdown.ts` for why that is the point rather than a shortcut.
+  if (result.kind === "answer") return <Markdown text={result.text} />;
 
   if (result.kind === "confirm") {
     return (
