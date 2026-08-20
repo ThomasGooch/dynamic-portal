@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { connection } from "next/server";
 import { findSatellite, resolveNav } from "@portal/registry";
 import { getPortal } from "@/lib/portal";
@@ -67,7 +68,7 @@ export default async function Home() {
 
                 return (
                   <li key={satellite.id} className="solutionCard">
-                    <a href={`/${satellite.id}`}>
+                    <Link href={`/${satellite.id}`} prefetch={false}>
                       <span className="solutionTitle">
                         <strong>{satellite.displayName}</strong>
                         {/*
@@ -84,7 +85,7 @@ export default async function Home() {
                       {satellite.description !== undefined && (
                         <span className="solutionDescription">{satellite.description}</span>
                       )}
-                    </a>
+                    </Link>
 
                     {/*
                       Keyed by satellite and given its own boundary, so the

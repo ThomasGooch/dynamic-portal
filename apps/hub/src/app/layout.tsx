@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { connection } from "next/server";
 import { getPortal } from "@/lib/portal";
 import { currentPrincipal, isDevSession } from "@/lib/session";
@@ -59,6 +60,26 @@ export const metadata = {
  * check, and the environment-to-attribute step is the half of this feature the
  * e2e suite cannot assert against a stack that has no brand set.
  */
+/**
+ * Internal navigation keeps the document alive.
+ *
+ * A plain `<a href>` replaces the whole document, which takes the assistant
+ * panel with it — ask a question, click into a solution while it thinks, and
+ * the request dies with the page. The conversation survived that already
+ * (`sessionStorage`), but the in-flight turn could not, so the panel had to say
+ * "the page changed before this answer arrived".
+ *
+ * `<Link>` navigates within the same layout, so the panel — which lives in the
+ * layout — is never unmounted and its `fetch` resolves normally. This is also
+ * what the renderer already does for an action's `navigate`: `router.push`.
+ * Links were the one path still reloading the world.
+ *
+ * `prefetch={false}` deliberately. Next prefetches a link when it scrolls into
+ * view, and a prefetched screen route is a *real* screen read: it reaches the
+ * satellite and writes an audit entry. Solutions nobody clicked would appear in
+ * the log as read, which is the same defect the healthcheck had — a machine
+ * generating records that read as a person's activity.
+ */
 const BRAND_ATTRIBUTES = brandAttributes();
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
@@ -75,9 +96,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                   navigation that survives a satellite being unreachable, which
                   is exactly when someone needs a way out of the page they are
                   looking at. */}
-              <a className="brand" href="/">
+              <Link className="brand" href="/" prefetch={false}>
                 Dynamic Portal
-              </a>
+              </Link>
 
               <div className="topbarMeta">
                 <span className="tenantTag">{principal.tenantId}</span>
