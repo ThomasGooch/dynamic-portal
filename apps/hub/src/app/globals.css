@@ -18,10 +18,16 @@
   --text-muted: #6b655c;
   --text-inverse: #ffffff;
 
+  /* Darker than they need to be as plain text, because a tone is used twice:
+     as a label's colour, and as the *ink* of a badge whose ground is the same
+     colour washed to 16-18%. That wash lifts the ground toward the ink, so a
+     tone comfortable on white can be marginal on its own badge — `success` was
+     4.28:1 and `warning` 4.00:1 that way while reading fine everywhere else.
+     `palette.test.ts` does the compositing and holds every tone to 4.5:1. */
   --tone-neutral: #4a463f;
   --tone-info: #2b5f9e;
-  --tone-success: #1f7a4d;
-  --tone-warning: #9a6212;
+  --tone-success: #1e7449;
+  --tone-warning: #8b5910;
   --tone-danger: #a3282a;
 
   --accent: #2b4f7d;
@@ -83,7 +89,7 @@
   --text-inverse: #ffffff;
 
   --tone-neutral: #3d4a57;
-  --tone-info: #1f6fb2;
+  --tone-info: #1d69a9;
   --tone-success: #12715a;
   --tone-warning: #8a5a00;
   --tone-danger: #b02a37;
@@ -98,6 +104,63 @@
   --chart-6: #217f8a;
 }
 
+/*
+ * A second sample palette.
+ *
+ * It exists to prove the token layer carries a genuinely different look rather
+ * than a hue rotation of the default — so it is built the way a real brand is,
+ * with four colours doing distinct jobs: navy carries text and headings,
+ * magenta is reserved for the thing you are meant to click, and orange and
+ * blue appear as secondary accents.
+ *
+ * Magenta is therefore `--accent`, which pushes `--tone-danger` to a true red
+ * so a destructive control never reads as merely the primary one. That is the
+ * constraint worth demonstrating: a palette whose call-to-action colour is
+ * already warm cannot reuse it for danger, and a token layer that did not
+ * separate the two would have no way to express the difference.
+ *
+ * Named generically on purpose. This repository is public, and a brand key
+ * carrying a real company's name reads as an affiliation to anyone who finds
+ * it — the other palette here is `contoso`, Microsoft's canonical *fictional*
+ * company, and breaking that convention was the mistake. Swapping in an
+ * organisation's actual values is this one block, which is the point the
+ * palette exists to make.
+ */
+:root[data-brand="partner"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  /* A blush tint, for the utility strip above the shell. */
+  --surface-sunken: #fdf1ec;
+  --border: #e7dcd6;
+  --border-strong: #c9b8ae;
+
+  --text: #123a5e;
+  --text-muted: #5d6b7a;
+  --text-inverse: #ffffff;
+
+  --tone-neutral: #4a5764;
+  /* Darker than the site's own blue, green and orange, and deliberately so: a
+     tone is a text colour, and it is also the *ink* of a badge whose ground is
+     the same colour at 16-18%. A warm marketing orange reached 2.6:1 on white;
+     these clear 4.5:1 both plain and tinted, which `palette.test.ts` checks by
+     compositing the wash rather than by anyone's eye. */
+  --tone-info: #2b6499;
+  --tone-success: #18704e;
+  --tone-warning: #974d12;
+  /* Deliberately not the brand magenta: a delete button and a primary button
+     must not be the same colour, whatever the brand does elsewhere. */
+  --tone-danger: #b3261e;
+
+  --accent: #ce1f63;
+
+  --chart-1: #123a5e;
+  --chart-2: #ce1f63;
+  --chart-3: #974d12;
+  --chart-4: #2b6499;
+  --chart-5: #18704e;
+  --chart-6: #7a4b8c;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #16150f;
@@ -108,7 +171,17 @@
 
     --text: #f0ede6;
     --text-muted: #a39d92;
+    /* Omitting a token here is not a fallback, it is the daylight value: the
+       `:root` above supplies whatever this block leaves out. Dark mode was
+       therefore painting white `--text-inverse` onto the pale accent (2.5:1)
+       and onto the pale danger tone — the primary and delete buttons — which
+       is the exact failure the brand blocks below are careful about. */
+    --text-inverse: #16150f;
 
+    /* Completed for the same reason, though nothing reads it yet: no rule maps
+       `[data-tone="neutral"]`, so this is the daylight near-black waiting on
+       the first stylesheet that does. */
+    --tone-neutral: #a8a196;
     --tone-info: #7aa9e0;
     --tone-success: #63c795;
     --tone-warning: #d8a250;
@@ -160,6 +233,42 @@
     --chart-4: #b39ae0;
     --chart-5: #e2848c;
     --chart-6: #63c3cc;
+  }
+
+  /*
+   * The same identity after dark. The navy that carried text in daylight
+   * cannot carry it here, so it becomes the ground and the magenta lifts to
+   * stay legible on it — the brand's own colours, re-cast rather than
+   * inverted.
+   */
+  :root[data-brand="partner"] {
+    --bg: #0c1c2b;
+    --surface: #12283b;
+    --surface-sunken: #16324a;
+    --border: #274563;
+    --border-strong: #3a5b7c;
+
+    --text: #eaf1f8;
+    --text-muted: #9fb2c4;
+    --text-inverse: #0c1c2b;
+
+    --tone-neutral: #93a6b8;
+    --tone-info: #74a9dc;
+    --tone-success: #5cbf9c;
+    --tone-warning: #e0a05c;
+    --tone-danger: #ea8a83;
+
+    --accent: #f4699f;
+
+    --chart-1: #74a9dc;
+    --chart-2: #f4699f;
+    --chart-3: #e0a05c;
+    /* Paler than the series above it rather than beside it: the light palette
+       separates its two blues by depth, which dark mode cannot do without
+       losing one of them into the ground. */
+    --chart-4: #c3dcf2;
+    --chart-5: #5cbf9c;
+    --chart-6: #bb9ad6;
   }
 }
 

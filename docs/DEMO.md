@@ -74,6 +74,19 @@ Open `/`. Click **Orders**, then **Fleet**, then **Depots**.
 Copy the URL of a detail screen, paste it in a new tab, hit back. It all works
 — these are real routes, not an iframe.
 
+**Pick the brand.** `PORTAL_BRAND=partner docker compose up -d hub` swaps the
+whole portal onto a second sample palette — no rebuild, just a re-created
+container. `up -d`, never `restart`: a container's environment is fixed when it
+is created, so restarting re-runs the old value and the rebrand silently does
+not happen. Beat 2 has the long version.
+
+`partner` is a **sample**, not your audience's palette — do not tell a room it
+is theirs. What it demonstrates is the cost of making it theirs: one block of
+custom properties in `globals.css`, no rebuild and no satellite touched. If
+there is time before the room, paste their colours into a copy of that block
+and add the name to `BRANDS`; a portal wearing the audience's palette stops
+reading as a prototype.
+
 ### 2 · Where is the JavaScript? (2 min) — *kills version-and-dependency hell*
 
 > "Fleet is Python. Depots is C#. Neither ships a line of JavaScript or a byte
@@ -182,6 +195,20 @@ first screen for each. That last clause turns "will teams adopt?" from a hope
 into a commitment, and it is cheap at this size.
 
 ---
+
+## The data on screen is invented, deliberately
+
+Wile E. Coyote, Acme Anvils, Globex. Addresses are on `.test`, a domain reserved
+by RFC 6761 that can never resolve.
+
+That matters more under a real brand than under a neutral one: a screenshot of
+plausible-looking personal data is a problem in a regulated organisation whether
+or not the data is real, and "it was only demo data" is a sentence nobody wants
+to say afterwards. There is a test asserting it stays that way, so a future edit
+that reaches for realism fails in CI rather than in a deck.
+
+If someone asks whether this is real data, the answer is no, and it is provable
+in one file.
 
 ## If something breaks
 
