@@ -226,7 +226,7 @@ describe("a brand's palette", () => {
    *
    * `--surface-sunken` — an alert, a toast, a table head — is **not** covered,
    * and is darker than both. Fifteen tone/scheme pairs clear 4.5:1 on the two
-   * grounds below while landing between 4.02 and 4.48 on that one, and closing
+   * grounds below while landing between 4.02 and 4.49 on that one, and closing
    * it means retuning colour across three palettes in both schemes rather than
    * fixing a test. So this passing is not a promise that a badge is legible in
    * any container; put one in a sunken surface and check the ratio again.
@@ -248,19 +248,32 @@ describe("a brand's palette", () => {
     ] as const) {
       it(`${name} badge ink is legible on its own tint in ${scheme}`, () => {
         const scoped = blockOf();
-        // Both grounds a badge can actually land on today.
-        const grounds = ["--surface", "--bg"].map((token) => colourIn(scoped, token));
+        // The two grounds checked here — the card and the page. Not every
+        // ground a badge can land on: `--surface-sunken` is darker than both
+        // and deliberately out of scope, for the reasons above.
+        const grounds = ["--surface", "--bg"].map((token) => ({
+          token,
+          colour: colourIn(scoped, token),
+        }));
 
         // Collected rather than asserted one at a time: stopping at the first
         // failure hides the rest behind it, and these are fixed as a set.
         const failures = badgeTints().flatMap(({ tone, percent }) => {
           const ink = colourIn(scoped, `--tone-${tone}`);
           // The worst ground, not the first: a tone that passes on the card and
-          // fails on the page is a tone that fails.
-          const ratio = Math.min(
-            ...grounds.map((ground) => contrast(ink, over(ink, percent, ground))),
-          );
-          return ratio >= 4.5 ? [] : [`${tone} ${ratio.toFixed(2)}:1 on its own ${percent}% tint`];
+          // fails on the page is a tone that fails. Named, because with more
+          // than one ground a bare ratio does not say which one to retune.
+          const worst = grounds
+            .map(({ token, colour }) => ({
+              token,
+              ratio: contrast(ink, over(ink, percent, colour)),
+            }))
+            .reduce((a, b) => (b.ratio < a.ratio ? b : a));
+          return worst.ratio >= 4.5
+            ? []
+            : [
+                `${tone} ${worst.ratio.toFixed(2)}:1 on its own ${percent}% tint over ${worst.token}`,
+              ];
         });
 
         expect(failures, `${name} ${scheme}`).toEqual([]);
