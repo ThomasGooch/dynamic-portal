@@ -65,8 +65,10 @@ complete page, and beat 6 is the only beat that can be cut.
 
 ## Which model, and what beat 6 needs
 
-The stack runs `qwen2.5:7b` locally by default: free, private, and enough for
-every beat except one.
+Set `PORTAL_MODEL_PROVIDER=ollama` in `.env` and the stack runs `qwen2.5:7b` on
+this machine: free, private, and enough for every beat except one. It is opt-in
+and never a fallback — a `.env` copied from `.env.example` names no provider and
+no key, and that hub reports `assistant: off`.
 
 | | beat 6 — the composed home | everything else |
 |---|---|---|
@@ -80,8 +82,11 @@ tool call, and a 7B model does not get there.
 
 **So: rehearse on the local model, and decide about beat 6 separately.** Either
 skip it — it is `additive, never load-bearing` by design, and the failure table
-below already covers it — or unset `PORTAL_MODEL_PROVIDER` in `.env` for the
-run. One composed home on Opus costs about $0.15; a full `pnpm test:e2e` costs
+below already covers it — or move to the hosted model for the run: unset
+`PORTAL_MODEL_PROVIDER` in `.env` **and** set `ANTHROPIC_API_KEY`, then read the
+startup line back. Unsetting the provider on its own resolves to Anthropic with
+no key, which is `assistant: off` and a 404 from every assistant beat rather
+than a hosted beat 6. One composed home on Opus costs about $0.15; a full `pnpm test:e2e` costs
 about $1.45, which is worth knowing before running it in a loop.
 
 ## The spine

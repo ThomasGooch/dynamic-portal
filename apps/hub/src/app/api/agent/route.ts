@@ -271,7 +271,20 @@ export async function POST(request: Request): Promise<Response> {
     // response is deliberately one sentence. The API was saying "adaptive
     // thinking is not supported on this model" for an afternoon and nobody
     // could see it.
-    console.error("agent turn failed:", error);
+    // The message, not the object. Everywhere else this codebase is careful
+    // about what reaches a log — `withoutCredentials` strips userinfo from a
+    // URL before printing it, the startup line counts opted-out tenants rather
+    // than naming them — and an `Error` carries a `cause` chain, headers and
+    // the request that produced it. This catch also sees tool failures, and
+    // PLAN.md's own framing is that regulated data reaches this path through
+    // tool results.
+    //
+    // It is not a complete answer: `ollama.ts` puts up to 500 characters of an
+    // upstream body *into* its message on purpose, so a local-model failure can
+    // still carry model output here. Bounded and one line beats the whole
+    // object, and the diagnostic that was wanted — "adaptive thinking is not
+    // supported on this model" — survives it.
+    console.error("agent turn failed:", error instanceof Error ? error.message : String(error));
 
     // The model call failed, or a satellite threw where the gateway does not
     // catch. Either way the user gets a sentence, not a stack — the same rule
