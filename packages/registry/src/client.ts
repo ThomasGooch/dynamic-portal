@@ -34,6 +34,24 @@ export type Failure =
 
 export type Result<T> = { readonly ok: true; readonly value: T } | Failure;
 
+/**
+ * What the portal can say about a satellite without a user clicking anything.
+ *
+ * Four states rather than up/down, because two of them come from different
+ * places. `ok` and `down` are the satellite's answer; `degraded` is the hub's
+ * own memory of failing traffic to a process that still claims to be alive;
+ * `unknown` is a satellite that declared no `healthPath`, which is a fact about
+ * the manifest and not a fault.
+ */
+export type HealthStatus = "ok" | "degraded" | "down" | "unknown";
+
+export interface HealthReport {
+  readonly status: HealthStatus;
+  readonly latencyMs?: number;
+  /** Why, when it is not `ok`. Safe to show: no upstream body reaches this. */
+  readonly detail?: string;
+}
+
 export interface SatelliteClientOptions {
   readonly satellite: Satellite;
   readonly principalSecret: string;
@@ -60,6 +78,63 @@ export class SatelliteClient {
 
   get breaker(): CircuitBreaker {
     return this.#breaker;
+  }
+
+  /**
+   * Whether this satellite is up, and whether the hub's traffic to it is
+   * working — which are different questions.
+   *
+   * `healthPath` has been in the manifest and all three SDKs since the
+   * protocol was written, with nothing reading it. This is its first consumer,
+   * and the reason the front page can say anything at all before a user clicks.
+   *
+   * **The breaker is deliberately untouched, in both directions.** A liveness
+   * probe is an observation, not traffic. Counting a success would let a
+   * satellite with a cheap `/healthz` and broken screens have its circuit
+   * reopened by every visit to the front page — the hub repairing its own view
+   * of something still failing. Counting a failure is worse: a flaky probe
+   * would take a working satellite's screens offline. So this reads the
+   * breaker and never writes it.
+   */
+  async checkHealth(healthPath: string): Promise<HealthReport> {
+    // Probed even when the breaker is open, deliberately. One cheap liveness
+    // request is not the hammering a breaker exists to stop, and it is how a
+    // recovery gets noticed at all — a satellite whose circuit is open would
+    // otherwise be reported dead until somebody clicked into it.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.#satellite.timeoutMs);
+    const started = Date.now();
+
+    try {
+      const response = await this.#fetch(`${this.#satellite.baseUrl}${healthPath}`, {
+        method: "GET",
+        signal: controller.signal,
+      });
+      const latencyMs = Date.now() - started;
+
+      if (!response.ok) {
+        return { status: "down", latencyMs, detail: `answered ${response.status}` };
+      }
+
+      // Alive, but the hub's own screen traffic has been failing. A green pill
+      // here would sit on a solution nobody can actually open.
+      //
+      // `state`, never `allowsRequest()` — that method *mutates*. It moves an
+      // open breaker to half-open and claims the single probe slot, and this
+      // method never records an outcome, so asking it would wedge the breaker
+      // half-open until the probe expired: the front page refusing a
+      // satellite's real traffic once per visit, by looking at it.
+      return this.#breaker.state === "closed"
+        ? { status: "ok", latencyMs }
+        : { status: "degraded", latencyMs, detail: "recent requests to this solution failed" };
+    } catch {
+      const latencyMs = Date.now() - started;
+      return controller.signal.aborted
+        ? { status: "down", latencyMs, detail: `timed out after ${this.#satellite.timeoutMs}ms` }
+        : { status: "down", latencyMs, detail: "could not be reached" };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async fetchManifest(): Promise<Result<Manifest>> {

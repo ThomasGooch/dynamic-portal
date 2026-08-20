@@ -280,4 +280,36 @@ describe("a brand's palette", () => {
       });
     }
   }
+
+  /**
+   * The status dots on the front page.
+   *
+   * A solid tone on the card, not a tint — a different pairing from the badge
+   * below, and held to 3:1 rather than 4.5:1 because WCAG asks that of a
+   * non-text indicator. It is only ever a *second* signal: every pill sits
+   * beside a word that names the same state, so a reader who cannot separate
+   * the hues still reads "Unavailable".
+   *
+   * `--tone-neutral` is in here because this is what finally consumes it. It
+   * was defined in every palette and read by nothing, which a review caught —
+   * a token with no consumer is a colour nobody has ever actually seen.
+   */
+  for (const [name, light, dark] of PALETTES) {
+    for (const [scheme, scoped] of [
+      ["light", light],
+      ["dark", dark],
+    ] as const) {
+      it(`${name} status dots are distinguishable from the card in ${scheme}`, () => {
+        const block = scoped();
+        const surface = colourIn(block, "--surface");
+
+        const failures = ["neutral", "success", "warning", "danger"].flatMap((tone) => {
+          const ratio = contrast(colourIn(block, `--tone-${tone}`), surface);
+          return ratio >= 3 ? [] : [`${tone} ${ratio.toFixed(2)}:1 on --surface`];
+        });
+
+        expect(failures, `${name} ${scheme}`).toEqual([]);
+      });
+    }
+  }
 });

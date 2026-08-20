@@ -212,6 +212,12 @@ export interface ManifestInput {
   readonly nav?: readonly NavEntryInput[] | undefined;
   readonly mcpUrl?: string | undefined;
   readonly healthPath?: string | undefined;
+  /**
+   * The screen whose stat tiles represent this satellite on the portal's front
+   * page. Its figures are read from the screen itself, so there is nothing
+   * extra to keep in step — and nothing to update when the screen changes.
+   */
+  readonly summary?: { readonly screenId: string } | undefined;
 }
 
 /**
@@ -233,5 +239,6 @@ export function manifest(input: ManifestInput): Manifest {
     ...(input.nav === undefined ? {} : { nav: input.nav }),
     ...(input.mcpUrl === undefined ? {} : { mcpUrl: input.mcpUrl }),
     ...(input.healthPath === undefined ? {} : { healthPath: input.healthPath }),
+    ...(input.summary === undefined ? {} : { summary: input.summary }),
   });
 }

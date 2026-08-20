@@ -69,7 +69,10 @@ public static class Screens
                     ]),
             ],
             nav: [Envelopes.NavEntry("depots.dashboard", "Depots", section: "Operations", order: 30)],
-            healthPath: "/healthz");
+            healthPath: "/healthz",
+            // The screen the portal summarises this satellite by. Its stat
+            // tiles are the figures; nothing is declared twice.
+            summaryScreenId: "depots.dashboard");
 
     /// <summary>Rows are shaped for display — tenantId never crosses the wire.</summary>
     private static Dictionary<string, object?> Row(Depot depot) => new()

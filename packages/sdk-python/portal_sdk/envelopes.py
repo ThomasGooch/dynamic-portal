@@ -272,6 +272,7 @@ def manifest(
     nav: list[dict[str, Any]] | None = None,
     mcp_url: str | None = None,
     health_path: str | None = None,
+    summary_screen_id: str | None = None,
 ) -> dict[str, Any]:
     """A ``GET /portal/manifest`` response.
 
@@ -293,6 +294,7 @@ def manifest(
         ("nav", nav),
         ("mcpUrl", mcp_url),
         ("healthPath", health_path),
+        ("summary", {"screenId": summary_screen_id} if summary_screen_id else None),
     ):
         if value is not None:
             body[key] = value

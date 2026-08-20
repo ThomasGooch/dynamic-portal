@@ -61,6 +61,9 @@ def manifest() -> dict[str, Any]:
         actions=[],
         nav=[env.nav_entry("fleet.dashboard", "Fleet", section="Operations", order=20)],
         health_path="/healthz",
+        # The screen the portal's front page reads this satellite's figures
+        # from. Its stat tiles are the summary; there is no second copy.
+        summary_screen_id="fleet.dashboard",
     )
 
 

@@ -147,6 +147,26 @@ export const ActionDescriptorSchema = z
   })
   .strict();
 
+/**
+ * The screen whose figures represent this satellite on the portal's front door.
+ *
+ * A pointer, deliberately, rather than a list of numbers. The hub renders the
+ * stat tiles it finds on the named screen, so the overview cannot say anything
+ * the satellite is not already showing its own users — there is no second
+ * artifact to keep in step, and a team that changes what matters changes it
+ * once. That is the same bet the rest of this protocol makes: the declaration
+ * is the product, so it cannot rot separately from it.
+ *
+ * Optional because a satellite that declares nothing still appears, with its
+ * health and no figures. Opting in is a promise that this screen is worth
+ * reading at a glance, and only the satellite knows that.
+ */
+export const SummarySchema = z
+  .object({
+    screenId: IdSchema,
+  })
+  .strict();
+
 export const NavEntrySchema = z
   .object({
     screenId: IdSchema,
@@ -193,6 +213,7 @@ export const ManifestSchema = z
     /** Present when the satellite serves MCP natively; absent means the hub generates a shim. */
     mcpUrl: HttpUrlSchema.optional(),
     healthPath: OriginRelativePathSchema.optional(),
+    summary: SummarySchema.optional(),
   })
   .strict()
   .superRefine((manifest, ctx) => {
@@ -221,6 +242,32 @@ export const ManifestSchema = z
     // A nav entry naming a screen that does not exist is a dead link the hub
     // only discovers when a user clicks it.
     const screenIds = new Set(manifest.screens.map((screen) => screen.id));
+
+    if (manifest.summary !== undefined) {
+      const target = manifest.screens.find((screen) => screen.id === manifest.summary?.screenId);
+      if (target === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["summary", "screenId"],
+          message: `summary references unknown screen "${manifest.summary.screenId}"`,
+        });
+      } else {
+        // The hub fetches this with no parameters, because it has none to give.
+        // A screen needing an id could only be called if the hub knew what an
+        // order is, and keeping that knowledge out of the hub is the whole
+        // design. Caught here rather than as an empty card at request time.
+        const required = (target.params ?? []).filter((param) => param.required === true);
+        if (required.length > 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["summary", "screenId"],
+            message:
+              `summary screen "${target.id}" requires parameters ` +
+              `(${required.map((param) => param.name).join(", ")}); the hub calls it with none`,
+          });
+        }
+      }
+    }
     manifest.nav?.forEach((entry, index) => {
       if (!screenIds.has(entry.screenId)) {
         ctx.addIssue({
@@ -237,3 +284,4 @@ export type ScreenDescriptor = z.infer<typeof ScreenDescriptorSchema>;
 export type ActionDescriptor = z.infer<typeof ActionDescriptorSchema>;
 export type ActionParam = z.infer<typeof ActionParamSchema>;
 export type NavEntry = z.infer<typeof NavEntrySchema>;
+export type Summary = z.infer<typeof SummarySchema>;

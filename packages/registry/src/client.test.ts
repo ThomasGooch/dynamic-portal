@@ -331,3 +331,123 @@ describe("invoking an action", () => {
     if (!result.ok) expect(result.reason).toBe("invalid-response");
   });
 });
+
+/**
+ * Health, which is the one thing the hub knows that no satellite does.
+ *
+ * A satellite can say whether it is up. Only the hub can say whether *its
+ * traffic to that satellite* has been failing — the breaker is the hub's own
+ * memory, and it is the difference between "the process is alive" and "the
+ * screens work". Both matter on a front page, and they are not the same
+ * question, so `degraded` is a state of its own rather than a rounding of
+ * either neighbour.
+ */
+describe("checking health", () => {
+  it("reports ok, with how long it took", async () => {
+    const result = await client(async () => new Response("", { status: 200 })).checkHealth(
+      "/healthz",
+    );
+
+    expect(result.status).toBe("ok");
+    expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("asks the path the manifest declared, on the registry's base URL", async () => {
+    const seen: string[] = [];
+    await client(async (input) => {
+      seen.push(String(input));
+      return new Response("", { status: 200 });
+    }).checkHealth("/internal/alive");
+
+    expect(seen).toEqual(["http://sat.test/internal/alive"]);
+  });
+
+  it("reports down when the satellite answers with an error", async () => {
+    const result = await client(async () => new Response("", { status: 503 })).checkHealth(
+      "/healthz",
+    );
+
+    expect(result.status).toBe("down");
+  });
+
+  it("reports down when the satellite does not answer at all", async () => {
+    const result = await client(async () => {
+      throw new Error("ECONNREFUSED");
+    }).checkHealth("/healthz");
+
+    expect(result.status).toBe("down");
+  });
+
+  it("reports degraded when it answers but the hub's traffic has been failing", async () => {
+    const breaker = new CircuitBreaker({ failureThreshold: 1 });
+    breaker.recordFailure();
+
+    const result = await client(async () => new Response("", { status: 200 }), breaker).checkHealth(
+      "/healthz",
+    );
+
+    // The process is alive and its screens are not being served. Reporting
+    // this as "ok" would put a green pill on a solution nobody can open.
+    expect(result.status).toBe("degraded");
+  });
+
+  it("does not let a health check close a circuit that real traffic opened", async () => {
+    const breaker = new CircuitBreaker({ failureThreshold: 1 });
+    breaker.recordFailure();
+    await client(async () => new Response("", { status: 200 }), breaker).checkHealth("/healthz");
+
+    // A liveness probe is an observation, not traffic. If answering it counted
+    // as success, a satellite with a cheap `/healthz` and broken screens would
+    // have its circuit reopened by the front page on every visit — the hub
+    // repairing its own view of a satellite that is still failing.
+    expect(breaker.allowsRequest()).toBe(false);
+  });
+
+  it("does not steal the breaker's one trial request by looking at it", async () => {
+    // The subtle one, and the reason this reads `breaker.state` rather than
+    // asking `allowsRequest()`. That method *mutates*: once the cooldown has
+    // passed it moves an open circuit to half-open and claims the single probe
+    // slot. A health check never records an outcome, so asking would leave the
+    // probe outstanding — and the next real request, the one that would have
+    // proven the satellite recovered, gets refused instead. Once per visit to
+    // the front page, against a satellite that is already working again.
+    let clock = 1_000;
+    const breaker = new CircuitBreaker({
+      failureThreshold: 1,
+      cooldownMs: 100,
+      now: () => clock,
+    });
+    breaker.recordFailure();
+
+    clock += 200; // past the cooldown: the circuit is ready to try again.
+    await client(async () => new Response("", { status: 200 }), breaker).checkHealth("/healthz");
+
+    expect(breaker.allowsRequest()).toBe(true);
+  });
+
+  it("does not let a failing health check open a circuit real traffic is using", async () => {
+    const breaker = new CircuitBreaker({ failureThreshold: 1 });
+    const result = await client(async () => {
+      throw new Error("ECONNREFUSED");
+    }, breaker).checkHealth("/healthz");
+
+    expect(result.status).toBe("down");
+    // The reverse of the rule above, and the one that would actually hurt: a
+    // flaky liveness endpoint must not be able to take a working satellite's
+    // screens offline.
+    expect(breaker.allowsRequest()).toBe(true);
+  });
+
+  it("gives up on a slow probe rather than holding the page open", async () => {
+    // `timeoutMs` is 50 in this fixture.
+    const result = await client(
+      async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          (init as RequestInit).signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    ).checkHealth("/healthz");
+
+    expect(result.status).toBe("down");
+    expect(result.detail).toMatch(/timed out/);
+  });
+});

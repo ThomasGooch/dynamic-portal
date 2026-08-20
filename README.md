@@ -57,6 +57,17 @@ Open <http://localhost:3000>. The nav is built from `config/satellites.yaml`
 for the current principal, so a satellite you cannot reach is absent from the
 response rather than hidden in the browser.
 
+The landing page is a card per solution: its health, and the figures it chose to
+be summarised by. Neither half is hardcoded. Health comes from the `healthPath`
+in each manifest, plus the hub's own circuit breaker — which is the one thing a
+satellite cannot report about itself, since "the process is alive" and "the
+hub's requests to it are working" are different questions. The figures are the
+stat tiles on a screen the satellite nominates with `summary`, read with the
+same extractor the agent's read tools use. So the front page can show no number
+a team is not already showing its own users, nothing is declared twice, and
+adding a fourth solution needs no hub change. Each card resolves in its own
+`<Suspense>` boundary, so one slow satellite delays one card.
+
 Three languages is not decoration. The protocol is a wire format, not a shared
 library, and `satellite-fleet` shares no code with `@portal/protocol` — the e2e
 tier parses its responses with the TypeScript schemas, which is where that stops

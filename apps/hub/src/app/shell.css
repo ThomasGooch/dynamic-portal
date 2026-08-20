@@ -268,14 +268,28 @@
   padding: 0;
   display: grid;
   gap: var(--gap-sm);
+  /* Cards, once they carry status and figures rather than just a name. `auto-fit`
+     rather than a fixed count: the registry decides how many solutions there
+     are, so the grid has to answer for three or for thirty without this file
+     knowing which. */
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.solutionCard {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  /* The status fills in after the card paints, so the height changes once. A
+     minimum keeps the grid from reflowing under the pointer as each satellite
+     answers. */
+  min-height: 9.5rem;
 }
 
 .launcher a {
   display: block;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  padding: var(--gap-md);
+  padding: var(--gap-md) var(--gap-md) var(--gap-sm);
   text-decoration: none;
 }
 
@@ -283,4 +297,65 @@
   display: block;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+/* Pushed to the bottom of the card, so the pills line up across a row whatever
+   length the descriptions above them are. */
+.solutionHealth {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 var(--gap-sm);
+  margin: auto 0 0;
+  padding: var(--gap-sm) var(--gap-md);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.solutionPill {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  /* Tone tokens, so this follows every palette and both schemes without a
+     second set of colours to keep in step. */
+  background: var(--tone-neutral);
+  flex: none;
+}
+
+.solutionHealth[data-status="ok"] .solutionPill { background: var(--tone-success); }
+.solutionHealth[data-status="degraded"] .solutionPill { background: var(--tone-warning); }
+.solutionHealth[data-status="down"] .solutionPill { background: var(--tone-danger); }
+
+/* Colour is never the only signal: the label beside the dot already names the
+   state in words, and these carry it into the text for the two that are not
+   "fine". A portal that says "something is wrong" only in red says nothing to
+   a reader who cannot see red. */
+.solutionHealth[data-status="degraded"] { color: var(--tone-warning); }
+.solutionHealth[data-status="down"] { color: var(--tone-danger); }
+
+.solutionWhy {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.solutionStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-sm) var(--gap-md);
+  margin: 0;
+  padding: 0 var(--gap-md) var(--gap-md);
+}
+
+.solutionStats dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.solutionStats dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  /* Figures across a row of cards read as a set, so they line up like one. */
+  font-variant-numeric: tabular-nums;
 }
