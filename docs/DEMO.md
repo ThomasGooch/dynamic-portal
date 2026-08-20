@@ -63,6 +63,27 @@ complete page, and beat 6 is the only beat that can be cut.
 
 ---
 
+## Which model, and what beat 6 needs
+
+The stack runs `qwen2.5:7b` locally by default: free, private, and enough for
+every beat except one.
+
+| | beat 6 — the composed home | everything else |
+|---|---|---|
+| `qwen2.5:7b` (local, free) | **0/3** | works |
+| `claude-opus-5` (metered) | **3/3** | works |
+
+Measured, not assumed, and raising the turn budget to 20 did not move the local
+model at all — it is a capability limit, not a budget one. Composing a screen
+means satisfying a 34-variant schema where every figure must cite a verified
+tool call, and a 7B model does not get there.
+
+**So: rehearse on the local model, and decide about beat 6 separately.** Either
+skip it — it is `additive, never load-bearing` by design, and the failure table
+below already covers it — or unset `PORTAL_MODEL_PROVIDER` in `.env` for the
+run. One composed home on Opus costs about $0.15; a full `pnpm test:e2e` costs
+about $1.45, which is worth knowing before running it in a loop.
+
 ## The spine
 
 ### 1 · One portal, three solutions (2 min)

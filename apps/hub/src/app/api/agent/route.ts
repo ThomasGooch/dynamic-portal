@@ -258,12 +258,20 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     return json({ ok: false, message: outcome.reason }, 200);
-  } catch {
+  } catch (error) {
     // The turn failed part way through, and the tool calls it did make before
     // failing still happened. Their records are awaited here too — a turn that
     // ended badly is exactly the one an audit is read for — and a write that
     // fails now cannot change an answer that is already a refusal.
     await invoker?.flush().catch(() => {});
+
+    // Logged where an operator can read it, which is not the same as told to
+    // the caller. Until this line an unexpected failure left no trace anywhere:
+    // the audit records the calls a turn made, never why it died, and the
+    // response is deliberately one sentence. The API was saying "adaptive
+    // thinking is not supported on this model" for an afternoon and nobody
+    // could see it.
+    console.error("agent turn failed:", error);
 
     // The model call failed, or a satellite threw where the gateway does not
     // catch. Either way the user gets a sentence, not a stack — the same rule

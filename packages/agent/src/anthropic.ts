@@ -40,10 +40,17 @@ export function anthropicClient(options: AnthropicClientOptions): ModelClient {
         model,
         max_tokens: MAX_TOKENS,
         system,
-        // Adaptive rather than a token budget: `budget_tokens` is rejected
-        // outright on this model generation, and the work here varies from
-        // "answer from one lookup" to "compose a cross-satellite screen".
-        thinking: { type: "adaptive" },
+        // No `thinking` block. It was `{ type: "adaptive" }`, which is a
+        // 4.6-and-later feature — asked of anything older the API refuses the
+        // whole request, so pointing this at `claude-haiku-4-5` made every turn
+        // fail. Gating it on the model version was the other option and meant
+        // parsing versions out of model names, across two naming eras, with a
+        // wrong guess silently removing thinking from a model that wanted it.
+        //
+        // The portal does not need it: the work here is tool calls and a
+        // schema-constrained render, and the grounding validator — not the
+        // model's reasoning — is what makes a screen trustworthy. Leaving it
+        // out costs nothing measurable and makes every model usable.
         tools: tools.map((tool) => ({
           name: tool.name,
           description: tool.description,
