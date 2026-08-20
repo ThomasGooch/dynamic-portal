@@ -11,6 +11,7 @@
     "typecheck": "tsc --build --force"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@portal/catalog": "workspace:*",
     "@portal/identity": "workspace:*",
     "@portal/protocol": "workspace:*",

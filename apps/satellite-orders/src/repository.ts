@@ -330,4 +330,50 @@ export class OrderRepository {
     order.status = "approved";
     return { ok: true };
   }
+
+  /**
+   * Clears the blocks held by vehicles that are back in service.
+   *
+   * There is no screen for this and there never was. It is the kind of
+   * operation that gets done by a nightly job or by someone with database
+   * access — which is precisely why it is worth exposing over MCP: the
+   * capability exists, and until now the only projections of it were a cron
+   * entry and a person.
+   *
+   * `dryRun` answers the question a person actually asks first, which is what
+   * *would* change. The screens have no equivalent because a screen shows you
+   * the answer and then you press the button; a tool has to be able to say it.
+   */
+  unblock(tenantId: string, vehicleIds: readonly string[], dryRun = false): string[] {
+    const blocked = new Set(vehicleIds);
+    const cleared: string[] = [];
+
+    for (const order of this.#orders) {
+      // Tenant first, as everywhere else in this class. A reconcile is a bulk
+      // operation, so it is the one most able to cross a boundary quietly.
+      if (order.tenantId !== tenantId) continue;
+      if (order.blockedByVehicleId === undefined) continue;
+      if (!blocked.has(order.blockedByVehicleId)) continue;
+
+      cleared.push(order.id);
+      if (!dryRun) delete order.blockedByVehicleId;
+    }
+
+    return cleared;
+  }
+
+  /**
+   * Puts the store back to a known set of orders.
+   *
+   * For tests that share one server across a file: the alternative is a fresh
+   * listener per test, which is slower and hides ordering bugs rather than
+   * fixing them.
+   */
+  reset(orders: Order[]): void {
+    // Emptied and refilled rather than reassigned: the field is `readonly` so
+    // that nothing can swap the store out from under a live handler, and that
+    // is worth keeping for a test helper's sake.
+    this.#orders.length = 0;
+    this.#orders.push(...orders.map(copy));
+  }
 }

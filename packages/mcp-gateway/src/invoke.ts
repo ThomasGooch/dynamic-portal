@@ -1,6 +1,8 @@
 import { toolCall, type AuditEvent, type Principal } from "@portal/identity";
 import type { ActionOutcome, ActionResponse, ScreenResponse } from "@portal/protocol";
 import type { Failure, Result } from "@portal/registry";
+import { adaptMcpResult } from "./adapt";
+import type { McpCallOutcome } from "./client";
 import { extractData, type ExtractedData } from "./extract";
 import type { JsonObjectSchema, ToolDescriptor } from "./shim";
 import type { ToolSurface } from "./surface";
@@ -51,6 +53,20 @@ export interface InvokeDeps {
    */
   readonly auditKey: Buffer;
   readonly onAudit: (event: AuditEvent) => void;
+  /**
+   * How to reach a satellite's own MCP server, when one exists.
+   *
+   * Optional because most deployments have none: a registry with no `mcpUrl`
+   * anywhere never adopts an MCP tool, so nothing here is ever called. The
+   * branch above refuses rather than degrades when a tool needs this and it is
+   * absent, so "not configured" cannot read as "the satellite is broken".
+   */
+  readonly callMcpTool?: (
+    satelliteId: string,
+    toolName: string,
+    args: Readonly<Record<string, unknown>>,
+    principal: Principal,
+  ) => Promise<McpCallOutcome>;
   /** Injected so the audit record has a real clock without this file owning one. */
   readonly now: () => number;
   readonly at: () => string;
@@ -118,10 +134,29 @@ export async function invokeTool(
     return { ok: false, reason: "unknown-tool", message: `No tool named "${name}" is available.` };
   }
 
-  const checked = checkArguments(tool.inputSchema, args, tool.kind);
-  if (!checked.ok) {
-    record(tool.satelliteId, "denied", "bad-arguments");
-    return { ok: false, reason: "bad-arguments", message: checked.message };
+  /**
+   * Who checks the arguments depends on who wrote the schema.
+   *
+   * A `pup` tool's schema was derived here, from a manifest this gateway
+   * parsed, so it can refuse a bad call before a satellite is troubled. An
+   * `mcp` tool's schema is the satellite's own and may nest in ways
+   * `JsonObjectSchema` cannot describe — flattening it to validate would throw
+   * away the capability the satellite reached for MCP to gain.
+   *
+   * So MCP arguments pass through and the satellite decides. That is the same
+   * authority as everywhere else: this gateway has never been the thing that
+   * says whether a call is legal, only whether the caller may attempt it. The
+   * checks that matter — audience, scopes, confirmation — are below and apply
+   * to both.
+   */
+  let dispatchArgs: Readonly<Record<string, unknown>> = args;
+  if (tool.source === "pup") {
+    const checked = checkArguments(tool.inputSchema as JsonObjectSchema, args, tool.kind);
+    if (!checked.ok) {
+      record(tool.satelliteId, "denied", "bad-arguments");
+      return { ok: false, reason: "bad-arguments", message: checked.message };
+    }
+    dispatchArgs = checked.value;
   }
 
   if (tool.requiresConfirmation && deps.confirmed !== true) {
@@ -133,11 +168,62 @@ export async function invokeTool(
     };
   }
 
+  /**
+   * An MCP tool goes to the satellite's own server, whatever its kind.
+   *
+   * There is no screen or action behind it — that is the point — so neither
+   * branch below applies. Its result is text the satellite composed for a
+   * model, rather than data this gateway extracted from a rendered screen,
+   * which is the other half of what MCP buys.
+   */
+  if (tool.source === "mcp") {
+    if (deps.callMcpTool === undefined) {
+      // A registry can name an `mcpUrl` in a deployment that never built a
+      // client — a test harness, or the public façade. Refusing is the only
+      // safe answer: silently falling back to the PUP path would call a screen
+      // that does not exist and report the 404 as the satellite's fault.
+      record(tool.satelliteId, "error", "upstream-error");
+      return {
+        ok: false,
+        reason: "upstream-error",
+        message: `"${tool.title}" needs an MCP connection this portal was not given.`,
+      };
+    }
+
+    const result = await deps.callMcpTool(tool.satelliteId, tool.targetId, dispatchArgs, principal);
+    if (!result.ok) {
+      // The reason distinguishes the two, as it does on the screen path: a
+      // satellite that ran the tool and refused is "an agent was stopped from
+      // doing this", and recording that as an upstream error makes it look like
+      // an outage in the one log that is read to find out which it was.
+      record(tool.satelliteId, "error", result.kind === "refused" ? "refused" : "upstream-error");
+      return {
+        ok: false,
+        reason: "upstream-error",
+        // A refusal is the satellite talking to the model on purpose; anything
+        // else is an exception string, and those stay here.
+        message:
+          result.kind === "refused"
+            ? result.message
+            : `"${tool.title}" could not be reached.`,
+      };
+    }
+    record(tool.satelliteId, "ok");
+    return tool.kind === "read"
+      ? { ok: true, kind: "read", data: adaptMcpResult(result) }
+      : {
+          ok: true,
+          kind: "write",
+          outcome: "ok",
+          ...(result.content === "" ? {} : { message: result.content }),
+        };
+  }
+
   if (tool.kind === "read") {
     const result = await deps.transport.fetchScreen(
       tool.satelliteId,
       tool.targetId,
-      checked.value as Record<string, string>,
+      dispatchArgs as Record<string, string>,
       principal,
     );
     if (!result.ok) {
@@ -153,7 +239,7 @@ export async function invokeTool(
   const result = await deps.transport.invokeAction(
     tool.satelliteId,
     tool.targetId,
-    checked.value,
+    dispatchArgs,
     principal,
   );
   if (!result.ok) {

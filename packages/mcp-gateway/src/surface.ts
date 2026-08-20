@@ -1,6 +1,8 @@
 import { authorize, type Principal } from "@portal/identity";
 import type { Manifest } from "@portal/protocol";
 import type { Satellite } from "@portal/registry";
+import { adoptMcpTools } from "./adopt";
+import type { SatelliteMcpTool } from "./client";
 import { indexToolNames } from "./names";
 import { shimTools, type ToolDescriptor } from "./shim";
 
@@ -17,6 +19,17 @@ import { shimTools, type ToolDescriptor } from "./shim";
 export interface SurfaceEntry {
   readonly satellite: Satellite;
   readonly manifest: Manifest;
+  /**
+   * What this satellite's own MCP server offers, if it hosts one.
+   *
+   * Adopted here rather than kept in a parallel surface, so that everything
+   * below applies to both sources without being written twice: entitlement,
+   * `agentVisible`, and — the one that would actually bite — name collisions.
+   * A satellite that exposes `orders.list` as both a screen and an MCP tool has
+   * two different things answering to one name, and this is where that gets
+   * noticed instead of being resolved by whichever list was built first.
+   */
+  readonly mcpTools?: readonly SatelliteMcpTool[];
 }
 
 export interface SurfaceSkip {
@@ -44,10 +57,17 @@ export function buildSurface(
   const all: ToolDescriptor[] = [];
   const skipped: SurfaceSkip[] = [];
 
-  for (const { satellite, manifest } of entries) {
+  for (const { satellite, manifest, mcpTools } of entries) {
     const result = shimTools(satellite, manifest);
     all.push(...result.tools);
     for (const skip of result.skipped) {
+      skipped.push({ satelliteId: satellite.id, ...skip });
+    }
+
+    if (mcpTools === undefined || mcpTools.length === 0) continue;
+    const adopted = adoptMcpTools(satellite, mcpTools);
+    all.push(...adopted.tools);
+    for (const skip of adopted.skipped) {
       skipped.push({ satelliteId: satellite.id, ...skip });
     }
   }

@@ -15,6 +15,7 @@
   "dependencies": {
     "@portal/identity": "workspace:*",
     "@portal/protocol": "workspace:*",
-    "@portal/registry": "workspace:*"
+    "@portal/registry": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0"
   }
 }

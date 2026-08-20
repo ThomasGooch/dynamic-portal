@@ -13,6 +13,13 @@
   displayName: Order Management
   description: Track, review and approve customer orders.
   baseUrl: ${PORTAL_ORDERS_URL:-http://localhost:4001}
+  # This satellite hosts its own MCP server, and it is the only one that does.
+  # The bar for that is not "MCP is good" — the shim already makes every
+  # satellite agent-reachable for free. The bar is a capability PUP cannot
+  # express: `orders.search` takes a nested query, and `orders.reconcile` has no
+  # screen at all. Two of three satellites omit this line, which is the ratio
+  # the design expects.
+  mcpUrl: ${PORTAL_ORDERS_MCP_URL:-http://localhost:4001/mcp}
   owner: fulfillment-team
   nav:
     section: Operations
@@ -70,6 +77,19 @@
     # here so the write scope is stated where every other write's is.
     orders.attach:
       agentVisible: false
+      rbacScopes: [orders.write]
+    # The MCP tools are governed from the same file as the shimmed ones, and by
+    # the same rules. A satellite that hosts its own server chooses what it can
+    # *offer*; this file still decides what a model may reach and on what terms.
+    #
+    # `orders.search` is a read, so it is agent-visible without an entry — this
+    # one exists only to name the scope. `orders.reconcile` is a bulk write and
+    # is invisible until named here, exactly like `orders.approve`.
+    orders.search:
+      rbacScopes: [orders.read]
+    orders.reconcile:
+      agentVisible: true
+      requiresConfirmation: true
       rbacScopes: [orders.write]
 
 # No mcpUrl: this satellite ships no MCP server, so the hub generates a shim

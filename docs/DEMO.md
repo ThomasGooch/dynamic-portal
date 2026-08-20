@@ -188,6 +188,35 @@ hub draws a confirmation card.
 > "The model proposes; a person decides. Deletion is not offered to it at all —
 > that is a line in a config file a human reviews, not a prompt."
 
+### 6b · What a solution can offer beyond a screen (3 min) — *the API/MCP question*
+
+This beat exists because someone in the room is researching MCP and will ask
+whether this is a portal strategy or an integration strategy. It is one thing.
+
+Ask the assistant: **"Which pending orders are critical?"** It answers, and the
+tool it used was `orders.search` — which is **not** one of Order Management's
+screens. That satellite hosts its own MCP server, and this is a capability with
+no UI: a structured query with nested filters.
+
+> "Two of our three solutions host nothing. The hub turns their screens into
+> agent tools for free — that is the default, and it is why onboarding is a day.
+> Order Management went further, and got to offer something a screen cannot
+> express. The hub gained no code for it. Not one line knows what an order is."
+
+Then ask it to **reconcile blocked orders for a vehicle**. It pauses on the same
+confirmation card you saw in beat 6 — a tool the hub has never heard of,
+governed by the same file, in the same way.
+
+> "That is the whole answer on MCP. Solutions can expose capability directly,
+> and the moment they do it lands under the same governance as everything else:
+> the registry decides who may call it, whether a person confirms, and it is in
+> the same audit log. We did not build a second system to hold it."
+
+**If asked "so should every team run an MCP server?"** — No, and the ratio in
+front of them is the recommendation: one in three. A team should host one when
+it has a capability its screens cannot express. Otherwise the shim is strictly
+less work for the same reach.
+
 ### 7 · The ask (3 min)
 
 Two or three named solutions, one quarter, and the platform team writes the
@@ -218,6 +247,7 @@ in one file.
 | A screen shows an error card | That satellite is stopped | `docker compose start satellite-<name>` |
 | Form shows stale data | In-memory state from a rehearsal | `docker compose restart satellite-orders` |
 | Home never fills in | Composition failed | Say so and move on — the launcher is a complete page |
+| `orders.search` not found | The orders MCP server is unreachable | Skip beat 6b — the other tools are unaffected, which is itself the point of beat 5 |
 
 **Do not** run `docker compose down` in the room. Restarting a service keeps
 the stack up; `down` removes the containers and the next `up` re-creates all

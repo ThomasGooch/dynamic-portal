@@ -5,7 +5,14 @@ import type { AuditEvent, Principal } from "@portal/identity";
 import { AuditEventSchema, tenantAuditKey } from "@portal/identity";
 import { ManifestSchema } from "@portal/protocol";
 import { SatelliteClient, SatelliteSchema, loadRegistry } from "@portal/registry";
-import { buildSurface, invokeTool, shimTools, type ToolTransport } from "@portal/mcp-gateway";
+import {
+  buildSurface,
+  invokeTool,
+  shimTools,
+  type JsonObjectSchema,
+  type ToolDescriptor,
+  type ToolTransport,
+} from "@portal/mcp-gateway";
 import { createApp } from "./app";
 import { manifest } from "./screens";
 import { OrderRepository, seedOrders } from "./repository";
@@ -71,9 +78,29 @@ const registryEntry = (baseUrl: string) =>
     orders.attach:
       agentVisible: false
       rbacScopes: [orders.write]
+    orders.search:
+      rbacScopes: [orders.read]
+    orders.reconcile:
+      agentVisible: true
+      requiresConfirmation: true
+      rbacScopes: [orders.write]
 `,
     {},
   )[0];
+
+/**
+ * The derived schema of a shimmed tool.
+ *
+ * A descriptor's `inputSchema` is now either this or a satellite's own — an
+ * MCP tool publishes a schema the gateway never reads, so the type refuses to
+ * let anything index into it blind. Everything in this file is shimmed from a
+ * manifest, so the narrowing is a fact, and asserting it makes that explicit
+ * rather than casting it away.
+ */
+function derivedSchema(tool: ToolDescriptor | undefined): JsonObjectSchema {
+  expect(tool?.source).toBe("pup");
+  return tool!.inputSchema as JsonObjectSchema;
+}
 
 describe("the fixture above", () => {
   it("declares the same tool policies the committed registry does", () => {
@@ -170,7 +197,7 @@ describe("the surface this satellite actually offers", () => {
     // a turn and learns nothing. Noise rather than a governance hole — but
     // noise every model pays for on every turn, which is why it is written
     // down instead of shrugged at.
-    expect(form?.inputSchema.required ?? []).toEqual([]);
+    expect(derivedSchema(form).required ?? []).toEqual([]);
   });
 
   it("lets an agent send a list, which it previously could not express", async () => {
@@ -181,7 +208,7 @@ describe("the surface this satellite actually offers", () => {
     // never sent.
     const surface = await surfaceFor(principal());
     const create = surface.byName.get("orders__orders_create");
-    const tags = create?.inputSchema.properties?.["tags"];
+    const tags = derivedSchema(create).properties?.["tags"];
 
     expect(tags).toMatchObject({ type: "array", items: { type: "string" } });
     // The choices constrain each entry, not the list. A model reading them as
@@ -203,14 +230,14 @@ describe("the surface this satellite actually offers", () => {
     // schema comes from the satellite's own declaration, not from the registry.
     const surface = await surfaceFor(principal());
     const create = surface.byName.get("orders__orders_create");
-    const properties = Object.keys(create?.inputSchema.properties ?? {}).sort();
+    const properties = Object.keys(derivedSchema(create).properties ?? {}).sort();
 
     expect(properties).toContain("customer");
     expect(properties).toContain("dueBy");
     expect(properties).toContain("priority");
-    expect(create?.inputSchema.required).toContain("contactEmail");
+    expect(derivedSchema(create).required).toContain("contactEmail");
     // Enumerated so it picks from the list rather than inventing a value.
-    expect(create?.inputSchema.properties?.["priority"]).toMatchObject({
+    expect(derivedSchema(create).properties?.["priority"]).toMatchObject({
       enum: ["standard", "express", "critical"],
     });
   });
@@ -273,8 +300,8 @@ describe("the surface this satellite actually offers", () => {
     );
 
     expect(tool).toBeDefined();
-    expect(Object.keys(tool!.inputSchema.properties)).not.toContain("scan");
-    expect(tool!.inputSchema.additionalProperties).toBe(false);
+    expect(Object.keys(derivedSchema(tool).properties ?? {})).not.toContain("scan");
+    expect(derivedSchema(tool).additionalProperties).toBe(false);
     // Still named, so a model knows the write is partial by design.
     expect(tool!.description).toContain("scan");
   });
@@ -294,7 +321,7 @@ describe("the surface this satellite actually offers", () => {
   it("describes every tool with a schema the strict agent path will accept", async () => {
     const surface = await surfaceFor(principal());
     for (const tool of surface.tools) {
-      expect(tool.inputSchema.additionalProperties).toBe(false);
+      expect(derivedSchema(tool).additionalProperties).toBe(false);
       for (const rejected of ["minLength", "maximum", "pattern", "format"]) {
         expect(JSON.stringify(tool.inputSchema)).not.toContain(rejected);
       }

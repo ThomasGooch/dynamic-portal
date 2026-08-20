@@ -31,7 +31,17 @@ export interface McpToolAnnotations {
 export interface McpToolDescriptor {
   readonly name: string;
   readonly description: string;
-  readonly inputSchema: JsonObjectSchema;
+  /**
+   * Whatever schema the tool has, republished unchanged.
+   *
+   * A shimmed tool's is derived from a PUP manifest and is flat by
+   * construction; a satellite's own MCP tool may be nested, and republishing it
+   * verbatim is the correct answer — this endpoint speaks MCP to a client that
+   * speaks MCP, so there is nothing to flatten it *for*. Rewriting a schema in
+   * transit is how a gateway starts having opinions about what a satellite may
+   * offer.
+   */
+  readonly inputSchema: JsonObjectSchema | Record<string, unknown>;
   readonly annotations: McpToolAnnotations;
 }
 

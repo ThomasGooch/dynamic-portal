@@ -63,3 +63,15 @@ export {
   type ToolResult,
   type ToolTransport,
 } from "./invoke";
+
+export {
+  callSatelliteTool,
+  listSatelliteTools,
+  type McpCallOutcome,
+  type McpClientOptions,
+  type SatelliteMcpTool,
+} from "./client";
+
+export { adoptMcpTools, type AdoptResult, type SkippedMcpTool } from "./adopt";
+
+export { adaptMcpResult, type McpResultLike } from "./adapt";
