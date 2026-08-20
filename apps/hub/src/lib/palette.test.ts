@@ -49,6 +49,24 @@ const darkBlock = (brand: string) =>
 const valueIn = (block: string, token: string) =>
   block.match(new RegExp(`${token}:\\s*([^;]+);`))?.[1]?.trim();
 
+/**
+ * The colour, not the text that spells it.
+ *
+ * Comparing the raw declarations called `#CE1F63` and `#ce1f63` two different
+ * colours — so a brand could ship a delete button in exactly its accent and
+ * the assertion below would agree it had not. Case and `#abc` shorthand are
+ * folded; anything else asserts as written, which is the honest limit of a
+ * check that reads CSS as text.
+ */
+const colourIn = (block: string, token: string): string => {
+  const value = valueIn(block, token);
+  expect(value, `${token} has no value in this block`).toBeDefined();
+  return value!
+    .toLowerCase()
+    .replace(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/, "#$1$1$2$2$3$3")
+    .replace(/\s+/g, " ");
+};
+
 describe("a brand's palette", () => {
   it("has colours to cover in the first place", () => {
     // Guards the guard: a regex that stopped matching would otherwise make
@@ -86,7 +104,7 @@ describe("a brand's palette", () => {
     ] as const) {
       it(`${brand} does not reuse its accent as the danger tone in ${scheme}`, () => {
         const scoped = block(brand);
-        expect(valueIn(scoped, "--accent")).not.toBe(valueIn(scoped, "--tone-danger"));
+        expect(colourIn(scoped, "--accent")).not.toBe(colourIn(scoped, "--tone-danger"));
       });
     }
   }

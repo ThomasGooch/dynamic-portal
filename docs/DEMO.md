@@ -74,15 +74,18 @@ Open `/`. Click **Orders**, then **Fleet**, then **Depots**.
 Copy the URL of a detail screen, paste it in a new tab, hit back. It all works
 — these are real routes, not an iframe.
 
-**Pick the brand.** `PORTAL_BRAND=partner docker compose up -d hub` dresses
-the portal in the organisation's own colours — no rebuild, just a re-created
+**Pick the brand.** `PORTAL_BRAND=partner docker compose up -d hub` swaps the
+whole portal onto a second sample palette — no rebuild, just a re-created
 container. `up -d`, never `restart`: a container's environment is fixed when it
 is created, so restarting re-runs the old value and the rebrand silently does
-not happen. Beat 2 has the long version. Worth doing before the room: a portal
-wearing your palette stops reading as a prototype. The colours were read off the
-public site rather than a brand guide, so a designer should confirm the exact
-values; correcting them is one block in `globals.css`, which is itself the
-point.
+not happen. Beat 2 has the long version.
+
+`partner` is a **sample**, not your audience's palette — do not tell a room it
+is theirs. What it demonstrates is the cost of making it theirs: one block of
+custom properties in `globals.css`, no rebuild and no satellite touched. If
+there is time before the room, paste their colours into a copy of that block
+and add the name to `BRANDS`; a portal wearing the audience's palette stops
+reading as a prototype.
 
 ### 2 · Where is the JavaScript? (2 min) — *kills version-and-dependency hell*
 

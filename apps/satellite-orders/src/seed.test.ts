@@ -27,7 +27,17 @@ const FICTIONAL = [
  * cannot reach a person even by accident — unlike a plausible-looking address
  * at a domain somebody owns.
  */
-const RESERVED = /@[a-z0-9.-]+\.(test|example|invalid|localhost)$/;
+const RESERVED = /@[a-z0-9.-]+\.(test|example|invalid|localhost)$/i;
+
+/**
+ * Every address in the record, not just the one in `contactEmail`.
+ *
+ * Checking that field alone left the free-text ones — `notes`,
+ * `expediteReason`, an attachment filename — able to carry
+ * `jane.whitfield@acmecorp.com` past all four assertions here, which is the
+ * same screenshot with an extra step.
+ */
+const ADDRESSES = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 
 describe("the seed data", () => {
   const orders = seedOrders();
@@ -47,9 +57,14 @@ describe("the seed data", () => {
 
   it("uses addresses that cannot reach anybody", () => {
     for (const order of orders) {
-      expect(order.contactEmail, `${order.contactEmail} is not on a reserved domain`).toMatch(
-        RESERVED,
-      );
+      const found = JSON.stringify(order).match(ADDRESSES) ?? [];
+      // Guards the guard: an order that stopped carrying an address at all —
+      // or a pattern that stopped finding one — would otherwise pass on an
+      // empty list.
+      expect(found, `${order.id} carries no address for this to check`).not.toHaveLength(0);
+      for (const address of found) {
+        expect(address, `${address} is not on a reserved domain`).toMatch(RESERVED);
+      }
     }
   });
 

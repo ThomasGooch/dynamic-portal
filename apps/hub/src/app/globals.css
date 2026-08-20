@@ -162,11 +162,14 @@
     --text-muted: #a39d92;
     /* Omitting a token here is not a fallback, it is the daylight value: the
        `:root` above supplies whatever this block leaves out. Dark mode was
-       therefore painting a near-black `--tone-neutral` onto a near-black
-       surface (1.8:1), and white `--text-inverse` onto a pale accent (2.5:1),
-       which is the exact failure the brand blocks below are careful about. */
+       therefore painting white `--text-inverse` onto the pale accent (2.5:1)
+       and onto the pale danger tone — the primary and delete buttons — which
+       is the exact failure the brand blocks below are careful about. */
     --text-inverse: #16150f;
 
+    /* Completed for the same reason, though nothing reads it yet: no rule maps
+       `[data-tone="neutral"]`, so this is the daylight near-black waiting on
+       the first stylesheet that does. */
     --tone-neutral: #a8a196;
     --tone-info: #7aa9e0;
     --tone-success: #63c795;
