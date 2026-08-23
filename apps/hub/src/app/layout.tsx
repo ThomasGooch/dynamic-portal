@@ -83,7 +83,7 @@ const BRAND_ATTRIBUTES = brandAttributes();
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   await connection();
-  const principal = currentPrincipal();
+  const principal = await currentPrincipal();
 
   return (
     <html lang="en" {...BRAND_ATTRIBUTES}>

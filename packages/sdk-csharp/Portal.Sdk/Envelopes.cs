@@ -41,6 +41,26 @@ public static class Envelopes
         return audience.Select(value => value.ToWire()).ToList();
     }
 
+    /// <summary>A role list on the wire. Absent stays absent; empty is refused.</summary>
+    /// <remarks>
+    /// Roles are opt-in, so the parameter is absent by default and no field is
+    /// emitted — unlike audience, silence here means un-gated rather than
+    /// default-deny. An explicit empty list is still refused, because its only
+    /// coherent meaning (nobody) is never what a declaration intends; the empty
+    /// set that means nobody arises from narrowing, not from a builder call.
+    /// </remarks>
+    private static List<string> WireRoles(IReadOnlyList<Role> roles)
+    {
+        if (roles.Count == 0)
+        {
+            throw new ArgumentException(
+                "roles must not be empty; omit the parameter to leave a resource un-gated.",
+                nameof(roles));
+        }
+
+        return roles.Select(value => value.ToWire()).ToList();
+    }
+
     /// <summary>A toast, refusing a message that would render blank.</summary>
     /// <remarks>
     /// The protocol's toast message is <c>.min(1)</c>, so an empty one is a
@@ -223,7 +243,8 @@ public static class Envelopes
         IReadOnlyList<IReadOnlyDictionary<string, object?>>? nav = null,
         string? mcpUrl = null,
         string? healthPath = null,
-        string? summaryScreenId = null)
+        string? summaryScreenId = null,
+        IReadOnlyList<Role>? roles = null)
     {
         var body = new Dictionary<string, object?>
         {
@@ -240,6 +261,7 @@ public static class Envelopes
         if (healthPath is not null) body["healthPath"] = healthPath;
         if (summaryScreenId is not null)
             body["summary"] = new Dictionary<string, object?> { ["screenId"] = summaryScreenId };
+        if (roles is not null) body["roles"] = WireRoles(roles);
         return body;
     }
 
@@ -249,7 +271,8 @@ public static class Envelopes
         string title,
         IReadOnlyList<Audience> audience,
         string? description = null,
-        IReadOnlyList<IReadOnlyDictionary<string, object?>>? parameters = null)
+        IReadOnlyList<IReadOnlyDictionary<string, object?>>? parameters = null,
+        IReadOnlyList<Role>? roles = null)
     {
         var entry = new Dictionary<string, object?>
         {
@@ -257,6 +280,7 @@ public static class Envelopes
             ["title"] = title,
             ["audience"] = Wire(audience),
         };
+        if (roles is not null) entry["roles"] = WireRoles(roles);
         if (description is not null) entry["description"] = description;
         if (parameters is not null) entry["params"] = parameters;
         return entry;
@@ -274,13 +298,15 @@ public static class Envelopes
         IReadOnlyList<Audience> audience,
         string? title = null,
         string? description = null,
-        IReadOnlyList<IReadOnlyDictionary<string, object?>>? parameters = null)
+        IReadOnlyList<IReadOnlyDictionary<string, object?>>? parameters = null,
+        IReadOnlyList<Role>? roles = null)
     {
         var entry = new Dictionary<string, object?>
         {
             ["id"] = actionId,
             ["audience"] = Wire(audience),
         };
+        if (roles is not null) entry["roles"] = WireRoles(roles);
         if (title is not null) entry["title"] = title;
         if (description is not null) entry["description"] = description;
         if (parameters is not null) entry["params"] = parameters;

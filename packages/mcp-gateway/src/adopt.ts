@@ -69,8 +69,13 @@ export function adoptMcpTools(
     const declared = {
       audience: policy?.audience ?? [...DEFAULT_AUDIENCE.audience],
       ...(policy?.rbacScopes === undefined ? {} : { rbacScopes: policy.rbacScopes }),
+      // A native MCP tool has no manifest, so it declares no roles of its own —
+      // it inherits the satellite's role ceiling, narrowed by any registry tool
+      // policy named for it. `combine` handles the "no roles anywhere = un-gated"
+      // case; this only forwards a registry-declared narrowing when present.
+      ...(policy?.roles === undefined ? {} : { roles: policy.roles }),
     };
-    const { audience, rbacScopes } = combine([satelliteLayer(satellite), declared]);
+    const { audience, rbacScopes, roles } = combine([satelliteLayer(satellite), declared]);
 
     if (audience.length === 0) {
       skipped.push({ toolId: tool.name, reason: "registry and satellite agree on no audience" });
@@ -91,6 +96,7 @@ export function adoptMcpTools(
       inputSchema: tool.inputSchema,
       audience,
       rbacScopes,
+      roles,
       // A tool that does not declare itself read-only is a write, and a write
       // pauses for a person unless the registry says otherwise.
       requiresConfirmation: policy?.requiresConfirmation ?? !tool.readOnly,

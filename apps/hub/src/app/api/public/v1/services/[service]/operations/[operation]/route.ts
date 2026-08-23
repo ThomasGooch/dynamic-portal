@@ -22,7 +22,7 @@ export async function POST(
 
   let principal;
   try {
-    principal = currentPrincipal();
+    principal = await currentPrincipal();
   } catch {
     return publicJson(publicFailure("unauthenticated"), 401);
   }

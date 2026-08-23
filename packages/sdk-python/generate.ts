@@ -8,6 +8,7 @@ import {
   ActionResponseSchema,
   AudienceSchema,
   CURRENT_PROTOCOL_VERSION,
+  RoleSchema,
   ToastSchema,
 } from "@portal/protocol";
 
@@ -260,6 +261,10 @@ ActionOutcome = ${pyLiteral(literals(ActionResponseSchema, "outcome"))}
 #: Who a satellite, screen or action is visible to. Default-deny: absent means
 #: internal, and external must always be stated.
 Audience = ${pyLiteral(literals(AudienceSchema))}
+
+#: Which org roles a screen or action is offered to (any-of). Opt-in: absent
+#: means not role-gated.
+Role = ${pyLiteral(literals(RoleSchema))}
 
 #: What an action parameter can be. Generated, because this is exactly the
 #: vocabulary that drifted: \`string[]\` was added to the protocol and the C#

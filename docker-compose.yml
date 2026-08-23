@@ -82,6 +82,39 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # The identity provider. Imports the committed realm on boot: four org roles,
+  # the confidential `portal-hub` client, and one demo user per role
+  # (lead / eng / fin / plat @acme.example, password = the username).
+  #
+  # KC_HOSTNAME is the browser-facing URL, so token `iss` and the login redirect
+  # both use localhost:8080. The hub reaches this service internally at
+  # keycloak:8080 and bridges the two origins for its own back-channel calls via
+  # PORTAL_OIDC_INTERNAL_ORIGIN (see apps/hub/src/lib/oidc.ts); backchannel-
+  # dynamic lets those internal requests resolve against the request host.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      - ./docker/keycloak/realm-portal.json:/opt/keycloak/data/import/realm-portal.json:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      # The Keycloak image ships no curl; bash (present) opening a TCP socket to
+      # the port is a dependable readiness proxy, paired with a long start_period
+      # for the realm import. The hub's discovery is lazy and retries besides.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
+
   # The hub. Waits for every satellite to be healthy — not because it cannot
   # start without them (an unwell satellite degrades to a scoped card, and there
   # is an e2e test for exactly that), but so `pnpm up` reaches a state where the
@@ -96,7 +129,12 @@ services:
       # The dev session stub refuses to run under NODE_ENV=production unless
       # this is set. Explicit here so the compose stack is obviously not a
       # production deployment.
-      PORTAL_ALLOW_DEV_SESSION: "1"
+      PORTAL_ALLOW_DEV_SESSION: ${PORTAL_ALLOW_DEV_SESSION:-1}
+      # Acts as this org role in the dev session, so the RBAC model is visible
+      # before real OIDC login exists: `PORTAL_DEV_ROLES=finance docker compose
+      # up -d hub` re-creates the hub as finance and the nav, screens, and agent
+      # surface narrow to what finance may see. Unset means every role.
+      PORTAL_DEV_ROLES: ${PORTAL_DEV_ROLES:-}
       # Mandatory. The hub refuses to serve without both: a default key would
       # produce a log that looks keyed and is not, and a default path one that
       # nobody knows to collect.
@@ -137,6 +175,18 @@ services:
       PORTAL_ORDERS_MCP_URL: http://satellite-orders:4001/mcp
       PORTAL_FLEET_URL: http://satellite-fleet:4002
       PORTAL_DEPOTS_URL: http://satellite-depots:4003
+      # OIDC login (Keycloak). The issuer is the browser-facing URL so the login
+      # redirect and token `iss` resolve for the user; the hub's own back-channel
+      # calls (discovery, token, JWKS) are rewritten to the internal origin.
+      # Leave PORTAL_ALLOW_DEV_SESSION at 1 and this is available but optional;
+      # set it to 0 (`PORTAL_ALLOW_DEV_SESSION=0 docker compose up`) to force real
+      # Keycloak login. Log in as lead / eng / fin / plat (password = username).
+      PORTAL_OIDC_ISSUER: ${PORTAL_OIDC_ISSUER:-http://localhost:8080/realms/portal}
+      PORTAL_OIDC_INTERNAL_ORIGIN: ${PORTAL_OIDC_INTERNAL_ORIGIN:-http://keycloak:8080}
+      PORTAL_OIDC_CLIENT_ID: ${PORTAL_OIDC_CLIENT_ID:-portal-hub}
+      PORTAL_OIDC_CLIENT_SECRET: ${PORTAL_OIDC_CLIENT_SECRET:-portal-hub-dev-secret}
+      PORTAL_OIDC_REDIRECT_URI: ${PORTAL_OIDC_REDIRECT_URI:-http://localhost:3000/api/auth/callback}
+      PORTAL_SESSION_SECRET: ${PORTAL_SESSION_SECRET:-dev-only-not-a-real-session-secret}
     # `host.docker.internal` is a Docker Desktop convenience; on Linux the name
     # does not resolve at all, and the only symptom is the assistant answering
     # "could not complete that request". Mapped explicitly so the local-model
@@ -160,6 +210,8 @@ services:
       satellite-fleet:
         condition: service_healthy
       satellite-depots:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     healthcheck:
       # `/healthz`, not `/`. The landing page now asks every satellite for its

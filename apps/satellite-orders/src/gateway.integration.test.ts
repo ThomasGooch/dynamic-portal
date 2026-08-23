@@ -37,6 +37,7 @@ const principal = (over: Partial<Principal> = {}): Principal => ({
   tenantId: "acme",
   audience: "internal",
   scopes: ["orders.read", "orders.write"],
+  roles: ["leadership", "engineering", "finance"],
   ...over,
 });
 
@@ -64,6 +65,7 @@ const registryEntry = (baseUrl: string) =>
       agentVisible: true
       requiresConfirmation: true
       rbacScopes: [orders.write]
+      roles: [finance]
     orders.create:
       agentVisible: true
       requiresConfirmation: true

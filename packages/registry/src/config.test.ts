@@ -18,11 +18,15 @@ import { loadRegistry, resolveNav, visibleSatellites } from "./registry";
 const CONFIG = fileURLToPath(new URL("../../../config/satellites.yaml", import.meta.url));
 const registry = loadRegistry(readFileSync(CONFIG, "utf8"));
 
+// engineering is offered orders + fleet but not depots by the committed matrix,
+// which is exactly the visibility this suite asserts. Roles gate internal
+// principals only, so the external case below is unaffected by this.
 const principal = (over: Partial<Principal> = {}): Principal => ({
   sub: "alice@acme.example",
   tenantId: "acme",
   audience: "internal",
   scopes: ["orders.read", "fleet.read"],
+  roles: ["engineering"],
   ...over,
 });
 

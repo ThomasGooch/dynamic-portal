@@ -3,6 +3,7 @@ import {
   ManifestSchema,
   ScreenResponseSchema,
   isAudienceSubset,
+  isRoleSubset,
   isSupportedProtocolVersion,
   type ActionResponse,
   type Manifest,
@@ -167,6 +168,21 @@ export class SatelliteClient {
         return {
           ok: false as const,
           detail: "manifest declares an audience the registry does not grant this satellite",
+        };
+      }
+      // The same registry-wins rule for roles, and opt-in like everywhere else:
+      // only when the registry declares a role ceiling for this satellite must
+      // the manifest's satellite-level roles stay within it. Intersection at
+      // decision time already prevents widening; this refuses the contradiction
+      // at the door so it is a configuration error, not a silent narrowing.
+      if (
+        this.#satellite.roles !== undefined &&
+        parsed.data.roles !== undefined &&
+        !isRoleSubset(parsed.data.roles, this.#satellite.roles)
+      ) {
+        return {
+          ok: false as const,
+          detail: "manifest declares a role the registry does not grant this satellite",
         };
       }
       return { ok: true as const, value: parsed.data };

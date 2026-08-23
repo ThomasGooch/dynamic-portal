@@ -54,6 +54,32 @@ describe("buildSurface", () => {
     expect(surface.tools).toEqual([]);
   });
 
+  it("withholds a role-gated read from a principal without the role", () => {
+    const surface = buildSurface(
+      [
+        entry(
+          { roles: ["finance"] },
+          { roles: ["finance"], screens: [{ id: "orders.list", title: "Orders", roles: ["finance"] }] },
+        ),
+      ],
+      principal({ roles: ["engineering"] }),
+    );
+    expect(surface.tools).toEqual([]);
+  });
+
+  it("offers a role-gated read to a principal holding the role", () => {
+    const surface = buildSurface(
+      [
+        entry(
+          { roles: ["finance"] },
+          { roles: ["finance"], screens: [{ id: "orders.list", title: "Orders", roles: ["finance"] }] },
+        ),
+      ],
+      principal({ roles: ["finance"] }),
+    );
+    expect(names(surface)).toEqual(["orders__orders_list"]);
+  });
+
   it("withholds a write nobody enabled", () => {
     const surface = buildSurface(
       [entry({}, { actions: [{ id: "orders.approve", params: [{ name: "id", type: "string" }] }] })],

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AudienceListSchema, isAudienceSubset, type Audience } from "./audience";
+import { RoleListSchema, isRoleSubset } from "./role";
 import { ProtocolVersionSchema } from "./version";
 
 /**
@@ -68,6 +69,7 @@ export const ScreenDescriptorSchema = z
       .superRefine(rejectDuplicates<{ name: string }>("param name", (p) => p.name))
       .optional(),
     audience: AudienceListSchema,
+    roles: RoleListSchema,
   })
   .strict();
 
@@ -144,6 +146,7 @@ export const ActionDescriptorSchema = z
       .superRefine(rejectDuplicates<{ name: string }>("param name", (p) => p.name))
       .optional(),
     audience: AudienceListSchema,
+    roles: RoleListSchema,
   })
   .strict();
 
@@ -207,6 +210,7 @@ export const ManifestSchema = z
     displayName: z.string().min(1),
     description: z.string().optional(),
     audience: AudienceListSchema,
+    roles: RoleListSchema,
     screens: z.array(ScreenDescriptorSchema).superRefine(rejectDuplicateIds("screen")),
     actions: z.array(ActionDescriptorSchema).superRefine(rejectDuplicateIds("action")),
     nav: z.array(NavEntrySchema).optional(),
@@ -237,6 +241,31 @@ export const ManifestSchema = z
           });
         }
       });
+    }
+
+    // Role subset mirrors the audience rule, but only when the satellite opts
+    // into role-gating. A satellite that declares no roles imposes no ceiling,
+    // so a screen may name any roles; when the satellite DOES declare roles, a
+    // screen or action may only narrow within them, never name a role the
+    // satellite itself was not granted.
+    const declaredRoles = manifest.roles;
+    if (declaredRoles !== undefined) {
+      for (const [collection, items] of [
+        ["screens", manifest.screens],
+        ["actions", manifest.actions],
+      ] as const) {
+        items.forEach((item, index) => {
+          if (item.roles !== undefined && !isRoleSubset(item.roles, declaredRoles)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [collection, index, "roles"],
+              message:
+                `${collection.slice(0, -1)} "${item.id}" declares a role the satellite does not: ` +
+                `widen the satellite roles to include ${JSON.stringify(item.roles)} first`,
+            });
+          }
+        });
+      }
     }
 
     // A nav entry naming a screen that does not exist is a dead link the hub

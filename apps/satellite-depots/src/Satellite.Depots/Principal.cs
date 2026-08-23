@@ -28,7 +28,16 @@ namespace Satellite.Depots;
 /// verifying an RFC 8693 exchanged token against the issuer's JWKS; the
 /// <see cref="Principal"/> shape and the call sites do not change.
 /// </remarks>
-public sealed record Principal(string Sub, string TenantId, string Audience, IReadOnlyList<string> Scopes);
+public sealed record Principal(string Sub, string TenantId, string Audience, IReadOnlyList<string> Scopes)
+{
+    /// <summary>
+    /// Org roles from the IdP (Keycloak realm roles). Init-only with an empty
+    /// default so existing <c>new Principal(...)</c> call sites keep compiling
+    /// and a role-less token — including the pinned cross-language fixture —
+    /// round-trips unchanged.
+    /// </summary>
+    public IReadOnlyList<string> Roles { get; init; } = [];
+}
 
 /// <summary>Raised whenever a token cannot be trusted, for any reason.</summary>
 public sealed class InvalidPrincipalException(string reason)
@@ -39,11 +48,17 @@ public static class Principals
 {
     private static readonly HashSet<string> Audiences = ["internal", "external"];
 
+    // Closed like the TypeScript RoleSchema enum: an unknown role value is a
+    // malformed token, not one to accept leniently.
+    private static readonly HashSet<string> KnownRoles =
+        ["leadership", "engineering", "finance", "platform"];
+
     // The reference TypeScript `PrincipalSchema` is `.strict()`. Accepting an
     // unknown claim here would mean a token this satellite honours and orders
     // refuses — the two disagreeing about what a valid identity is, which is
     // the divergence the shared fixture test exists to catch.
-    private static readonly HashSet<string> Claims = ["sub", "tenantId", "audience", "scopes"];
+    private static readonly HashSet<string> Claims =
+        ["sub", "tenantId", "audience", "scopes", "roles"];
 
     private static string Base64UrlEncode(byte[] raw) =>
         Convert.ToBase64String(raw).TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -78,6 +93,9 @@ public static class Principals
             ["audience"] = principal.Audience,
             ["scopes"] = principal.Scopes,
         };
+        // Emitted only when present, matching TypeScript's optional `roles`, so
+        // a role-less principal round-trips to the same bytes.
+        if (principal.Roles.Count > 0) claims["roles"] = principal.Roles;
         var payload = Base64UrlEncode(
             Encoding.UTF8.GetBytes(JsonSerializer.Serialize(claims, PortalJsonOptions.Compact)));
         return $"{payload}.{Sign(payload, secret)}";
@@ -183,7 +201,27 @@ public static class Principals
             scopes.Add(scope.GetString()!);
         }
 
-        return new Principal(sub, tenantId, audience, scopes);
+        // Optional and closed, mirroring the TypeScript enum: absent leaves an
+        // empty role set; a present-but-unknown value fails the token.
+        var roles = new List<string>();
+        if (decoded.TryGetProperty("roles", out var rawRoles))
+        {
+            if (rawRoles.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidPrincipalException("payload is not a principal");
+            }
+            foreach (var role in rawRoles.EnumerateArray())
+            {
+                var value = role.ValueKind == JsonValueKind.String ? role.GetString() : null;
+                if (value is null || !KnownRoles.Contains(value))
+                {
+                    throw new InvalidPrincipalException("payload is not a principal");
+                }
+                roles.Add(value);
+            }
+        }
+
+        return new Principal(sub, tenantId, audience, scopes) { Roles = roles };
     }
 
     private static string? Text(JsonElement element, string name) =>

@@ -48,6 +48,10 @@ export function manifest(): Manifest {
     // external principal is scoped by the same `tenantId` an internal one is,
     // and this satellite checks it on every call rather than trusting the hub.
     audience: ["internal", "external"],
+    // Org roles this satellite is offered to. The registry declares the same
+    // ceiling; the platform narrows within it per-tool (orders.approve → finance
+    // only). Absent here would leave the satellite un-role-gated at this level.
+    roles: ["leadership", "engineering", "finance"],
     screens: [
       {
         id: "orders.list",
@@ -83,6 +87,10 @@ export function manifest(): Manifest {
           { name: "id", type: "string", required: true, description: "The order id to approve." },
         ],
         audience: ["internal"],
+        // Approving is for leadership and finance; the registry narrows the
+        // governed (agent/MCP/public) path further to finance alone. Engineering
+        // sees the satellite but not this action.
+        roles: ["leadership", "finance"],
       },
       {
         // Declared in full so the gateway can describe it to an agent. Every

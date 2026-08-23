@@ -1,5 +1,5 @@
 import type { Principal } from "@portal/identity";
-import type { Audience } from "@portal/protocol";
+import type { Audience, Role } from "@portal/protocol";
 import { describe, expect, it } from "vitest";
 import { SatelliteSchema } from "./registry";
 import { entitle, toolPolicy } from "./entitlement";
@@ -13,6 +13,7 @@ const principal = (over: Partial<Principal> = {}): Principal => ({
 });
 
 const layer = (audience: Audience[], rbacScopes: string[] = []) => ({ audience, rbacScopes });
+const roleLayer = (audience: Audience[], roles: Role[]) => ({ audience, roles });
 
 describe("narrowing", () => {
   it("takes the intersection of every layer's audience", () => {
@@ -112,6 +113,63 @@ describe("accumulating scopes", () => {
       layer(["internal"]),
     ]);
     expect(result.allowed).toBe(false);
+  });
+});
+
+describe("narrowing roles", () => {
+  it("leaves roles un-gated when no layer declares any (opt-in)", () => {
+    const result = entitle(principal(), [layer(["internal"])]);
+    expect(result.roles).toBeUndefined();
+    expect(result.allowed).toBe(true);
+  });
+
+  it("gates on a single declaring layer, any-of", () => {
+    const layers = [roleLayer(["internal"], ["leadership", "finance"])];
+    expect(entitle(principal({ roles: ["finance"] }), layers).allowed).toBe(true);
+    expect(entitle(principal({ roles: ["engineering"] }), layers).allowed).toBe(false);
+  });
+
+  it("takes the intersection of every declaring layer", () => {
+    const result = entitle(principal({ roles: ["finance"] }), [
+      roleLayer(["internal"], ["leadership", "finance"]),
+      roleLayer(["internal"], ["finance", "platform"]),
+    ]);
+    expect(result.roles).toEqual(["finance"]);
+    expect(result.allowed).toBe(true);
+  });
+
+  it("treats a layer with no roles as 'no opinion', not 'nobody'", () => {
+    const result = entitle(principal({ roles: ["finance"] }), [
+      roleLayer(["internal"], ["finance"]),
+      layer(["internal"]),
+    ]);
+    expect(result.roles).toEqual(["finance"]);
+    expect(result.allowed).toBe(true);
+  });
+
+  it("narrows to nobody when declaring layers are disjoint, and fails closed", () => {
+    const result = entitle(principal({ roles: ["finance", "platform"] }), [
+      roleLayer(["internal"], ["finance"]),
+      roleLayer(["internal"], ["platform"]),
+    ]);
+    expect(result.roles).toEqual([]);
+    expect(result.allowed).toBe(false);
+  });
+
+  it("keeps undefined (un-gated) distinct from [] (nobody)", () => {
+    expect(entitle(principal(), [layer(["internal"])]).roles).toBeUndefined();
+    const nobody = entitle(principal({ roles: ["finance"] }), [
+      roleLayer(["internal"], ["finance"]),
+      roleLayer(["internal"], ["platform"]),
+    ]);
+    expect(nobody.roles).toEqual([]);
+  });
+
+  it("does not role-gate an external principal", () => {
+    const result = entitle(principal({ audience: "external", roles: [] }), [
+      roleLayer(["internal", "external"], ["finance"]),
+    ]);
+    expect(result.allowed).toBe(true);
   });
 });
 

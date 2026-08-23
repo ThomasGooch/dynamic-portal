@@ -53,7 +53,7 @@ export async function POST(
 
   let principal;
   try {
-    principal = currentPrincipal();
+    principal = await currentPrincipal();
   } catch {
     return json(
       { ok: false, reason: "no-session", message: "You are not signed in." },
@@ -68,6 +68,7 @@ export async function POST(
     !authorize(principal, {
       audience: satellite.audience,
       rbacScopes: satellite.rbacScopes,
+      roles: satellite.roles,
     }).allowed
   ) {
     return json(NOT_FOUND, 404);
@@ -101,7 +102,8 @@ export async function POST(
   const declared = manifest.value.actions.find((action) => action.id === actionId);
   if (
     declared === undefined ||
-    !authorize(principal, { audience: declared.audience, rbacScopes: [] }).allowed
+    !authorize(principal, { audience: declared.audience, rbacScopes: [], roles: declared.roles })
+      .allowed
   ) {
     return json(NOT_FOUND, 404);
   }

@@ -44,6 +44,9 @@ def manifest() -> dict[str, Any]:
         display_name="Fleet Operations",
         description="Vehicle status, utilisation and maintenance.",
         audience=["internal"],
+        # Org roles this satellite is offered to. Screens inherit it (they
+        # declare none of their own), so one satellite-level gate covers them.
+        roles=["leadership", "engineering", "platform"],
         screens=[
             env.screen_descriptor(
                 "fleet.dashboard",

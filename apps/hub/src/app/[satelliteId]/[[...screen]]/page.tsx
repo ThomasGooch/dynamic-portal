@@ -27,7 +27,7 @@ export default async function ScreenPage({
   await connection();
   const { satelliteId, screen } = await params;
   const query = await searchParams;
-  const principal = currentPrincipal();
+  const principal = await currentPrincipal();
   const portal = getPortal();
 
   // A screen id is one segment. Without this, `/orders/orders.list/anything`
@@ -70,6 +70,7 @@ export default async function ScreenPage({
     !authorize(principal, {
       audience: satellite.audience,
       rbacScopes: satellite.rbacScopes,
+      roles: satellite.roles,
     }).allowed
   ) {
     await recordRefusal("satellite not visible to this principal");
@@ -95,7 +96,7 @@ export default async function ScreenPage({
   // internal-only screen would otherwise greet every external visitor with a
   // refusal card instead of the first screen they can actually open.
   const reachable = manifest.value.screens.filter(
-    (s) => authorize(principal, { audience: s.audience, rbacScopes: [] }).allowed,
+    (s) => authorize(principal, { audience: s.audience, rbacScopes: [], roles: s.roles }).allowed,
   );
 
   const screenId = screen?.[0] ?? reachable[0]?.id;

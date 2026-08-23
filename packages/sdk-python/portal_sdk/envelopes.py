@@ -17,12 +17,13 @@ from __future__ import annotations
 from typing import Any
 
 from .node import Node
-from .protocol import PROTOCOL, Audience, ParamType, ToastLevel
+from .protocol import PROTOCOL, Audience, ParamType, Role, ToastLevel
 
 __all__ = [
     "PROTOCOL",
     "Audience",
     "ParamType",
+    "Role",
     "ToastLevel",
     "action_descriptor",
     "action_param",
@@ -241,6 +242,7 @@ def action_descriptor(
     action_id: str,
     *,
     audience: list[Audience],
+    roles: list[Role] | None = None,
     title: str | None = None,
     description: str | None = None,
     params: list[dict[str, Any]] | None = None,
@@ -252,6 +254,8 @@ def action_descriptor(
     :func:`action_param`, not :func:`param`.
     """
     entry: dict[str, Any] = {"id": action_id, "audience": _audience(audience)}
+    if roles is not None:
+        entry["roles"] = roles
     if title is not None:
         entry["title"] = title
     if description is not None:
@@ -266,6 +270,7 @@ def manifest(
     satellite_id: str,
     display_name: str,
     audience: list[Audience],
+    roles: list[Role] | None = None,
     screens: list[dict[str, Any]],
     actions: list[dict[str, Any]] | None = None,
     description: str | None = None,
@@ -290,6 +295,7 @@ def manifest(
         "actions": actions if actions is not None else [],
     }
     for key, value in (
+        ("roles", roles),
         ("description", description),
         ("nav", nav),
         ("mcpUrl", mcp_url),
@@ -312,11 +318,14 @@ def screen_descriptor(
     title: str,
     *,
     audience: list[Audience],
+    roles: list[Role] | None = None,
     description: str | None = None,
     params: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """One entry in a manifest's ``screens``."""
     entry: dict[str, Any] = {"id": screen_id, "title": title, "audience": _audience(audience)}
+    if roles is not None:
+        entry["roles"] = roles
     if description is not None:
         entry["description"] = description
     if params is not None:

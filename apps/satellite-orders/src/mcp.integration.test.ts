@@ -30,6 +30,7 @@ const principal = (over: Partial<Principal> = {}): Principal => ({
   tenantId: "acme",
   audience: "internal",
   scopes: ["orders.read", "orders.write"],
+  roles: ["leadership", "engineering", "finance"],
   ...over,
 });
 

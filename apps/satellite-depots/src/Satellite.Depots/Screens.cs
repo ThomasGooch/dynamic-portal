@@ -24,6 +24,15 @@ public static class Screens
     /// </summary>
     public static readonly IReadOnlyList<Audience> DeclaredAudience = [Audience.Internal];
 
+    /// <summary>
+    /// Org roles this satellite is offered to. Screens inherit it (they declare
+    /// none of their own); the close action narrows to platform below.
+    /// </summary>
+    public static readonly IReadOnlyList<Role> DeclaredRoles = [Role.Leadership, Role.Platform];
+
+    /// <summary>Closing a depot is a platform-only operation.</summary>
+    public static readonly IReadOnlyList<Role> CloseRoles = [Role.Platform];
+
     private static readonly Dictionary<string, Tone> StatusTone = new()
     {
         ["open"] = Tone.Success,
@@ -43,6 +52,7 @@ public static class Screens
             displayName: "Depot Operations",
             description: "Capacity, utilisation and status by depot.",
             audience: DeclaredAudience,
+            roles: DeclaredRoles,
             screens:
             [
                 Envelopes.ScreenDescriptor(
@@ -66,7 +76,8 @@ public static class Screens
                             "reason", ParamType.String, required: true,
                             description: "Why the depot is closing",
                             choices: ["maintenance", "lease-ended", "consolidation"]),
-                    ]),
+                    ],
+                    roles: Screens.CloseRoles),
             ],
             nav: [Envelopes.NavEntry("depots.dashboard", "Depots", section: "Operations", order: 30)],
             healthPath: "/healthz",

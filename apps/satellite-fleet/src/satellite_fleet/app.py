@@ -24,6 +24,7 @@ from .repository import VehicleRepository
 from .screens import PROTOCOL, dashboard_screen, detail_screen, manifest
 
 _DECLARED_AUDIENCE = frozenset(manifest()["audience"])
+_DECLARED_ROLES: tuple[str, ...] = tuple(manifest().get("roles", ()))
 _READ_SCOPE = "fleet.read"
 
 
@@ -55,6 +56,15 @@ def create_app(*, repository: VehicleRepository, principal_secret: str) -> FastA
             raise HTTPException(status_code=403, detail="audience not permitted")
         if _READ_SCOPE not in principal.scopes:
             raise HTTPException(status_code=403, detail=f"missing scope {_READ_SCOPE}")
+        # Roles gate internal principals only — external partners are governed by
+        # audience + scope + the public projection (this satellite ships none).
+        # Any-of, re-checked here as defense in depth behind the hub.
+        if (
+            _DECLARED_ROLES
+            and principal.audience == "internal"
+            and not any(role in _DECLARED_ROLES for role in principal.roles)
+        ):
+            raise HTTPException(status_code=403, detail="role not permitted")
         return principal
 
     Authed = Annotated[Principal, Depends(authenticate)]

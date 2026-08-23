@@ -27,7 +27,7 @@ import { currentPrincipal } from "@/lib/session";
 export async function POST(request: Request): Promise<Response> {
   let principal;
   try {
-    principal = currentPrincipal();
+    principal = await currentPrincipal();
   } catch {
     return new Response(JSON.stringify({ error: "unauthenticated" }), {
       status: 401,

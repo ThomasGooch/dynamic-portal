@@ -1,5 +1,5 @@
 import { authorize, type Principal } from "@portal/identity";
-import type { Audience } from "@portal/protocol";
+import type { Audience, Role } from "@portal/protocol";
 import type { Satellite } from "./registry";
 
 /**
@@ -34,6 +34,12 @@ export interface EntitlementLayer {
   readonly audience: readonly Audience[];
   /** Scopes this layer demands. Every one is required, not any. */
   readonly rbacScopes?: readonly string[];
+  /**
+   * Roles this layer permits (any-of). `undefined` means this layer imposes no
+   * role constraint — it drops out of the narrowing entirely rather than
+   * contributing an empty set. See `combine` for why that distinction matters.
+   */
+  readonly roles?: readonly Role[] | undefined;
 }
 
 export interface Entitlement {
@@ -42,6 +48,12 @@ export interface Entitlement {
   readonly audience: readonly Audience[];
   /** Every scope any layer demanded, deduplicated. */
   readonly rbacScopes: readonly string[];
+  /**
+   * The roles every role-declaring layer agreed on (their intersection), or
+   * `undefined` when no layer declared any. Empty means nobody — distinct from
+   * `undefined`, which means un-gated.
+   */
+  readonly roles?: readonly Role[] | undefined;
   readonly reason?: string;
 }
 
@@ -56,13 +68,35 @@ export interface Entitlement {
 export function combine(layers: readonly (EntitlementLayer | undefined)[]): {
   readonly audience: readonly Audience[];
   readonly rbacScopes: readonly string[];
+  readonly roles: readonly Role[] | undefined;
 } {
   // `undefined` is accepted so a caller can pass an optional layer — a registry
   // tool policy that may not exist — without restating the "or nothing" branch
   // at every call site. That restatement is the thing this file exists to end.
   const declared = layers.filter((layer): layer is EntitlementLayer => layer !== undefined);
   const outermost = declared[0];
-  if (outermost === undefined) return { audience: [], rbacScopes: [] };
+  if (outermost === undefined) return { audience: [], rbacScopes: [], roles: undefined };
+
+  // Roles narrow like audience, with one difference that carries the whole
+  // opt-in design: a layer that declares no roles is not "nobody", it is "no
+  // opinion", so it drops out of the intersection rather than collapsing it to
+  // empty. Only when at least one layer declares roles is there a ceiling; the
+  // effective set is then the intersection of every declaring layer, ordered by
+  // the first of them and deduped. An empty result there means the declaring
+  // layers disagreed down to nobody — kept distinct from the `undefined` that
+  // means un-gated, and honoured as fail-closed.
+  const roleLayers = declared
+    .map((layer) => layer.roles)
+    .filter((roles): roles is readonly Role[] => roles !== undefined);
+  const firstRoles = roleLayers[0];
+  const roles =
+    firstRoles === undefined
+      ? undefined
+      : firstRoles.filter(
+          (value, at) =>
+            firstRoles.indexOf(value) === at &&
+            roleLayers.every((list) => list.includes(value)),
+        );
 
   return {
     // Ordered by the outermost layer so callers get a stable list to serialise,
@@ -74,6 +108,7 @@ export function combine(layers: readonly (EntitlementLayer | undefined)[]): {
         declared.every((layer) => layer.audience.includes(value)),
     ),
     rbacScopes: [...new Set(declared.flatMap((layer) => layer.rbacScopes ?? []))],
+    roles,
   };
 }
 
@@ -81,7 +116,7 @@ export function entitle(
   principal: Principal,
   layers: readonly (EntitlementLayer | undefined)[],
 ): Entitlement {
-  const { audience, rbacScopes } = combine(layers);
+  const { audience, rbacScopes, roles } = combine(layers);
 
   if (audience.length === 0) {
     // Also the empty-list case: a list that declares nothing describes nothing,
@@ -90,15 +125,19 @@ export function entitle(
       allowed: false,
       audience,
       rbacScopes,
+      roles,
       reason: "the declarations agree on no audience",
     };
   }
 
-  const decision = authorize(principal, { audience, rbacScopes });
+  // `roles` is passed straight through: undefined means un-gated (authorize
+  // skips it), an empty array means nobody, a list is any-of.
+  const decision = authorize(principal, { audience, rbacScopes, roles });
   return {
     allowed: decision.allowed,
     audience,
     rbacScopes,
+    roles,
     ...(decision.allowed ? {} : { reason: decision.reason }),
   };
 }
@@ -113,6 +152,7 @@ export function entitle(
 export const satelliteLayer = (satellite: Satellite): EntitlementLayer => ({
   audience: satellite.audience,
   rbacScopes: satellite.rbacScopes,
+  roles: satellite.roles,
 });
 
 /**

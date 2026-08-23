@@ -100,7 +100,11 @@ export function buildSurface(
     if (dropped.has(`${tool.satelliteId}\u0000${tool.targetId}`)) return false;
     if (!index.has(tool.name)) return false;
     if (!tool.agentVisible) return false;
-    return authorize(principal, { audience: tool.audience, rbacScopes: tool.rbacScopes }).allowed;
+    return authorize(principal, {
+      audience: tool.audience,
+      rbacScopes: tool.rbacScopes,
+      roles: tool.roles,
+    }).allowed;
   });
 
   return {

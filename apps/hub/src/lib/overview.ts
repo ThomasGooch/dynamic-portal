@@ -165,7 +165,8 @@ export async function satelliteOverview(
         : manifest.value.screens.find((screen) => screen.id === summary.screenId);
     const readable =
       nominated !== undefined &&
-      authorize(principal, { audience: nominated.audience, rbacScopes: [] }).allowed;
+      authorize(principal, { audience: nominated.audience, rbacScopes: [], roles: nominated.roles })
+        .allowed;
 
     // Concurrently: a slow summary screen must not delay the health pill, which
     // is the part that matters when something is wrong.

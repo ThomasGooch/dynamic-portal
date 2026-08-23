@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   InvalidPrincipalError,
+  PrincipalSchema,
   signPrincipal,
   verifyPrincipal,
   type Principal,
@@ -17,6 +18,20 @@ const alice: Principal = {
 describe("principal token", () => {
   it("round-trips", () => {
     expect(verifyPrincipal(signPrincipal(alice, SECRET), SECRET)).toEqual(alice);
+  });
+
+  it("round-trips a roles-bearing principal", () => {
+    const withRoles: Principal = { ...alice, roles: ["finance", "leadership"] };
+    expect(verifyPrincipal(signPrincipal(withRoles, SECRET), SECRET)).toEqual(withRoles);
+  });
+
+  it("accepts a token with no roles and leaves them undefined (backward compatible)", () => {
+    const parsed = verifyPrincipal(signPrincipal(alice, SECRET), SECRET);
+    expect(parsed.roles).toBeUndefined();
+  });
+
+  it("rejects an unknown role value at the schema", () => {
+    expect(() => PrincipalSchema.parse({ ...alice, roles: ["ceo"] })).toThrow();
   });
 
   it("rejects a token signed with a different secret", () => {
@@ -91,6 +106,19 @@ describe("principal token", () => {
 
     it("still refuses it under a different secret", () => {
       expect(() => verifyPrincipal(PYTHON_TOKEN, "other")).toThrow(InvalidPrincipalError);
+    });
+
+    // Minted in TypeScript by signPrincipal under the shared secret; the Python
+    // and C# satellites verify this exact string, proving `roles` crosses the
+    // wire identically in all three implementations.
+    const ROLES_TOKEN =
+      "eyJzdWIiOiJkYW5hQGFjbWUuZXhhbXBsZSIsInRlbmFudElkIjoiYWNtZSIsImF1ZGllbmNlIjoiaW50ZXJuYWwiLCJzY29wZXMiOlsiZmxlZXQucmVhZCJdLCJyb2xlcyI6WyJmaW5hbmNlIiwibGVhZGVyc2hpcCJdfQ" +
+      ".jrDVerh1REO6uxquSnhGZY0Qb214Bd9hJ5dOEHQD0O4";
+
+    it("verifies a roles-bearing token byte-for-byte", () => {
+      const principal = verifyPrincipal(ROLES_TOKEN, SHARED_SECRET);
+      expect(principal.roles).toEqual(["finance", "leadership"]);
+      expect(principal.scopes).toEqual(["fleet.read"]);
     });
   });
 });

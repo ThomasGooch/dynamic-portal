@@ -29,6 +29,15 @@ export {
 } from "./audience";
 
 export {
+  ALL_ROLES,
+  RoleListSchema,
+  RoleSchema,
+  hasAnyRole,
+  isRoleSubset,
+  type Role,
+} from "./role";
+
+export {
   FORBIDDEN_PROP_KEYS,
   MAX_NODE_DEPTH,
   NodePropsSchema,

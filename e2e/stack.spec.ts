@@ -337,6 +337,11 @@ test.describe("the conformance kit, against the deployed satellites", () => {
       // empty scope fails `PrincipalSchema` — every probe would then come back
       // 401 and the run would blame the satellite for the test's own token.
       scopes: scopes.split(",").filter((scope) => scope !== ""),
+      // leadership is offered by every committed satellite, so the probe clears
+      // each one's role gate and actually renders its screens. Without it a
+      // role-gated satellite refuses every screen (403 → skip), and the render
+      // and schema checks would pass vacuously.
+      roles: ["leadership"],
     });
   };
 

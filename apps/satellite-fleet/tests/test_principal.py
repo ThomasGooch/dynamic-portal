@@ -20,6 +20,38 @@ def test_round_trips_a_principal() -> None:
     assert verify_principal(sign_principal(DANA, SECRET), SECRET) == DANA
 
 
+def test_round_trips_a_roles_bearing_principal() -> None:
+    fin = Principal(
+        sub="fin@acme.example",
+        tenant_id="acme",
+        audience="internal",
+        scopes=("fleet.read",),
+        roles=("finance", "leadership"),
+    )
+    assert verify_principal(sign_principal(fin, SECRET), SECRET) == fin
+
+
+def test_rejects_an_unknown_role_value() -> None:
+    # RoleSchema is a closed enum on the TypeScript side, so an unknown role
+    # value is a malformed token there; this side must agree.
+    import base64
+    import hashlib
+    import hmac
+    import json
+
+    claims = {**DANA.to_claims(), "roles": ["ceo"]}
+    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode()
+    signature = (
+        base64.urlsafe_b64encode(
+            hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).digest()
+        )
+        .rstrip(b"=")
+        .decode()
+    )
+    with pytest.raises(InvalidPrincipalError):
+        verify_principal(f"{payload}.{signature}", SECRET)
+
+
 # The architecture's central security claim is that a satellite authorizes
 # independently rather than trusting the hub. That is only true if the satellite
 # verifies the identity it is handed — these tests are what make it real.
@@ -123,6 +155,18 @@ class TestCrossLanguageContract:
     def test_that_token_still_fails_under_a_different_secret(self) -> None:
         with pytest.raises(InvalidPrincipalError):
             verify_principal(self.TOKEN, "some-other-secret")
+
+    # Minted in TypeScript with roles, under the shared secret. Proves `roles`
+    # crosses the wire byte-for-byte, not just scopes.
+    ROLES_TOKEN = (
+        "eyJzdWIiOiJkYW5hQGFjbWUuZXhhbXBsZSIsInRlbmFudElkIjoiYWNtZSIsImF1ZGllbmNlIjoiaW50ZXJuYWwiLCJzY29wZXMiOlsiZmxlZXQucmVhZCJdLCJyb2xlcyI6WyJmaW5hbmNlIiwibGVhZGVyc2hpcCJdfQ"
+        ".jrDVerh1REO6uxquSnhGZY0Qb214Bd9hJ5dOEHQD0O4"
+    )
+
+    def test_verifies_a_roles_bearing_token_from_typescript(self) -> None:
+        principal = verify_principal(self.ROLES_TOKEN, self.SECRET)
+        assert principal.roles == ("finance", "leadership")
+        assert principal.scopes == ("fleet.read",)
 
     def test_rejects_unknown_claims_like_the_typescript_schema_does(self) -> None:
         """Both satellites must agree on what a valid principal *is*.

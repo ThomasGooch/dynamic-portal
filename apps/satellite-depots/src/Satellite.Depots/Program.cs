@@ -29,6 +29,8 @@ const string WriteScope = "depots.write";
 // Read from the manifest rather than restated, so the check at the door cannot
 // drift from the declaration the hub was handed.
 var declaredAudience = Screens.DeclaredAudience.Select(a => a.ToWire()).ToHashSet();
+var declaredRoles = Screens.DeclaredRoles.Select(r => r.ToWire()).ToHashSet();
+var closeRoles = Screens.CloseRoles.Select(r => r.ToWire()).ToHashSet();
 
 app.MapGet("/healthz", () => Results.Json(new { status = "ok", protocol = Protocol.Version }));
 
@@ -68,7 +70,7 @@ app.MapGet("/portal/screens/{screenId}", (HttpContext context, string screenId, 
         }
 
         return Results.NotFound(new { detail = "no such screen" });
-    }));
+    }, declaredRoles));
 
 app.MapPost("/portal/actions/{actionId}", async (HttpContext context, string actionId) =>
     await AuthenticatedAsync(context, WriteScope, async principal =>
@@ -126,7 +128,7 @@ app.MapPost("/portal/actions/{actionId}", async (HttpContext context, string act
                 message: $"{closed.Name} is closed.",
                 navigate: Envelopes.Navigate("depots.dashboard")),
             PortalJson.Options);
-    }));
+    }, closeRoles));
 
 app.Run();
 
@@ -170,21 +172,24 @@ static async Task<Dictionary<string, string>> ReadParamsAsync(HttpContext contex
     return values;
 }
 
-IResult Authenticated(HttpContext context, string scope, Func<Principal, IResult> handle)
+IResult Authenticated(
+    HttpContext context, string scope, Func<Principal, IResult> handle, IReadOnlySet<string>? roles = null)
 {
-    var outcome = Authorize(context, scope);
+    var outcome = Authorize(context, scope, roles);
     return outcome.Failure ?? handle(outcome.Principal!);
 }
 
-async Task<IResult> AuthenticatedAsync(HttpContext context, string scope, Func<Principal, Task<IResult>> handle)
+async Task<IResult> AuthenticatedAsync(
+    HttpContext context, string scope, Func<Principal, Task<IResult>> handle, IReadOnlySet<string>? roles = null)
 {
-    var outcome = Authorize(context, scope);
+    var outcome = Authorize(context, scope, roles);
     return outcome.Failure ?? await handle(outcome.Principal!);
 }
 
 // Every check the satellite makes about who is calling, in one place —
 // enforced here rather than assumed of the hub.
-(Principal? Principal, IResult? Failure) Authorize(HttpContext context, string scope)
+(Principal? Principal, IResult? Failure) Authorize(
+    HttpContext context, string scope, IReadOnlySet<string>? roles = null)
 {
     var header = context.Request.Headers.Authorization.ToString();
     // RFC 7235: the auth-scheme is case-insensitive, so `bearer <token>` is a
@@ -215,6 +220,13 @@ async Task<IResult> AuthenticatedAsync(HttpContext context, string scope, Func<P
     if (!principal.Scopes.Contains(scope))
     {
         return (null, Results.Json(new { detail = $"missing scope {scope}" }, statusCode: 403));
+    }
+    // Roles gate internal principals only — external partners are governed by
+    // audience + scope + the public projection. Any-of, re-checked here as
+    // defense in depth behind the hub.
+    if (roles is { Count: > 0 } && principal.Audience == "internal" && !principal.Roles.Any(roles.Contains))
+    {
+        return (null, Results.Json(new { detail = "role not permitted" }, statusCode: 403));
     }
 
     return (principal, null);

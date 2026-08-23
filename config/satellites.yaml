@@ -25,6 +25,10 @@
     section: Operations
     order: 10
   rbacScopes: [orders.read]
+  # Org roles (Keycloak realm roles) offered this satellite. The satellite's own
+  # manifest declares the same ceiling; naming them here lets the platform narrow
+  # per-tool below (see orders.approve) without the satellite widening it back.
+  roles: [leadership, engineering, finance]
   timeoutMs: 3000
   # Brokered to external clients under names the platform team assigns. The
   # mapping is the whole point: a satellite team renaming `orders.list` changes
@@ -54,6 +58,11 @@
       agentVisible: true
       requiresConfirmation: true
       rbacScopes: [orders.write]
+      # Platform narrowing, the one deliberate showcase: the satellite's manifest
+      # offers approve to [leadership, finance], but through the governed path
+      # (agent / MCP / public) only finance may. The effective set is the
+      # intersection, so this restricts without the satellite widening it back.
+      roles: [finance]
     # Creating and changing an order are agent-reachable and both pause for a
     # person. The satellite validates every field regardless — this governs
     # whether a model may *propose* the write, not whether the rules apply.
@@ -103,6 +112,7 @@
     section: Operations
     order: 20
   rbacScopes: [fleet.read]
+  roles: [leadership, engineering, platform]
   timeoutMs: 3000
 
 # The C# satellite. Node, Python and C# now, which is the polyglot claim with
@@ -119,6 +129,7 @@
     section: Operations
     order: 30
   rbacScopes: [depots.read]
+  roles: [leadership, platform]
   timeoutMs: 3000
   audience: [internal]
   tools:
@@ -131,4 +142,5 @@
     depots.close:
       requiresConfirmation: true
       rbacScopes: [depots.write]
+      roles: [platform]
 

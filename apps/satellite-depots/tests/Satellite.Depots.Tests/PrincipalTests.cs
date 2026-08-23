@@ -18,6 +18,21 @@ public class VerifyingAPrincipal
     }
 
     [Fact]
+    public void RoundTripsARolesBearingPrincipal()
+    {
+        var withRoles = Alice with { Roles = ["finance", "leadership"] };
+        var principal = Principals.Verify(Principals.SignPrincipal(withRoles, Secret), Secret);
+        Assert.Equal(["finance", "leadership"], principal.Roles);
+    }
+
+    [Fact]
+    public void AcceptsATokenWithNoRolesAndLeavesThemEmpty()
+    {
+        var principal = Principals.Verify(Principals.SignPrincipal(Alice, Secret), Secret);
+        Assert.Empty(principal.Roles);
+    }
+
+    [Fact]
     public void RefusesAnotherSecretsSignature()
     {
         var token = Principals.SignPrincipal(Alice, "a-different-secret");
@@ -121,4 +136,18 @@ public class TheCrossLanguageContract
     [Fact]
     public void RefusesThatTokenUnderAnyOtherSecret() =>
         Assert.Throws<InvalidPrincipalException>(() => Principals.Verify(Token, "not-the-secret"));
+
+    // Minted in TypeScript with roles, under the shared secret. Proves `roles`
+    // crosses the wire byte-for-byte in the C# implementation too.
+    private const string RolesToken =
+        "eyJzdWIiOiJkYW5hQGFjbWUuZXhhbXBsZSIsInRlbmFudElkIjoiYWNtZSIsImF1ZGllbmNlIjoiaW50ZXJuYWwiLCJzY29wZXMiOlsiZmxlZXQucmVhZCJdLCJyb2xlcyI6WyJmaW5hbmNlIiwibGVhZGVyc2hpcCJdfQ"
+        + ".jrDVerh1REO6uxquSnhGZY0Qb214Bd9hJ5dOEHQD0O4";
+
+    [Fact]
+    public void VerifiesARolesBearingTokenFromTypeScript()
+    {
+        var principal = Principals.Verify(RolesToken, Secret);
+        Assert.Equal(["finance", "leadership"], principal.Roles);
+        Assert.Equal(["fleet.read"], principal.Scopes);
+    }
 }
