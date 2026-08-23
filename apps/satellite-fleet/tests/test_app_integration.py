@@ -27,6 +27,9 @@ def principal(**over: object) -> Principal:
         tenant_id="acme",
         audience="internal",
         scopes=("fleet.read",),
+        # engineering is one of fleet's offered roles, so the default probe
+        # passes the satellite's role gate; override to test refusal.
+        roles=("engineering",),
     )
     base.update(over)
     return Principal(**base)  # type: ignore[arg-type]
@@ -171,6 +174,16 @@ class TestTenantIsolation:
     def test_missing_scope_is_refused(self, client: httpx.Client) -> None:
         res = client.get(
             "/portal/screens/fleet.dashboard", headers=auth(principal(scopes=()))
+        )
+        assert res.status_code == 403
+
+    def test_missing_role_is_refused(self, client: httpx.Client) -> None:
+        # fleet is offered to leadership/engineering/platform; a finance-only
+        # internal principal holds none of them and is refused the satellite,
+        # even though its scope is fine. This locks the hand-rolled role gate.
+        res = client.get(
+            "/portal/screens/fleet.dashboard",
+            headers=auth(principal(roles=("finance",))),
         )
         assert res.status_code == 403
 

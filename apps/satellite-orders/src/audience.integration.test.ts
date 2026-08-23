@@ -75,6 +75,7 @@ const principal = (audience: Principal["audience"]): string =>
       tenantId: "acme",
       audience,
       scopes: ["orders.read", "orders.write"],
+      roles: ["leadership", "engineering", "finance"],
     },
     SECRET,
   );

@@ -41,7 +41,7 @@ function json(result: AgentApiResult, status: number): Response {
 export async function POST(request: Request): Promise<Response> {
   let principal;
   try {
-    principal = currentPrincipal();
+    principal = await currentPrincipal();
   } catch {
     return json({ ok: false, message: "You are not signed in." }, 401);
   }

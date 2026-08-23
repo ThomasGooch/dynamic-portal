@@ -247,7 +247,7 @@ const publishes = (
 ): boolean =>
   offeredTo(principal, [
     satelliteLayer(satellite),
-    { audience: screen.audience },
+    { audience: screen.audience, roles: screen.roles },
     toolPolicy(satellite, screen.id),
   ]);
 
@@ -267,7 +267,7 @@ function offered(
   if (action.params === undefined) return false;
   return offeredTo(principal, [
     satelliteLayer(satellite),
-    { audience: action.audience },
+    { audience: action.audience, roles: action.roles },
     toolPolicy(satellite, action.id),
   ]);
 }

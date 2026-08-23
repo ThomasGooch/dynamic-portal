@@ -90,6 +90,22 @@ public enum Audience
     External,
 }
 
+/// <summary>Which org roles a screen or action is offered to (any-of). Opt-in.</summary>
+public enum Role
+{
+    /// <summary>The protocol value <c>leadership</c>.</summary>
+    Leadership,
+
+    /// <summary>The protocol value <c>engineering</c>.</summary>
+    Engineering,
+
+    /// <summary>The protocol value <c>finance</c>.</summary>
+    Finance,
+
+    /// <summary>The protocol value <c>platform</c>.</summary>
+    Platform,
+}
+
 /// <summary>Converts protocol enums to the strings the wire format uses.</summary>
 public static partial class WireValues
 {
@@ -132,6 +148,17 @@ public static partial class WireValues
         {
             Audience.Internal => "internal",
             Audience.External => "external",
+            _ => throw new ArgumentOutOfRangeException(nameof(value)),
+        };
+
+    /// <summary>The protocol string for a <see cref="Role"/>.</summary>
+    public static string ToWire(this Role value) =>
+        value switch
+        {
+            Role.Leadership => "leadership",
+            Role.Engineering => "engineering",
+            Role.Finance => "finance",
+            Role.Platform => "platform",
             _ => throw new ArgumentOutOfRangeException(nameof(value)),
         };
 }

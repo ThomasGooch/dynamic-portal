@@ -18,7 +18,7 @@ import { currentPrincipal } from "@/lib/session";
 export async function GET(): Promise<Response> {
   let principal;
   try {
-    principal = currentPrincipal();
+    principal = await currentPrincipal();
   } catch {
     return publicJson(publicFailure("unauthenticated"), 401);
   }

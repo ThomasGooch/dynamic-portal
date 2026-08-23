@@ -23,7 +23,7 @@ export async function GET(
 
   let principal;
   try {
-    principal = currentPrincipal();
+    principal = await currentPrincipal();
   } catch {
     return publicJson(publicFailure("unauthenticated"), 401);
   }

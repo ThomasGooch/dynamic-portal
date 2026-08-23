@@ -30,6 +30,9 @@ from typing import Any, Literal
 Audience = Literal["internal", "external"]
 _AUDIENCES: frozenset[str] = frozenset({"internal", "external"})
 
+Role = Literal["leadership", "engineering", "finance", "platform"]
+_ROLES: frozenset[str] = frozenset({"leadership", "engineering", "finance", "platform"})
+
 
 class InvalidPrincipalError(Exception):
     """Raised whenever a token cannot be trusted, for any reason."""
@@ -44,15 +47,21 @@ class Principal:
     tenant_id: str
     audience: Audience
     scopes: tuple[str, ...]
+    roles: tuple[str, ...] = ()
 
     def to_claims(self) -> dict[str, Any]:
         """The on-the-wire shape, which is camelCase to match TypeScript."""
-        return {
+        claims: dict[str, Any] = {
             "sub": self.sub,
             "tenantId": self.tenant_id,
             "audience": self.audience,
             "scopes": list(self.scopes),
         }
+        # Emitted only when present, matching the TypeScript side where `roles`
+        # is optional — so a role-less principal round-trips to the same bytes.
+        if self.roles:
+            claims["roles"] = list(self.roles)
+        return claims
 
 
 def _b64url_encode(raw: bytes) -> str:
@@ -82,7 +91,7 @@ def sign_principal(principal: Principal, secret: str) -> str:
     return f"{payload}.{_sign(payload, secret)}"
 
 
-_CLAIMS: frozenset[str] = frozenset({"sub", "tenantId", "audience", "scopes"})
+_CLAIMS: frozenset[str] = frozenset({"sub", "tenantId", "audience", "scopes", "roles"})
 
 
 def _parse_claims(decoded: object) -> Principal:
@@ -114,11 +123,21 @@ def _parse_claims(decoded: object) -> Principal:
     ):
         raise InvalidPrincipalError("payload is not a principal")
 
+    # Optional and, like the TypeScript enum, closed: an unknown role value is a
+    # malformed token rather than one to accept leniently — the implementations
+    # must agree on what a valid identity is (see the strict-claims note above).
+    roles = decoded.get("roles")
+    if roles is not None and (
+        not isinstance(roles, list) or not all(isinstance(r, str) and r in _ROLES for r in roles)
+    ):
+        raise InvalidPrincipalError("payload is not a principal")
+
     return Principal(
         sub=sub,
         tenant_id=tenant_id,
         audience=audience,  # type: ignore[arg-type]
         scopes=tuple(scopes),
+        roles=tuple(roles) if roles is not None else (),
     )
 
 

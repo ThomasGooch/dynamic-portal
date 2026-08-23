@@ -1,5 +1,5 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import { CURRENT_PROTOCOL_VERSION, type Audience } from "@portal/protocol";
+import { CURRENT_PROTOCOL_VERSION, type Audience, type Role } from "@portal/protocol";
 import { failed, invalid, ok } from "@portal/sdk-node";
 import {
   InvalidPrincipalError,
@@ -164,10 +164,21 @@ export function createApp({
    */
   const screenAudience = new Map(declared.screens.map((s) => [s.id, s.audience]));
   const actionAudience = new Map(declared.actions.map((a) => [a.id, a.audience]));
+  // Role maps mirror the audience ones. A screen/action that declares no roles
+  // inherits the satellite's, which is the correct narrowing: the manifest
+  // guarantees a declared screen role set is a subset of the satellite's, so the
+  // screen's own set (when present) is already the tighter of the two.
+  const screenRoles = new Map(declared.screens.map((s) => [s.id, s.roles]));
+  const actionRoles = new Map(declared.actions.map((a) => [a.id, a.roles]));
+
+  interface Target {
+    readonly audience: readonly Audience[];
+    readonly roles?: readonly Role[] | undefined;
+  }
 
   function requireAccess(
     rbacScopes: readonly string[],
-    resolveAudience: (req: AuthedRequest) => readonly Audience[],
+    resolveTarget: (req: AuthedRequest) => Target,
   ) {
     return (req: AuthedRequest, res: Response, next: NextFunction): void => {
       // Default-deny rather than assert. A `req.principal!` here turns a route
@@ -178,7 +189,10 @@ export function createApp({
         res.status(401).json({ error: "missing bearer token" });
         return;
       }
-      const result = authorize(principal, { audience: resolveAudience(req), rbacScopes });
+      const { audience, roles } = resolveTarget(req);
+      // Roles re-checked here as defense in depth: the hub already gated this,
+      // but a satellite trusting the hub is how a hub bug becomes a disclosure.
+      const result = authorize(principal, { audience, rbacScopes, roles });
       if (!result.allowed) {
         res.status(result.status).json({ error: result.reason });
         return;
@@ -187,16 +201,21 @@ export function createApp({
     };
   }
 
-  const forScreen = (req: AuthedRequest): readonly Audience[] => {
+  const forScreen = (req: AuthedRequest): Target => {
     // Express types a path param as `string | string[]`; a repeated segment
     // would arrive as an array and must not be coerced into a lookup key.
     const screenId = req.params["screenId"];
-    if (typeof screenId !== "string") return declared.audience;
-    return screenAudience.get(screenId) ?? declared.audience;
+    if (typeof screenId !== "string") return { audience: declared.audience, roles: declared.roles };
+    return {
+      audience: screenAudience.get(screenId) ?? declared.audience,
+      roles: screenRoles.get(screenId) ?? declared.roles,
+    };
   };
 
-  const forAction = (actionId: string) => (): readonly Audience[] =>
-    actionAudience.get(actionId) ?? declared.audience;
+  const forAction = (actionId: string) => (): Target => ({
+    audience: actionAudience.get(actionId) ?? declared.audience,
+    roles: actionRoles.get(actionId) ?? declared.roles,
+  });
 
   app.get("/healthz", (_req, res) => {
     res.json({ status: "ok", protocol: CURRENT_PROTOCOL_VERSION });

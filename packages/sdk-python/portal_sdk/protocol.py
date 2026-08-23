@@ -26,6 +26,10 @@ ActionOutcome = Literal["ok", "error", "validation"]
 #: internal, and external must always be stated.
 Audience = Literal["internal", "external"]
 
+#: Which org roles a screen or action is offered to (any-of). Opt-in: absent
+#: means not role-gated.
+Role = Literal["leadership", "engineering", "finance", "platform"]
+
 #: What an action parameter can be. Generated, because this is exactly the
 #: vocabulary that drifted: `string[]` was added to the protocol and the C#
 #: SDK, and the hand-written Python copy went on refusing it — a Python

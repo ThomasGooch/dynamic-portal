@@ -1,0 +1,50 @@
+{
+  "realm": "portal",
+  "enabled": true,
+  "sslRequired": "none",
+  "loginTheme": "keycloak",
+  "roles": {
+    "realm": [
+      { "name": "leadership", "description": "Org leadership — reads everything" },
+      { "name": "engineering", "description": "Engineering" },
+      { "name": "finance", "description": "Finance" },
+      { "name": "platform", "description": "Platform / operations" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "portal-hub",
+      "name": "Dynamic Portal hub",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "portal-hub-dev-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:3000/api/auth/callback"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": { "post.logout.redirect.uris": "http://localhost:3000/*" },
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    { "username": "lead", "enabled": true, "email": "lead@acme.example", "emailVerified": true, "firstName": "Lee", "lastName": "Ader", "credentials": [{ "type": "password", "value": "lead", "temporary": false }], "realmRoles": ["leadership"], "attributes": { "tenant_id": ["acme"] } },
+    { "username": "eng", "enabled": true, "email": "eng@acme.example", "emailVerified": true, "firstName": "Enid", "lastName": "Gineer", "credentials": [{ "type": "password", "value": "eng", "temporary": false }], "realmRoles": ["engineering"], "attributes": { "tenant_id": ["acme"] } },
+    { "username": "fin", "enabled": true, "email": "fin@acme.example", "emailVerified": true, "firstName": "Fin", "lastName": "Ance", "credentials": [{ "type": "password", "value": "fin", "temporary": false }], "realmRoles": ["finance"], "attributes": { "tenant_id": ["acme"] } },
+    { "username": "plat", "enabled": true, "email": "plat@acme.example", "emailVerified": true, "firstName": "Pat", "lastName": "Form", "credentials": [{ "type": "password", "value": "plat", "temporary": false }], "realmRoles": ["platform"], "attributes": { "tenant_id": ["acme"] } }
+  ]
+}

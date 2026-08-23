@@ -1,4 +1,4 @@
-import type { ActionDescriptor, Audience, Manifest } from "@portal/protocol";
+import type { ActionDescriptor, Audience, Manifest, Role } from "@portal/protocol";
 import { combine, satelliteLayer, toolPolicy, type Satellite } from "@portal/registry";
 import { indexToolNames, projectToolName } from "./names";
 
@@ -85,6 +85,11 @@ export interface ToolDescriptor {
   readonly inputSchema: JsonObjectSchema | Record<string, unknown>;
   readonly audience: readonly Audience[];
   readonly rbacScopes: readonly string[];
+  /**
+   * The effective roles for this tool (the narrowing of satellite, manifest, and
+   * registry). `undefined` means un-gated; `surface.ts` passes it to `authorize`.
+   */
+  readonly roles?: readonly Role[] | undefined;
   readonly requiresConfirmation: boolean;
   readonly agentVisible: boolean;
 }
@@ -115,6 +120,7 @@ export function shimTools(satellite: Satellite, manifest: Manifest): ShimResult 
         screen.description === undefined ? "" : ` ${screen.description}`
       }`,
       audience: screen.audience,
+      roles: screen.roles,
       properties: Object.fromEntries(
         (screen.params ?? []).map((param) => [
           param.name,
@@ -170,6 +176,7 @@ export function shimTools(satellite: Satellite, manifest: Manifest): ShimResult 
         action.description === undefined ? "" : ` ${action.description}`
       }${optionalFileNote(action)}`,
       audience: action.audience,
+      roles: action.roles,
       // An optional file is left out of the schema entirely, not described as
       // a string a model is asked not to fill.
       //
@@ -239,6 +246,8 @@ interface BuildInput {
   readonly title: string;
   readonly description: string;
   readonly audience: readonly Audience[];
+  /** Roles the screen/action itself declares, if any. */
+  readonly roles?: readonly Role[] | undefined;
   readonly properties: Record<string, JsonPropertySchema>;
   readonly required: string[];
 }
@@ -259,9 +268,9 @@ function build(input: BuildInput): ToolDescriptor | { reason: string } {
   // screen to an external principal. The registry's tool policy is a layer
   // because its silence means internal, so listing a tool at all pins it there
   // unless the entry widens it.
-  const { audience, rbacScopes } = combine([
+  const { audience, rbacScopes, roles } = combine([
     satelliteLayer(input.satellite),
-    { audience: input.audience },
+    { audience: input.audience, roles: input.roles },
     policy,
   ]);
 
@@ -285,6 +294,7 @@ function build(input: BuildInput): ToolDescriptor | { reason: string } {
     },
     audience,
     rbacScopes,
+    roles,
     requiresConfirmation: policy?.requiresConfirmation ?? !isRead,
     agentVisible: policy?.agentVisible ?? isRead,
   };

@@ -1,7 +1,13 @@
 import { parse as parseYaml } from "yaml";
 import { expandEnv } from "./expand";
 import { z } from "zod";
-import { AudienceListSchema, isAudienceSubset, type Audience } from "@portal/protocol";
+import {
+  AudienceListSchema,
+  RoleListSchema,
+  isAudienceSubset,
+  isRoleSubset,
+  type Audience,
+} from "@portal/protocol";
 import { authorize, type Principal } from "@portal/identity";
 
 /**
@@ -59,6 +65,7 @@ const ToolPolicySchema = z
     agentVisible: z.boolean().optional(),
     rbacScopes: z.array(z.string().min(1)).default([]),
     audience: AudienceListSchema,
+    roles: RoleListSchema,
   })
   .strict();
 
@@ -125,6 +132,14 @@ export const SatelliteSchema = z
     audience: AudienceListSchema,
     nav: NavSchema.default({ section: "Solutions", order: 100 }),
     rbacScopes: z.array(z.string().min(1)).default([]),
+    /**
+     * Org roles this satellite is offered to (any-of). Absent means not
+     * role-gated at the satellite level; a screen/action may still gate itself.
+     * The platform owns this file, so listing roles here narrows what the
+     * satellite's own manifest declared — it can never widen it (the effective
+     * set is the intersection; see `combine`).
+     */
+    roles: RoleListSchema,
     /** A satellite that omits this must not be able to hang the hub. */
     timeoutMs: z.number().int().positive().default(3000),
     // Keyed by IdSchema, not bare strings: a tool id is projected into an MCP
@@ -159,6 +174,20 @@ export const SatelliteSchema = z
           code: z.ZodIssueCode.custom,
           path: ["tools", toolId, "audience"],
           message: `tool "${toolId}" is exposed to an audience its satellite is not`,
+        });
+      }
+      // The same downward rule for roles, but only when the satellite declares a
+      // role ceiling: a tool policy may narrow within it, never name a role the
+      // satellite itself was not offered.
+      if (
+        satellite.roles !== undefined &&
+        tool.roles !== undefined &&
+        !isRoleSubset(tool.roles, satellite.roles)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tools", toolId, "roles"],
+          message: `tool "${toolId}" is offered to a role its satellite is not`,
         });
       }
     }
@@ -244,6 +273,7 @@ export function visibleSatellites(registry: Registry, principal: Principal): Sat
       authorize(principal, {
         audience: satellite.audience,
         rbacScopes: satellite.rbacScopes,
+        roles: satellite.roles,
       }).allowed,
   );
 }

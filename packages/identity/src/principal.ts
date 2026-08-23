@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { AudienceSchema } from "@portal/protocol";
+import { AudienceSchema, RoleSchema } from "@portal/protocol";
 
 /**
  * Who is asking, and on whose behalf.
@@ -28,6 +28,12 @@ export const PrincipalSchema = z
     tenantId: z.string().min(1),
     audience: AudienceSchema,
     scopes: z.array(z.string().min(1)),
+    // Org roles from the IdP (Keycloak realm roles). Optional, never required:
+    // a token minted before roles existed — including the pinned cross-language
+    // fixture — must still verify, and a satellite must be deployable ahead of
+    // the hub that starts sending them. Absent is read as "holds no role"
+    // (see `authorize`), so an un-role-gated resource is unaffected.
+    roles: z.array(RoleSchema).optional(),
   })
   .strict();
 

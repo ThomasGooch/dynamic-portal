@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { authorize, type Principal } from "@portal/identity";
-import type { Audience } from "@portal/protocol";
+import type { Audience, Role } from "@portal/protocol";
 import { z } from "zod";
 import type { Order, OrderRepository } from "./repository";
 
@@ -111,6 +111,16 @@ export interface McpServerOptions {
 const DECLARED_AUDIENCE: readonly Audience[] = ["internal"];
 
 /**
+ * The org roles these tools are offered to — the satellite's own ceiling, the
+ * same set its manifest declares and the same one the hub's `adopt.ts` derives
+ * from the satellite layer. Without it this MCP endpoint would be a second door
+ * with a weaker lock than the shimmed path: `orders.reconcile`, a bulk write,
+ * reachable directly by a principal (e.g. platform-only) the hub's gateway
+ * refuses on roles. Any-of, and internal-only via `authorize`.
+ */
+const DECLARED_ROLES: readonly Role[] = ["leadership", "engineering", "finance"];
+
+/**
  * A server per request.
  *
  * Stateless is the right shape here: the hub opens a connection, lists or calls,
@@ -139,7 +149,7 @@ export function createMcpServer(options: McpServerOptions, principal: Principal)
       annotations: { readOnlyHint: true },
     },
     async ({ filters, limit }) => {
-      const denied = refuse(principal, DECLARED_AUDIENCE, ["orders.read"]);
+      const denied = refuse(principal, DECLARED_AUDIENCE, ["orders.read"], DECLARED_ROLES);
       if (denied !== undefined) return denied;
 
       const all = options.repository.list(principal.tenantId).filter((order) => {
@@ -187,7 +197,7 @@ export function createMcpServer(options: McpServerOptions, principal: Principal)
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
     async ({ vehiclesBackInService, dryRun }) => {
-      const denied = refuse(principal, DECLARED_AUDIENCE, ["orders.write"]);
+      const denied = refuse(principal, DECLARED_AUDIENCE, ["orders.write"], DECLARED_ROLES);
       if (denied !== undefined) return denied;
 
       const cleared = options.repository.unblock(
@@ -228,8 +238,9 @@ function refuse(
   principal: Principal,
   audience: readonly Audience[],
   rbacScopes: readonly string[],
+  roles?: readonly Role[],
 ): { content: { type: "text"; text: string }[]; isError: true } | undefined {
-  const decision = authorize(principal, { audience, rbacScopes });
+  const decision = authorize(principal, { audience, rbacScopes, roles });
   if (decision.allowed) return undefined;
   return {
     content: [{ type: "text", text: decision.reason }],

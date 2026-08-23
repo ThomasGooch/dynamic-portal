@@ -16,6 +16,7 @@ const principal = (over: Partial<Principal> = {}): Principal => ({
   tenantId: "acme",
   audience: "internal",
   scopes: ["orders.read", "orders.write"],
+  roles: ["leadership", "engineering", "finance"],
   ...over,
 });
 
@@ -172,6 +173,17 @@ describe("tenant isolation enforced by the satellite itself", () => {
       signPrincipal(principal(), SECRET),
     );
     expect(res.status).toBe(404);
+  });
+
+  it("refuses to approve for a role the action is not offered to", async () => {
+    // orders.approve is offered to leadership/finance; an engineering-only
+    // principal sees the satellite but is refused this action. The satellite
+    // answers 403 (the hub would answer 404 to hide the action's existence).
+    const engineering = signPrincipal(principal({ roles: ["engineering"] }), SECRET);
+    const own = repository.list("acme").find((o) => o.status === "pending")!;
+    const res = await post("/portal/actions/orders.approve", { id: own.id }, engineering);
+    expect(res.status).toBe(403);
+    expect(repository.get("acme", own.id)?.status).toBe("pending");
   });
 
   it("refuses to approve another tenant's order", async () => {

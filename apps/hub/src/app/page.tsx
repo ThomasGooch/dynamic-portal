@@ -37,7 +37,7 @@ import { SolutionStatus, SolutionStatusPending } from "@/components/SolutionStat
  */
 export default async function Home() {
   await connection();
-  const principal = currentPrincipal();
+  const principal = await currentPrincipal();
   const registry = getPortal().registry;
   // Already filtered to what this principal may see, grouped by section and
   // ordered within it — so a satellite they cannot reach never reaches the

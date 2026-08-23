@@ -28,10 +28,19 @@ public sealed class DepotsApp : WebApplicationFactory<Program>
     }
 
     public static Principal Acme(params string[] scopes) =>
-        new("alice@acme.example", "acme", "internal", scopes.Length == 0 ? ["depots.read"] : scopes);
+        // platform is one of depots' offered roles and the only role that may
+        // close a depot, so the default probe clears both the satellite gate and
+        // the close action's; override the record's Roles to test refusal.
+        new("alice@acme.example", "acme", "internal", scopes.Length == 0 ? ["depots.read"] : scopes)
+        {
+            Roles = ["platform"],
+        };
 
     public static Principal Globex(params string[] scopes) =>
-        new("bob@globex.example", "globex", "internal", scopes.Length == 0 ? ["depots.read"] : scopes);
+        new("bob@globex.example", "globex", "internal", scopes.Length == 0 ? ["depots.read"] : scopes)
+        {
+            Roles = ["platform"],
+        };
 }
 
 public class TheDoor(DepotsApp app) : IClassFixture<DepotsApp>
@@ -96,6 +105,27 @@ public class TheDoor(DepotsApp app) : IClassFixture<DepotsApp>
         var response = await app.ClientFor(DepotsApp.Acme("depots.read"))
             .PostAsJsonAsync("/portal/actions/depots.close", new { id = "dep-4", reason = "maintenance" });
 
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RefusesAReadFromAPrincipalWithoutADepotRole()
+    {
+        // depots is offered to leadership/platform; finance is neither, so a
+        // finance-only internal principal is refused the whole satellite even
+        // with the right scope. This locks the hand-rolled role gate.
+        var finance = DepotsApp.Acme("depots.read") with { Roles = ["finance"] };
+        var response = await app.ClientFor(finance).GetAsync(Screen);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RefusesCloseFromANonPlatformRole()
+    {
+        // Closing is platform-only; leadership may see depots but not close one.
+        var leadership = DepotsApp.Acme("depots.read", "depots.write") with { Roles = ["leadership"] };
+        var response = await app.ClientFor(leadership)
+            .PostAsJsonAsync("/portal/actions/depots.close", new { id = "dep-4", reason = "maintenance" });
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 }

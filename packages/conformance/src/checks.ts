@@ -5,6 +5,7 @@ import {
   ScreenResponseSchema,
   isSupportedProtocolVersion,
   type Manifest,
+  type Role,
 } from "@portal/protocol";
 
 /**
@@ -59,6 +60,15 @@ export interface ConformanceOptions {
    */
   readonly scopes?: readonly string[];
   /**
+   * Roles the probe should present.
+   *
+   * Like scopes, whether a probe holds a role is an operator decision this tool
+   * cannot discover from the manifest alone, so a screen refused for want of a
+   * role is reported unchecked rather than broken. Absent leaves the probe with
+   * no roles, which reaches every un-role-gated screen.
+   */
+  readonly roles?: readonly Role[];
+  /**
    * The whole principal, replacing the one built from `scopes`.
    *
    * A full override rather than a merge: `scopes` is ignored when this is
@@ -95,6 +105,12 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
     // satellite rejects, and the run then reports the probe's own malformed
     // principal as a satellite that 401s its own screens.
     scopes: [...(options.scopes ?? [])].filter((scope) => scope.trim() !== ""),
+    // Threaded like scopes: present only when the operator supplies them, so an
+    // un-role-gated satellite needs no configuration and a gated screen is
+    // reported unchecked rather than broken when they are absent.
+    ...(options.roles !== undefined && options.roles.length > 0
+      ? { roles: [...options.roles] }
+      : {}),
   };
   const token = signPrincipal(principal, options.principalSecret);
 
@@ -255,7 +271,7 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
           skip(
             `screen ${screen.id}`,
             screen.audience.includes(principal.audience)
-              ? "refused this probe's scopes; pass PORTAL_CONFORMANCE_SCOPES to check it"
+              ? "refused this probe's scopes or roles; pass PORTAL_CONFORMANCE_SCOPES / PORTAL_CONFORMANCE_ROLES to check it"
               : `is declared for ${screen.audience.join(", ")} and this probe is ` +
                 `${principal.audience}; pass a principal from that audience to check it`,
           ),

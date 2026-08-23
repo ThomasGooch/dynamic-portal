@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+import type { Role } from "@portal/protocol";
 import { runConformance, type CheckResult } from "./checks";
 
 /**
@@ -35,6 +36,10 @@ const USAGE = [
   "                              the manifest, so this tool cannot find them —",
   "                              a screen refused without them is reported as",
   "                              unchecked rather than broken.",
+  "  PORTAL_CONFORMANCE_ROLES    comma-separated org roles the probe should hold.",
+  "                              Role gating lives outside the manifest too, so a",
+  "                              screen refused for want of a role is likewise",
+  "                              reported unchecked rather than broken.",
   "",
   "example: PORTAL_PRINCIPAL_SECRET=dev pnpm conformance http://localhost:4001",
   "",
@@ -61,7 +66,12 @@ async function main(): Promise<number> {
     .map((scope) => scope.trim())
     .filter((scope) => scope !== "");
 
-  const report = await runConformance({ baseUrl, principalSecret, scopes });
+  const roles = (process.env["PORTAL_CONFORMANCE_ROLES"] ?? "")
+    .split(",")
+    .map((role) => role.trim())
+    .filter((role) => role !== "") as Role[];
+
+  const report = await runConformance({ baseUrl, principalSecret, scopes, roles });
 
   process.stdout.write(`\n${report.baseUrl}\n\n`);
   for (const result of report.results) {

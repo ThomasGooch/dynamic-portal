@@ -18,7 +18,15 @@ const SECRET = "crud-test-secret";
 
 const token = (scopes: string[], tenantId = "acme") =>
   signPrincipal(
-    { sub: "alice@acme.example", tenantId, audience: "internal", scopes },
+    {
+      sub: "alice@acme.example",
+      tenantId,
+      audience: "internal",
+      scopes,
+      // Every role the satellite offers, so the write tests clear the role gate
+      // (approve needs leadership or finance); scopes remain what these vary.
+      roles: ["leadership", "engineering", "finance"],
+    },
     SECRET,
   );
 

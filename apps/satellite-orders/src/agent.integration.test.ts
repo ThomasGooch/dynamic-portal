@@ -37,6 +37,7 @@ const principal: Principal = {
   tenantId: "acme",
   audience: "internal",
   scopes: ["orders.read", "orders.write"],
+  roles: ["leadership", "engineering", "finance"],
 };
 
 let server: Server;

@@ -1,4 +1,4 @@
-import type { Audience } from "@portal/protocol";
+import { hasAnyRole, type Audience, type Role } from "@portal/protocol";
 import type { Principal } from "./principal";
 
 /**
@@ -16,6 +16,13 @@ export interface AuthorizationTarget {
   readonly audience: readonly Audience[];
   /** Every scope here is required, not any of them. */
   readonly rbacScopes: readonly string[];
+  /**
+   * Roles permitted, any-of. `undefined` means the resource is not role-gated
+   * (audience and scope still apply) — the deliberate inverse of audience's
+   * fail-closed default. An empty array, by contrast, means nobody: it only
+   * ever arises from narrowing two disjoint role lists, and is honoured as-is.
+   */
+  readonly roles?: readonly Role[] | undefined;
 }
 
 export type AuthorizationResult =
@@ -31,6 +38,21 @@ export function authorize(
   // side channel, however small.
   if (!target.audience.includes(principal.audience)) {
     return { allowed: false, status: 403, reason: "audience not permitted" };
+  }
+
+  // Roles are the internal org-RBAC axis — any-of and opt-in. Three conditions,
+  // each deliberate:
+  //  - internal only: org roles do not describe external partners, whose access
+  //    is governed by audience + scopes + the public projection. Role-gating an
+  //    external-facing satellite must never lock its partners out.
+  //  - checked only when the target declares roles (undefined = un-gated).
+  //  - after audience, so a wrong-audience caller learns nothing about roles.
+  if (
+    principal.audience === "internal" &&
+    target.roles !== undefined &&
+    !hasAnyRole(principal.roles ?? [], target.roles)
+  ) {
+    return { allowed: false, status: 403, reason: "role not permitted" };
   }
 
   for (const scope of target.rbacScopes) {

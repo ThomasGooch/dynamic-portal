@@ -11,6 +11,7 @@ import {
   type ActionResponse,
   type Audience,
   type Manifest,
+  type Role,
   type ScreenResponse,
   type Summary,
 } from "@portal/protocol";
@@ -208,6 +209,8 @@ export interface ManifestInput {
   readonly displayName: string;
   readonly description?: string | undefined;
   readonly audience?: readonly Audience[] | undefined;
+  /** Org roles this satellite is offered to (any-of). Omit to leave un-gated. */
+  readonly roles?: readonly Role[] | undefined;
   readonly screens: readonly ScreenDescriptorInput[];
   readonly actions?: readonly ActionDescriptorInput[] | undefined;
   readonly nav?: readonly NavEntryInput[] | undefined;
@@ -235,6 +238,7 @@ export function manifest(input: ManifestInput): Manifest {
     displayName: input.displayName,
     ...(input.description === undefined ? {} : { description: input.description }),
     ...(input.audience === undefined ? {} : { audience: input.audience }),
+    ...(input.roles === undefined ? {} : { roles: input.roles }),
     screens: input.screens,
     actions: input.actions ?? [],
     ...(input.nav === undefined ? {} : { nav: input.nav }),
