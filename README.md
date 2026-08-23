@@ -158,14 +158,40 @@ than a silent empty value.
 | `PORTAL_AUDIT_LOG` | Absolute path the audit records are appended to. Required by the hub; writes fail closed, so its storage is on the critical path. |
 | `PORTAL_REGISTRY_PATH` | Where to read the registry. Defaults to `config/satellites.yaml`. |
 | `PORTAL_ORDERS_URL` / `PORTAL_FLEET_URL` / `PORTAL_DEPOTS_URL` | Satellite base URLs. |
-| `PORTAL_DEV_TENANT` / `PORTAL_DEV_AUDIENCE` | Switch the development session's tenant or audience, for exercising isolation by hand. |
-| `PORTAL_ALLOW_DEV_SESSION` | Lets the development session stub run under `NODE_ENV=production`. Set only by the compose stack. |
+| `PORTAL_DEV_TENANT` / `PORTAL_DEV_AUDIENCE` / `PORTAL_DEV_ROLES` | Switch the development session's tenant, audience, or org roles, for exercising isolation and RBAC by hand. `PORTAL_DEV_ROLES=finance` acts as finance; unset means every role. |
+| `PORTAL_ALLOW_DEV_SESSION` | Lets the development session stub run under `NODE_ENV=production`. Set only by the compose stack. Set it to `0` to force real Keycloak login instead of the stub. |
+| `PORTAL_OIDC_ISSUER` | Keycloak realm issuer, browser-facing (e.g. `http://localhost:8080/realms/portal`). Enables OIDC login when set. |
+| `PORTAL_OIDC_INTERNAL_ORIGIN` | Origin the hub reaches Keycloak at from inside the network (e.g. `http://keycloak:8080`) when it differs from the browser-facing issuer; the hub rewrites its own back-channel calls to it. |
+| `PORTAL_OIDC_CLIENT_ID` / `PORTAL_OIDC_CLIENT_SECRET` | The confidential client the hub authenticates as. |
+| `PORTAL_OIDC_REDIRECT_URI` | The hub's callback URL registered with that client (e.g. `http://localhost:3000/api/auth/callback`). |
+| `PORTAL_SESSION_SECRET` | Secret the encrypted session cookie is keyed from. Required once OIDC is in use. |
 | `PORTAL_BRAND` | Which palette the portal wears. Every brand ships in the hub's stylesheet, so a rebrand costs no rebuild and no satellite is redeployed or told; applying it re-creates the hub container (`docker compose up -d hub`, not `restart`, which keeps the environment it was created with). Currently `contoso` and `partner`; unset is the default palette, and an unrecognised name is a startup error rather than a rebrand that silently did not happen. |
 
-The session is a **development stub** and refuses to run under
-`NODE_ENV=production` without that last flag. Production replaces it with OIDC
-and RFC 8693 token exchange; nothing downstream changes, because everything
-already takes a `Principal` and every satellite verifies the signature itself.
+Two session providers, tried in order: a real **Keycloak OIDC** login (when the
+`PORTAL_OIDC_*` variables are set), then — only behind `PORTAL_ALLOW_DEV_SESSION`
+— a development stub that otherwise refuses to run under `NODE_ENV=production`.
+The hub logs the user in at Keycloak and maps the token's org roles and tenant
+into the same `Principal` everything downstream already takes; the wire to
+satellites is still the signed `Principal`, with RFC 8693 token exchange the next
+step. Nothing below the session boundary changes either way.
+
+### Roles and login
+
+Four org roles gate what each person sees and does: `leadership`, `engineering`,
+`finance`, `platform`. Satellites declare which roles may reach each screen and
+action; the hub enforces; the platform registry can narrow further but never
+widen. Roles are **any-of** and **opt-in** (a screen that declares none is not
+role-gated), and they gate **internal** users only — external/partner access is
+governed by audience and the public API.
+
+Two ways to exercise it locally:
+
+- **Dev-role switch** (no IdP): `PORTAL_DEV_ROLES=finance docker compose up -d hub`
+  re-creates the hub acting as finance; nav, screens, and the agent surface narrow
+  to match. Unset means every role.
+- **Real Keycloak login**: `PORTAL_ALLOW_DEV_SESSION=0 docker compose up` forces the
+  OIDC flow. Log in as `lead`, `eng`, `fin`, or `plat` (password = the username) —
+  one demo user per role, all in tenant `acme`.
 
 ## Conventions
 
