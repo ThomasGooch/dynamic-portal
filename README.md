@@ -4,7 +4,7 @@ A central hub that renders every solution's UI from a declaration the solution o
 
 **No micro-frontends.** Satellites send *data, not code*. The hub owns all CSS, branding, shell, nav, and auth; satellites own what to display. Adding or changing a satellite screen requires **zero hub deployments**.
 
-See **[PLAN.md](./PLAN.md)** for the full architecture, the durability thesis, and the build order.
+See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for the system design, and **[PLAN.md](./PLAN.md)** for the vision, the durability thesis, and the build order.
 
 ## The idea in one picture
 
