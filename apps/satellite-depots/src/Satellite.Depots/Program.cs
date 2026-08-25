@@ -29,7 +29,8 @@ const string WriteScope = "depots.write";
 // Read from the manifest rather than restated, so the check at the door cannot
 // drift from the declaration the hub was handed.
 var declaredAudience = Screens.DeclaredAudience.Select(a => a.ToWire()).ToHashSet();
-var declaredRoles = Screens.DeclaredRoles.Select(r => r.ToWire()).ToHashSet();
+// No satellite-level roles: reading a screen here is open to every org role,
+// so the screens route passes none and only `depots.close` names any.
 var closeRoles = Screens.CloseRoles.Select(r => r.ToWire()).ToHashSet();
 
 app.MapGet("/healthz", () => Results.Json(new { status = "ok", protocol = Protocol.Version }));
@@ -52,7 +53,10 @@ app.MapGet("/portal/screens/{screenId}", (HttpContext context, string screenId, 
         {
             var depots = repository.List(principal.TenantId);
             return Results.Json(
-                Screens.Dashboard(depots, repository.StatusSummary(principal.TenantId)),
+                Screens.Dashboard(
+                    depots,
+                    repository.StatusSummary(principal.TenantId),
+                    principal.Roles),
                 PortalJson.Options);
         }
 
@@ -70,7 +74,7 @@ app.MapGet("/portal/screens/{screenId}", (HttpContext context, string screenId, 
         }
 
         return Results.NotFound(new { detail = "no such screen" });
-    }, declaredRoles));
+    }));
 
 app.MapPost("/portal/actions/{actionId}", async (HttpContext context, string actionId) =>
     await AuthenticatedAsync(context, WriteScope, async principal =>

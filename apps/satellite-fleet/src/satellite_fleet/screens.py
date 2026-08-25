@@ -44,9 +44,11 @@ def manifest() -> dict[str, Any]:
         display_name="Fleet Operations",
         description="Vehicle status, utilisation and maintenance.",
         audience=["internal"],
-        # Org roles this satellite is offered to. Screens inherit it (they
-        # declare none of their own), so one satellite-level gate covers them.
-        roles=["leadership", "engineering", "platform"],
+        # No satellite-level roles on purpose: every org role may reach this
+        # satellite. This one declares no actions, so nothing inside it is
+        # gated yet — when a chart or table becomes role-specific it earns its
+        # own screen descriptor with its own `roles`, rather than a ceiling
+        # here that hides the whole solution.
         screens=[
             env.screen_descriptor(
                 "fleet.dashboard",
@@ -101,7 +103,113 @@ def vehicles_table(vehicles: list[Vehicle]) -> dict[str, Any]:
     )
 
 
-def dashboard_screen(vehicles: list[Vehicle], summary: dict[str, int]) -> dict[str, Any]:
+def _finance_section(vehicles: list[Vehicle]) -> dict[str, Any]:
+    """Distance carried per depot — finance's proxy for running cost."""
+    by_depot: dict[str, int] = {}
+    for vehicle in vehicles:
+        by_depot[vehicle.depot] = by_depot.get(vehicle.depot, 0) + vehicle.odometer_km
+
+    return ui.section(
+        with_id(
+            "fleet-finance-chart",
+            ui.chart(
+                kind="bar",
+                xKey="depot",
+                series=[{"key": "km", "label": "Total km"}],
+                data=[{"depot": depot, "km": km} for depot, km in sorted(by_depot.items())],
+            ),
+        ),
+        title="Distance by depot",
+        description="Cumulative odometer per depot, the standing proxy for running cost.",
+    )
+
+
+def _platform_section(vehicles: list[Vehicle], summary: dict[str, int]) -> dict[str, Any]:
+    """Shape-of-the-estate figures — what platform watches, not what it spends."""
+    depots = {v.depot for v in vehicles}
+    models = {v.model for v in vehicles}
+    retired = summary.get("retired", 0)
+
+    return ui.section(
+        # A key/value list rather than stat tiles: the hub headlines the first
+        # four StatTiles on a summary screen, so role-conditional tiles would
+        # make the front page's figures differ by role. extractData files these
+        # as facts, not stats.
+        with_id(
+            "fleet-platform-metrics",
+            ui.key_value_list(
+                items=[
+                    {"label": "Depots covered", "value": str(len(depots))},
+                    {"label": "Distinct models", "value": str(len(models))},
+                    {
+                        "label": "Retired",
+                        "value": str(retired),
+                        "tone": "muted" if retired else "success",
+                    },
+                ],
+            ),
+        ),
+        title="Estate metrics",
+        description="Spread of the fleet across depots and models.",
+    )
+
+
+def _engineering_section(vehicles: list[Vehicle]) -> dict[str, Any]:
+    """The service queue: what is off the road, and what is closest to being."""
+    # Anything in maintenance first, then the highest-mileage vehicles still
+    # running. Sorted so the row that needs a decision is the row at the top.
+    queue = sorted(
+        vehicles,
+        key=lambda v: (v.status != "maintenance", -v.odometer_km),
+    )[:5]
+
+    return ui.section(
+        with_id(
+            "fleet-service-queue",
+            ui.table(
+                columns=[
+                    {"key": "registration", "label": "Registration"},
+                    {"key": "model", "label": "Model"},
+                    {"key": "status", "label": "Status", "as": "badge", "toneKey": "statusTone"},
+                    {"key": "odometerKm", "label": "Odometer (km)", "align": "end"},
+                ],
+                rows=[_row(v) for v in queue],
+                rowAction={"screenId": "fleet.detail", "paramKey": "id"},
+                emptyMessage="Nothing awaiting service.",
+            ),
+        ),
+        title="Service queue",
+        description="In maintenance first, then the highest mileage still on the road.",
+    )
+
+
+def _role_sections(
+    vehicles: list[Vehicle], summary: dict[str, int], roles: tuple[str, ...]
+) -> list[dict[str, Any]]:
+    """
+    The role-specific half of the dashboard.
+
+    Additive on purpose: everything above these is shown to every role, so a
+    role that holds none of them sees exactly the dashboard it saw before. The
+    satellite decides this rather than the hub because the hub filtering would
+    mean the figures had already crossed the wire to be discarded — and a
+    number nobody was entitled to is not made safe by not drawing it.
+    """
+    sections: list[dict[str, Any]] = []
+    if "finance" in roles:
+        sections.append(_finance_section(vehicles))
+    if "platform" in roles:
+        sections.append(_platform_section(vehicles, summary))
+    if "engineering" in roles:
+        sections.append(_engineering_section(vehicles))
+    return sections
+
+
+def dashboard_screen(
+    vehicles: list[Vehicle],
+    summary: dict[str, int],
+    roles: tuple[str, ...] = (),
+) -> dict[str, Any]:
     in_maintenance = summary.get("maintenance", 0)
 
     return env.screen(
@@ -138,6 +246,7 @@ def dashboard_screen(vehicles: list[Vehicle], summary: dict[str, int]) -> dict[s
                 title="Status breakdown",
             ),
             ui.section(vehicles_table(vehicles), title="All vehicles"),
+            *_role_sections(vehicles, summary, roles),
         ),
         ttl_seconds=30,
     )

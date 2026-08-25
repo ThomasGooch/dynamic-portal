@@ -55,6 +55,23 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Quiet by default: signing out is a thing you look for, not a thing the bar
+   should keep offering you. */
+.signOut {
+  font: inherit;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 2px var(--gap-sm);
+  cursor: pointer;
+}
+
+.signOut:hover,
+.signOut:focus-visible {
+  color: var(--text);
+}
+
 .main {
   padding: var(--gap-lg);
   max-width: 1100px;

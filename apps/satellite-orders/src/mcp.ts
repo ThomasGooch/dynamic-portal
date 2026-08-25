@@ -118,7 +118,7 @@ const DECLARED_AUDIENCE: readonly Audience[] = ["internal"];
  * reachable directly by a principal (e.g. platform-only) the hub's gateway
  * refuses on roles. Any-of, and internal-only via `authorize`.
  */
-const DECLARED_ROLES: readonly Role[] = ["leadership", "engineering", "finance"];
+const DECLARED_ROLES: readonly Role[] | undefined = undefined;
 
 /**
  * A server per request.

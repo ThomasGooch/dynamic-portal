@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { currentPrincipal, isDevSession } from "@/lib/session";
+import { currentPrincipal, hasSession, isDevSession } from "@/lib/session";
 import { Toaster } from "@/components/Toaster";
 import { AgentPanel } from "@/components/AgentPanel";
 import { isAgentEnabled } from "@/lib/agent";
+import { oidcConfigured } from "@/lib/oidc";
 import { brandAttributes } from "@/lib/brand";
 import "./globals.css";
 import "./shell.css";
@@ -84,6 +85,16 @@ const BRAND_ATTRIBUTES = brandAttributes();
 export default async function RootLayout({ children }: { children: ReactNode }) {
   await connection();
   const principal = await currentPrincipal();
+  // Signing out needs a session to end; signing in needs somewhere to go.
+  //
+  // Offering only the first was the bug: on the dev stub there is no cookie,
+  // so `signedIn` is false and the button hid itself — and the stub is how the
+  // compose stack runs by default. The result was a portal with no way to sign
+  // out (the original complaint) and no way to sign IN either, because the
+  // login route is reachable only through a middleware redirect that the stub
+  // deliberately skips. One of the two is always offered now.
+  const signedIn = await hasSession();
+  const canSignIn = !signedIn && oidcConfigured();
 
   return (
     <html lang="en" {...BRAND_ATTRIBUTES}>
@@ -101,13 +112,45 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
               <div className="topbarMeta">
                 <span className="tenantTag">{principal.tenantId}</span>
-                {isDevSession() && (
+                {isDevSession() && !signedIn && (
                   <span
                     className="sessionBanner"
                     title={`Signed in as ${principal.sub} (${principal.audience}). Replace with OIDC before deploying.`}
                   >
                     Development session
                   </span>
+                )}
+
+                {/* A plain form, so signing out needs no client bundle and
+                    still works with JavaScript off. The route is POST for the
+                    same reason it is a form: a GET logout can be triggered by
+                    any page that can render an image tag.
+
+                    The title carries the identity and roles rather than the
+                    bar: `sub` is a Keycloak UUID, which is noise on screen and
+                    exactly what you want on hover when a role gate behaves
+                    unexpectedly. */}
+                {/* A plain anchor, not `<Link>`: this hands the browser
+                    to Keycloak and comes back setting a cookie, which a
+                    client-side navigation cannot do. */}
+                {canSignIn && (
+                  <a className="signOut" href="/api/auth/login">
+                    Sign in
+                  </a>
+                )}
+
+                {signedIn && (
+                  <form action="/api/auth/logout" method="post">
+                    <button
+                      type="submit"
+                      className="signOut"
+                      title={`Signed in as ${principal.sub} · ${principal.audience}${
+                        principal.roles?.length ? ` · ${principal.roles.join(", ")}` : " · no roles"
+                      }`}
+                    >
+                      Sign out
+                    </button>
+                  </form>
                 )}
               </div>
             </div>

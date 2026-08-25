@@ -108,15 +108,73 @@ public class TheDoor(DepotsApp app) : IClassFixture<DepotsApp>
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    [Fact]
-    public async Task RefusesAReadFromAPrincipalWithoutADepotRole()
+    [Theory]
+    [InlineData("leadership")]
+    [InlineData("engineering")]
+    [InlineData("finance")]
+    [InlineData("platform")]
+    public async Task EveryOrgRoleMayReadTheSatellite(string role)
     {
-        // depots is offered to leadership/platform; finance is neither, so a
-        // finance-only internal principal is refused the whole satellite even
-        // with the right scope. This locks the hand-rolled role gate.
-        var finance = DepotsApp.Acme("depots.read") with { Roles = ["finance"] };
-        var response = await app.ClientFor(finance).GetAsync(Screen);
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        // This satellite declares no role ceiling: reaching it is not what
+        // roles decide. Replaces a test asserting 403 for finance — that
+        // assertion WAS the behaviour being fixed.
+        var principal = DepotsApp.Acme("depots.read") with { Roles = [role] };
+        var response = await app.ClientFor(principal).GetAsync(Screen);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ARolelessPrincipalStillReadsTheSharedDashboard()
+    {
+        // Holding no role must not be the same as being refused: the shared
+        // half of the screen belongs to everyone, and only the additions are
+        // earned. Guards against reading "absent roles" as "nobody".
+        var principal = DepotsApp.Acme("depots.read") with { Roles = [] };
+        var response = await app.ClientFor(principal).GetAsync(Screen);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("depots-table", await response.Content.ReadAsStringAsync());
+    }
+
+    [Theory]
+    [InlineData("finance", "depots-finance-chart")]
+    [InlineData("platform", "depots-platform-metrics")]
+    [InlineData("engineering", "depots-capacity-pressure")]
+    public async Task ARoleSeesItsOwnSectionAndNoOneElseSees(string role, string nodeId)
+    {
+        var holder = DepotsApp.Acme("depots.read") with { Roles = [role] };
+        var body = await (await app.ClientFor(holder).GetAsync(Screen)).Content.ReadAsStringAsync();
+        Assert.Contains(nodeId, body);
+
+        foreach (var other in new[] { "leadership", "engineering", "finance", "platform" })
+        {
+            if (other == role) continue;
+            var stranger = DepotsApp.Acme("depots.read") with { Roles = [other] };
+            var strangerBody =
+                await (await app.ClientFor(stranger).GetAsync(Screen)).Content.ReadAsStringAsync();
+            Assert.DoesNotContain(nodeId, strangerBody);
+        }
+    }
+
+    [Fact]
+    public async Task RoleSectionsAddAndNeverReplace()
+    {
+        // The point of the change. Whatever a role holds, the shared table
+        // every role had is still on the screen. A regression here means an
+        // addition was turned into a substitution.
+        foreach (var roles in new[]
+        {
+            Array.Empty<string>(),
+            ["finance"],
+            ["engineering"],
+            ["platform"],
+            new[] { "finance", "engineering", "platform" },
+        })
+        {
+            var principal = DepotsApp.Acme("depots.read") with { Roles = roles };
+            var body = await (await app.ClientFor(principal).GetAsync(Screen)).Content.ReadAsStringAsync();
+            Assert.Contains("depots-table", body);
+        }
     }
 
     [Fact]

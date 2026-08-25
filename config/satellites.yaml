@@ -25,10 +25,10 @@
     section: Operations
     order: 10
   rbacScopes: [orders.read]
-  # Org roles (Keycloak realm roles) offered this satellite. The satellite's own
-  # manifest declares the same ceiling; naming them here lets the platform narrow
-  # per-tool below (see orders.approve) without the satellite widening it back.
-  roles: [leadership, engineering, finance]
+  # No satellite-level `roles`. Every org role may reach every satellite; what a
+  # role may *do* is declared per screen and per action. The platform can still
+  # narrow an individual tool below (see orders.approve) — it just cannot hide
+  # the whole solution from a role that has business being in it.
   timeoutMs: 3000
   # Brokered to external clients under names the platform team assigns. The
   # mapping is the whole point: a satellite team renaming `orders.list` changes
@@ -70,10 +70,16 @@
       agentVisible: true
       requiresConfirmation: true
       rbacScopes: [orders.write]
+      # Matches the satellite's own declaration. Both are needed: this governs
+      # whether a model may propose the write, the manifest governs whether a
+      # person may click the button, and a mismatch would let the agent offer
+      # something the form then refuses.
+      roles: [engineering]
     orders.update:
       agentVisible: true
       requiresConfirmation: true
       rbacScopes: [orders.write]
+      roles: [engineering]
     # Deletion is not offered to a model at all. Confirmation is a person
     # reading a card; invisibility is the model never raising it. For an
     # irreversible write the second is the one worth having, and it is a
@@ -81,12 +87,14 @@
     orders.delete:
       agentVisible: false
       rbacScopes: [orders.write]
+      roles: [leadership]
     # Never reaches an agent regardless of this entry — the gateway skips an
     # action that requires a file, because no model can produce bytes. Named
     # here so the write scope is stated where every other write's is.
     orders.attach:
       agentVisible: false
       rbacScopes: [orders.write]
+      roles: [engineering]
     # The MCP tools are governed from the same file as the shimmed ones, and by
     # the same rules. A satellite that hosts its own server chooses what it can
     # *offer*; this file still decides what a model may reach and on what terms.
@@ -112,7 +120,6 @@
     section: Operations
     order: 20
   rbacScopes: [fleet.read]
-  roles: [leadership, engineering, platform]
   timeoutMs: 3000
 
 # The C# satellite. Node, Python and C# now, which is the polyglot claim with
@@ -129,7 +136,6 @@
     section: Operations
     order: 30
   rbacScopes: [depots.read]
-  roles: [leadership, platform]
   timeoutMs: 3000
   audience: [internal]
   tools:

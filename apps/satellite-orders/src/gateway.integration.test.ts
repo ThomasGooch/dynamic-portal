@@ -70,16 +70,20 @@ const registryEntry = (baseUrl: string) =>
       agentVisible: true
       requiresConfirmation: true
       rbacScopes: [orders.write]
+      roles: [engineering]
     orders.update:
       agentVisible: true
       requiresConfirmation: true
       rbacScopes: [orders.write]
+      roles: [engineering]
     orders.delete:
       agentVisible: false
       rbacScopes: [orders.write]
+      roles: [leadership]
     orders.attach:
       agentVisible: false
       rbacScopes: [orders.write]
+      roles: [engineering]
     orders.search:
       rbacScopes: [orders.read]
     orders.reconcile:
