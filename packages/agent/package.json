@@ -13,7 +13,6 @@
     "typecheck": "tsc --build --force"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.117.1",
     "@portal/catalog": "workspace:*",
     "@portal/mcp-gateway": "workspace:*",
     "zod": "^3.24.0",

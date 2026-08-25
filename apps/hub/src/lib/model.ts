@@ -5,15 +5,15 @@
  * preference. `instrumentation.ts` is compiled for the edge runtime as well as
  * for node — Next emits an "Edge Instrumentation" entry unconditionally — so
  * importing this from there once dragged `agent.ts`, and through it
- * `node:crypto`, `node:fs`, `node:path` and the Anthropic SDK, into a bundle
- * that has none of them: ten "not supported in the Edge Runtime" errors added
- * to a build that had zero. The `NEXT_RUNTIME` guard inside `register` cannot
- * help, because modules are evaluated before it runs, and a dynamic
- * `await import()` does not help either, because the tracer follows it too.
+ * `node:crypto`, `node:fs` and `node:path`, into a bundle that has none of
+ * them: ten "not supported in the Edge Runtime" errors added to a build that
+ * had zero. The `NEXT_RUNTIME` guard inside `register` cannot help, because
+ * modules are evaluated before it runs, and a dynamic `await import()` does
+ * not help either, because the tracer follows it too.
  *
  * So everything here reads `process.env` and nothing else. The clients that
- * need a filesystem, a socket or a vendor SDK stay in `agent.ts`, which
- * re-exports this so no caller has to know where the line falls.
+ * need a filesystem or a socket stay in `agent.ts`, which re-exports this so
+ * no caller has to know where the line falls.
  *
  * **Strictly additive, and off unless switched on.** PLAN.md makes this a
  * property rather than a preference: the deterministic portal has to work with
@@ -23,7 +23,7 @@
  * off — and none of those paths touch anything the screens use.
  */
 
-import { AGENT_MODEL, OLLAMA_MODEL, OLLAMA_URL } from "@portal/agent";
+import { OLLAMA_MODEL, OLLAMA_URL } from "@portal/agent";
 import type { Principal } from "@portal/identity";
 
 /** Tenants that have not agreed to AI processing, or have withdrawn it. */
@@ -41,7 +41,7 @@ function disabledTenants(): ReadonlySet<string> {
  *
  * Split from `isAgentEnabled` because the two questions had been one, and the
  * combined answer was wrong for the outward MCP endpoint. That endpoint needs
- * no `ANTHROPIC_API_KEY` — the model belongs to whoever is connecting — so
+ * no Azure config of ours — the model belongs to whoever is connecting — so
  * asking "is *our* agent configured" would have left it open to a tenant that
  * had withdrawn consent, which is the control's whole purpose. It is an
  * agent-facing surface either way, and consent governs the surface rather than
@@ -56,18 +56,26 @@ export function isAgentAllowedForTenant(principal: Principal): boolean {
  * Whether *a* model is configured for the hub's own assistant.
  *
  * "Configured" is not "keyed". `PORTAL_MODEL_PROVIDER=ollama` needs no key of
- * ours — the model is on this machine — and asking only about
- * `ANTHROPIC_API_KEY` would have answered 404 "the assistant is not enabled"
- * to the very setup the local provider exists to make cheap. This has to agree
- * with `modelClient()` below: the two are the same question asked once for the
+ * ours — the model is on this machine — and asking only about the Azure vars
+ * would have answered 404 "the assistant is not enabled" to the very setup
+ * the local provider exists to make cheap. This has to agree with
+ * `modelClient()` below: the two are the same question asked once for the
  * gate and once for the client, and a disagreement is either a dead assistant
  * or a throw inside the turn.
+ *
+ * Azure has no hardcoded default for the endpoint or deployment — unlike the
+ * old Anthropic client, which only needed a key because the model name had
+ * one — so all three of the key, endpoint and deployment are required here.
  */
 function isModelConfigured(): boolean {
   if (isLocalProvider()) return true;
-  // A key that is not there is not a misconfiguration to warn about — running
-  // without an agent is a supported way to run this portal.
-  return Boolean(process.env["ANTHROPIC_API_KEY"]);
+  // Missing config is not a misconfiguration to warn about — running without
+  // an agent is a supported way to run this portal.
+  return (
+    Boolean(process.env["AZURE_OPENAI_API_KEY"]) &&
+    set("PORTAL_AZURE_ENDPOINT") !== undefined &&
+    set("PORTAL_AZURE_DEPLOYMENT") !== undefined
+  );
 }
 
 export function isAgentEnabled(principal?: Principal): boolean {
@@ -77,18 +85,17 @@ export function isAgentEnabled(principal?: Principal): boolean {
 }
 
 /**
- * Which model answers, and why the default is the paid one.
+ * Which model answers, and why the default is the hosted one.
  *
  * `PORTAL_MODEL_PROVIDER=ollama` points the agent at a model on this machine.
  * That exists because testing the assistant against a metered API turned a
  * regression suite into a bill, which is a poor incentive to test the agent at
  * all.
  *
- * The default stays Anthropic deliberately. PLAN.md picks `claude-opus-5`
- * because it is zero-data-retention eligible and regulated data reaches the
- * model through tool results — a compliance decision before a capability one.
- * A local model answers that question differently and nobody has reviewed it,
- * so it turns on by choice and never by omission.
+ * The default stays the hosted Azure AI Foundry deployment deliberately. A
+ * local model is a different answer to the same question — not reviewed for
+ * whatever data-handling terms this deployment is expected to meet — so it
+ * turns on by choice and never by omission.
  */
 /**
  * Trimmed, because this arrives from a `.env` file compose reads verbatim and
@@ -113,7 +120,12 @@ function isLocalProvider(): boolean {
  * to trust exactly where it could have proved it instead.
  */
 export type ResolvedModel =
-  | { readonly provider: "anthropic"; readonly model: string }
+  | {
+      readonly provider: "azure";
+      readonly deployment: string;
+      readonly endpoint: string;
+      readonly apiVersion: string;
+    }
   | { readonly provider: "ollama"; readonly model: string; readonly baseUrl: string };
 
 /**
@@ -155,9 +167,9 @@ export function resolveModel(): ResolvedModel {
   // free model and quietly got a metered one, and the only evidence was the
   // invoice. This whole feature exists to stop testing costing money, so a
   // misspelling of it has to fail rather than bill.
-  if (chosen !== "" && chosen !== "ollama" && chosen !== "anthropic") {
+  if (chosen !== "" && chosen !== "ollama" && chosen !== "azure") {
     throw new Error(
-      `PORTAL_MODEL_PROVIDER="${chosen}" is not a provider. Use "ollama", or leave it unset for Anthropic.`,
+      `PORTAL_MODEL_PROVIDER="${chosen}" is not a provider. Use "ollama", or leave it unset for Azure.`,
     );
   }
 
@@ -169,7 +181,19 @@ export function resolveModel(): ResolvedModel {
     };
   }
 
-  return { provider: "anthropic", model: AGENT_MODEL };
+  return {
+    provider: "azure",
+    // Empty when unset rather than a fallback: unlike Ollama there is no
+    // universal default endpoint or deployment, so an unconfigured Azure
+    // setup resolves to an empty string here and is caught by
+    // `isModelConfigured()`/`isAgentEnabled()` before either is read.
+    deployment: set("PORTAL_AZURE_DEPLOYMENT") ?? "",
+    endpoint: set("PORTAL_AZURE_ENDPOINT") ?? "",
+    // Empty when unset rather than a fallback version string: a live check
+    // found the endpoint answers with no `api-version` at all, and the one
+    // version string tried instead 400s with "API version not supported".
+    apiVersion: set("PORTAL_AZURE_API_VERSION") ?? "",
+  };
 }
 
 /**
@@ -202,14 +226,14 @@ function withoutCredentials(url: string): string {
  * One line, at startup, saying what will answer and what it costs.
  *
  * It reports the gate rather than the configuration, which are not the same
- * question. `PORTAL_MODEL_PROVIDER` unset with no `ANTHROPIC_API_KEY` resolves
- * to the hosted model and serves nothing at all — `isAgentEnabled()` is false
+ * question. `PORTAL_MODEL_PROVIDER` unset with no Azure config resolves to
+ * the hosted model and serves nothing at all — `isAgentEnabled()` is false
  * and the route answers 404 — and that is the *default* compose stack, since
- * `docker-compose.yml` passes `${ANTHROPIC_API_KEY:-}` through. Describing the
- * resolution alone would have printed "every turn is billed" on the one
- * configuration that bills nothing and has no assistant, which is worse than
- * printing nothing: a line that answers the question wrongly stops it being
- * asked.
+ * `docker-compose.yml` passes the Azure vars through empty by default.
+ * Describing the resolution alone would have printed "every turn is billed"
+ * on the one configuration that bills nothing and has no assistant, which is
+ * worse than printing nothing: a line that answers the question wrongly stops
+ * it being asked.
  *
  * So the off-states are asked of the same predicates the route is gated on,
  * and the model sentence is reached only when there is a model to reach.
@@ -221,16 +245,21 @@ export function describeModel(): string {
 
   const resolved = resolveModel();
 
-  // The only way this is false past the switch above: the hosted provider with
-  // no key. `isModelConfigured()` is unconditionally true for the local one.
+  // The only way this is false past the switch above: the hosted provider
+  // missing config. `isModelConfigured()` is unconditionally true for the
+  // local one.
   if (!isAgentEnabled()) {
-    return "assistant: off (no ANTHROPIC_API_KEY — set one, or PORTAL_MODEL_PROVIDER=ollama for a local model)";
+    return (
+      "assistant: off (missing Azure config — set AZURE_OPENAI_API_KEY, " +
+      "PORTAL_AZURE_ENDPOINT and PORTAL_AZURE_DEPLOYMENT, or " +
+      "PORTAL_MODEL_PROVIDER=ollama for a local model)"
+    );
   }
 
   const line =
     resolved.provider === "ollama"
       ? `assistant: ${resolved.model} on ${withoutCredentials(resolved.baseUrl)} (local, no API cost)`
-      : `assistant: ${resolved.model} via the Anthropic API (metered — every turn is billed)`;
+      : `assistant: ${resolved.deployment} via Azure AI Foundry at ${withoutCredentials(resolved.endpoint)} (metered — every turn is billed)`;
 
   // Counted, never named. The consent list is tenant identifiers, and a
   // startup log is the wrong place to publish who a customer is; the fact that

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Principal } from "@portal/identity";
-import { anthropicClient, ollamaClient, type ModelClient } from "@portal/agent";
+import { azureClient, ollamaClient, type ModelClient } from "@portal/agent";
 import {
   buildSurface,
   callSatelliteTool,
@@ -212,7 +212,12 @@ export function modelClient(): ModelClient {
     return ollamaClient({ baseUrl: resolved.baseUrl, model: resolved.model });
   }
 
-  const apiKey = process.env["ANTHROPIC_API_KEY"];
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is required to run the agent");
-  return anthropicClient({ apiKey, model: resolved.model });
+  const apiKey = process.env["AZURE_OPENAI_API_KEY"];
+  if (!apiKey) throw new Error("AZURE_OPENAI_API_KEY is required to run the agent");
+  return azureClient({
+    apiKey,
+    endpoint: resolved.endpoint,
+    deployment: resolved.deployment,
+    apiVersion: resolved.apiVersion,
+  });
 }

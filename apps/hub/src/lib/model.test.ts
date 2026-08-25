@@ -22,7 +22,10 @@ const KEYS = [
   "PORTAL_MODEL_PROVIDER",
   "PORTAL_OLLAMA_MODEL",
   "PORTAL_OLLAMA_URL",
-  "ANTHROPIC_API_KEY",
+  "AZURE_OPENAI_API_KEY",
+  "PORTAL_AZURE_ENDPOINT",
+  "PORTAL_AZURE_DEPLOYMENT",
+  "PORTAL_AZURE_API_VERSION",
 ] as const;
 const saved = new Map(KEYS.map((key) => [key, process.env[key]]));
 
@@ -33,7 +36,9 @@ const saved = new Map(KEYS.map((key) => [key, process.env[key]]));
  */
 function configured(): void {
   for (const key of KEYS) delete process.env[key];
-  process.env["ANTHROPIC_API_KEY"] = "sk-ant-not-a-real-key";
+  process.env["AZURE_OPENAI_API_KEY"] = "not-a-real-key";
+  process.env["PORTAL_AZURE_ENDPOINT"] = "https://example.openai.azure.com";
+  process.env["PORTAL_AZURE_DEPLOYMENT"] = "gpt-5.4-mini";
 }
 
 afterEach(() => {
@@ -46,7 +51,7 @@ afterEach(() => {
 describe("which model will answer", () => {
   it("is the hosted one when nothing else is configured", () => {
     configured();
-    expect(resolveModel()).toMatchObject({ provider: "anthropic" });
+    expect(resolveModel()).toMatchObject({ provider: "azure" });
     expect(describeModel()).toMatch(/metered/i);
   });
 
@@ -55,7 +60,16 @@ describe("which model will answer", () => {
     // a provider is what once sent an empty model name to Ollama.
     configured();
     process.env["PORTAL_MODEL_PROVIDER"] = "";
-    expect(resolveModel().provider).toBe("anthropic");
+    expect(resolveModel().provider).toBe("azure");
+  });
+
+  it("names the deployment and endpoint, not just the provider", () => {
+    configured();
+    process.env["PORTAL_AZURE_DEPLOYMENT"] = "gpt-5.4-mini";
+    process.env["PORTAL_AZURE_ENDPOINT"] = "https://foundry-resource.openai.azure.com";
+
+    expect(describeModel()).toContain("gpt-5.4-mini");
+    expect(describeModel()).toContain("https://foundry-resource.openai.azure.com");
   });
 
   it("is the local one when asked for, and says it costs nothing", () => {
@@ -88,7 +102,8 @@ describe("which model will answer", () => {
 
     const resolved = resolveModel();
     expect(resolved).toMatchObject({ provider: "ollama" });
-    expect(resolved.provider === "ollama" && resolved.baseUrl).toBeTruthy();
+    if (resolved.provider !== "ollama") throw new Error("expected the local provider");
+    expect(resolved.baseUrl).toBeTruthy();
     expect(resolved.model).not.toBe("");
   });
 
@@ -115,15 +130,22 @@ describe("the line and the gate", () => {
    * that is false, the line is an authoritative-looking lie and the reader
    * stops looking.
    */
+  const azureConfig = {
+    AZURE_OPENAI_API_KEY: "azure-x",
+    PORTAL_AZURE_ENDPOINT: "https://example.openai.azure.com",
+    PORTAL_AZURE_DEPLOYMENT: "gpt-5.4-mini",
+  } as const;
+
   const gates = [
     { name: "nothing configured at all", env: {} },
-    { name: "the hosted provider with a key", env: { ANTHROPIC_API_KEY: "sk-ant-x" } },
+    { name: "the hosted provider fully configured", env: azureConfig },
+    { name: "the hosted provider missing the key", env: { PORTAL_AZURE_ENDPOINT: azureConfig.PORTAL_AZURE_ENDPOINT, PORTAL_AZURE_DEPLOYMENT: azureConfig.PORTAL_AZURE_DEPLOYMENT } },
     { name: "the local provider with no key", env: { PORTAL_MODEL_PROVIDER: "ollama" } },
     {
       name: "the local provider with a key",
-      env: { PORTAL_MODEL_PROVIDER: "ollama", ANTHROPIC_API_KEY: "sk-ant-x" },
+      env: { PORTAL_MODEL_PROVIDER: "ollama", ...azureConfig },
     },
-    { name: "the kill switch", env: { PORTAL_AGENT: "off", ANTHROPIC_API_KEY: "sk-ant-x" } },
+    { name: "the kill switch", env: { PORTAL_AGENT: "off", ...azureConfig } },
     {
       name: "the kill switch with the local provider",
       env: { PORTAL_AGENT: "off", PORTAL_MODEL_PROVIDER: "ollama" },
@@ -141,15 +163,15 @@ describe("the line and the gate", () => {
   }
 
   it("says the assistant is off, not that it is billing, with no key", () => {
-    // The default compose stack: `ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}`
-    // with no root `.env`. Resolution says "the hosted model"; the gate says
-    // 404. Reporting the resolution printed "every turn is billed" on the one
+    // The default compose stack passes the Azure vars through empty with no
+    // root `.env`. Resolution says "the hosted model"; the gate says 404.
+    // Reporting the resolution printed "every turn is billed" on the one
     // configuration that bills nothing.
     for (const key of KEYS) delete process.env[key];
 
     expect(isAgentEnabled()).toBe(false);
     expect(describeModel()).toMatch(/^assistant: off/);
-    expect(describeModel()).toMatch(/ANTHROPIC_API_KEY/);
+    expect(describeModel()).toMatch(/AZURE_OPENAI_API_KEY/);
     expect(describeModel()).not.toMatch(/billed/i);
   });
 
@@ -192,9 +214,8 @@ describe("what the line is allowed to print", () => {
 
   it("prints no key material", () => {
     configured();
-    process.env["ANTHROPIC_API_KEY"] = "sk-ant-api03-secret-value";
-    expect(describeModel()).not.toContain("sk-ant");
-    expect(describeModel()).not.toContain("secret-value");
+    process.env["AZURE_OPENAI_API_KEY"] = "azure-secret-value";
+    expect(describeModel()).not.toContain("azure-secret-value");
   });
 
   it("strips credentials someone tunnelled through the ollama URL", () => {

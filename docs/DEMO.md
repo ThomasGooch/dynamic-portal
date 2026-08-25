@@ -35,8 +35,8 @@ do not infer it from what you set:
 ```bash
 docker compose logs hub | grep assistant:
 # assistant: qwen2.5:7b on http://host.docker.internal:11434 (local, no API cost)
-# assistant: claude-opus-5 via the Anthropic API (metered — every turn is billed)
-# assistant: off (no ANTHROPIC_API_KEY — …)
+# assistant: gpt-5.4-mini via Azure AI Foundry at https://... (metered — every turn is billed)
+# assistant: off (missing Azure config — …)
 ```
 
 The provider is read from `.env`. A hub that falls back to the metered API does
@@ -46,20 +46,23 @@ so silently otherwise, which is how this line came to exist.
 
 | | Setup | Composition | Notes |
 |---|---|---|---|
-| Hosted | `ANTHROPIC_API_KEY` in `.env` | ~13 s, measured | What to use in the room |
+| Hosted | `AZURE_OPENAI_API_KEY`, `PORTAL_AZURE_ENDPOINT`, `PORTAL_AZURE_DEPLOYMENT` in `.env` | not yet re-measured against gpt-5.4-mini | What to use in the room |
 | Local | `PORTAL_MODEL_PROVIDER=ollama` | does not work | Free; six of the seven `the assistant` tests pass |
 
 Screen composition — beat 6 — **needs the hosted model**. On a local 7B it runs
 out of turns rather than composing. If the key is dead or the venue's network
 is unreliable, cut beat 6 and say why; do not let it fail live.
 
-**That ~13 s is a measurement, not a guarantee.** The home page is one turn
-with several tool calls and a satellite round trip inside each, so it moves with
-the model and the venue's network — the e2e test allows over three minutes
-before giving up, and that gap is deliberate rather than slack. Rehearse it on
-the venue's connection, keep talking while it fills in, and if it has not landed
-by the time you finish the sentence, move on: the launcher above it is a
-complete page, and beat 6 is the only beat that can be cut.
+**Re-measure the composition time and pass rate on `gpt-5.4-mini` before
+relying on this section** — the old timing and pass-rate figures here were
+measured against `claude-opus-5` and do not necessarily carry over. The home
+page is one turn with several tool calls and a satellite round trip inside
+each, so it moves with the model and the venue's network — the e2e test allows
+over three minutes before giving up, and that gap is deliberate rather than
+slack. Rehearse it on the venue's connection, keep talking while it fills in,
+and if it has not landed by the time you finish the sentence, move on: the
+launcher above it is a complete page, and beat 6 is the only beat that can be
+cut.
 
 ---
 
@@ -73,21 +76,26 @@ no key, and that hub reports `assistant: off`.
 | | beat 6 — the composed home | everything else |
 |---|---|---|
 | `qwen2.5:7b` (local, free) | **0/3** | works |
-| `claude-opus-5` (metered) | **3/3** | works |
+| `gpt-5.4-mini` via Azure AI Foundry (metered) | not yet re-measured | works |
 
 Measured, not assumed, and raising the turn budget to 20 did not move the local
 model at all — it is a capability limit, not a budget one. Composing a screen
 means satisfying a 34-variant schema where every figure must cite a verified
-tool call, and a 7B model does not get there.
+tool call, and a 7B model does not get there. Re-run this table's hosted row
+against `gpt-5.4-mini` before relying on it — the `3/3` result and per-run cost
+below were measured against `claude-opus-5` and have not been re-measured
+since the switch to Azure.
 
 **So: rehearse on the local model, and decide about beat 6 separately.** Either
 skip it — it is `additive, never load-bearing` by design, and the failure table
 below already covers it — or move to the hosted model for the run: unset
-`PORTAL_MODEL_PROVIDER` in `.env` **and** set `ANTHROPIC_API_KEY`, then read the
-startup line back. Unsetting the provider on its own resolves to Anthropic with
-no key, which is `assistant: off` and a 404 from every assistant beat rather
-than a hosted beat 6. One composed home on Opus costs about $0.15; a full `pnpm test:e2e` costs
-about $1.45, which is worth knowing before running it in a loop.
+`PORTAL_MODEL_PROVIDER` in `.env` **and** set `AZURE_OPENAI_API_KEY`,
+`PORTAL_AZURE_ENDPOINT` and `PORTAL_AZURE_DEPLOYMENT`, then read the startup
+line back. Unsetting the provider on its own resolves to the hosted provider
+with no config, which is `assistant: off` and a 404 from every assistant beat
+rather than a hosted beat 6. Check current Azure OpenAI pricing for
+`gpt-5.4-mini` before running `pnpm test:e2e` in a loop — the old $0.15/$1.45
+figures here were Anthropic pricing and do not apply.
 
 ## The spine
 

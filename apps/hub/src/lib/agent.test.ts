@@ -21,10 +21,19 @@ const principal = (tenantId: string): Principal => ({
 
 const original = { ...process.env };
 
+/** All three are required for the hosted provider to count as configured. */
+function configureAzure(): void {
+  process.env["AZURE_OPENAI_API_KEY"] = "test-key";
+  process.env["PORTAL_AZURE_ENDPOINT"] = "https://example.openai.azure.com";
+  process.env["PORTAL_AZURE_DEPLOYMENT"] = "gpt-5.4-mini";
+}
+
 beforeEach(() => {
   delete process.env["PORTAL_AGENT"];
   delete process.env["PORTAL_AGENT_DISABLED_TENANTS"];
-  delete process.env["ANTHROPIC_API_KEY"];
+  delete process.env["AZURE_OPENAI_API_KEY"];
+  delete process.env["PORTAL_AZURE_ENDPOINT"];
+  delete process.env["PORTAL_AZURE_DEPLOYMENT"];
   delete process.env["PORTAL_MODEL_PROVIDER"];
 });
 
@@ -58,7 +67,7 @@ describe("tenant consent", () => {
     // The distinction that let the outward MCP endpoint slip past this control:
     // it needs no key of ours, because the model belongs to whoever connects.
     // Consent governs the surface, not whose model reaches it.
-    expect(process.env["ANTHROPIC_API_KEY"]).toBeUndefined();
+    expect(process.env["AZURE_OPENAI_API_KEY"]).toBeUndefined();
     expect(isAgentAllowedForTenant(principal("acme"))).toBe(true);
   });
 });
@@ -69,12 +78,12 @@ describe("the in-hub assistant", () => {
   });
 
   it("turns on for a consenting tenant once a key exists", () => {
-    process.env["ANTHROPIC_API_KEY"] = "test-key";
+    configureAzure();
     expect(isAgentEnabled(principal("acme"))).toBe(true);
   });
 
   it("stays off for a tenant that withdrew, key or no key", () => {
-    process.env["ANTHROPIC_API_KEY"] = "test-key";
+    configureAzure();
     process.env["PORTAL_AGENT_DISABLED_TENANTS"] = "withdrawn";
     expect(isAgentEnabled(principal("withdrawn"))).toBe(false);
   });
@@ -84,7 +93,7 @@ describe("the in-hub assistant", () => {
     // Gating on the key alone answered 404 "the assistant is not enabled" to
     // it, and every assistant test skipped itself rather than running free.
     process.env["PORTAL_MODEL_PROVIDER"] = "ollama";
-    expect(process.env["ANTHROPIC_API_KEY"]).toBeUndefined();
+    expect(process.env["AZURE_OPENAI_API_KEY"]).toBeUndefined();
     expect(isAgentEnabled(principal("acme"))).toBe(true);
     expect(isAgentEnabled()).toBe(true);
   });
@@ -106,7 +115,7 @@ describe("the in-hub assistant", () => {
     // metered one, and the only evidence was the invoice. This whole feature
     // exists to stop testing costing money.
     process.env["PORTAL_MODEL_PROVIDER"] = "ollma";
-    process.env["ANTHROPIC_API_KEY"] = "sk-test";
+    configureAzure();
     expect(() => modelClient()).toThrow(/not a provider/);
   });
 

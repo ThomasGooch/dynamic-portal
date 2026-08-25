@@ -8,11 +8,10 @@
  * properties in from the tool call each node cites — refusing anything whose
  * citation does not hold up.
  *
- * Everything except `anthropic.ts` is a pure function over a spec, a message
- * list and a set of tool results — which is what makes the integrity claim
- * testable without a network. The vendor sits behind the smallest interface in
- * the repository, because PLAN.md rates the model as the fastest-decaying
- * dependency in the stack.
+ * Everything except `azure.ts` is a pure function over a spec, a message
+ * list and a set of tool results. The vendor sits behind the smallest
+ * interface in the repository, because PLAN.md rates the model as the
+ * fastest-decaying dependency in the stack.
  */
 
 export {
@@ -55,4 +54,4 @@ export { conversationBudget, trimConversation } from "./trim";
 
 export { OLLAMA_MODEL, OLLAMA_URL, ollamaClient, type OllamaClientOptions } from "./ollama";
 
-export { AGENT_MODEL, anthropicClient, type AnthropicClientOptions } from "./anthropic";
+export { azureClient, type AzureClientOptions } from "./azure";
