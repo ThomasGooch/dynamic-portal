@@ -249,7 +249,13 @@ export function createApp({
 
       switch (req.params.screenId) {
         case "orders.list":
-          res.json(listScreen(repository.list(tenantId), req.principal!.audience));
+          res.json(
+            listScreen(
+              repository.list(tenantId),
+              req.principal!.audience,
+              req.principal!.roles ?? [],
+            ),
+          );
           return;
 
         case "orders.detail": {

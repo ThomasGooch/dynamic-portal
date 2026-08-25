@@ -177,15 +177,78 @@ class TestTenantIsolation:
         )
         assert res.status_code == 403
 
-    def test_missing_role_is_refused(self, client: httpx.Client) -> None:
-        # fleet is offered to leadership/engineering/platform; a finance-only
-        # internal principal holds none of them and is refused the satellite,
-        # even though its scope is fine. This locks the hand-rolled role gate.
+    def test_every_role_may_read_the_satellite(self, client: httpx.Client) -> None:
+        # This satellite declares no role ceiling: reaching it is not what roles
+        # decide. A finance-only principal — which the previous policy refused
+        # outright — gets the dashboard, and what differs is the sections on it.
+        # Replaces a test that asserted 403 here; that assertion WAS the bug.
+        for role in ("leadership", "engineering", "finance", "platform"):
+            res = client.get(
+                "/portal/screens/fleet.dashboard",
+                headers=auth(principal(roles=(role,))),
+            )
+            assert res.status_code == 200, f"{role} was refused the dashboard"
+
+    def test_a_roleless_principal_still_reads_the_shared_dashboard(
+        self, client: httpx.Client
+    ) -> None:
+        # Holding no role at all must not be the same as being refused: the
+        # shared half of the screen is everyone's, and only the additions are
+        # earned. Guards the reading of "absent roles" as "nobody".
         res = client.get(
-            "/portal/screens/fleet.dashboard",
-            headers=auth(principal(roles=("finance",))),
+            "/portal/screens/fleet.dashboard", headers=auth(principal(roles=()))
         )
-        assert res.status_code == 403
+        assert res.status_code == 200
+        ui = res.json()["ui"]
+        assert _find(ui, "Table") is not None, "the shared vehicles table went missing"
+
+
+class TestRoleSections:
+    """The role-specific half of the dashboard: additive, and never subtractive."""
+
+    def _ids(self, client: httpx.Client, roles: tuple[str, ...]) -> set[str]:
+        res = client.get(
+            "/portal/screens/fleet.dashboard", headers=auth(principal(roles=roles))
+        )
+        assert res.status_code == 200
+        found: set[str] = set()
+
+        def walk(node: dict) -> None:
+            node_id = node.get("id")
+            if isinstance(node_id, str):
+                found.add(node_id)
+            for child in node.get("children") or []:
+                walk(child)
+
+        walk(res.json()["ui"])
+        return found
+
+    def test_finance_gets_a_graph_nobody_else_does(self, client: httpx.Client) -> None:
+        assert "fleet-finance-chart" in self._ids(client, ("finance",))
+        for other in ("engineering", "platform", "leadership"):
+            assert "fleet-finance-chart" not in self._ids(client, (other,))
+
+    def test_platform_gets_the_estate_metrics(self, client: httpx.Client) -> None:
+        assert "fleet-platform-metrics" in self._ids(client, ("platform",))
+        for other in ("finance", "engineering", "leadership"):
+            assert "fleet-platform-metrics" not in self._ids(client, (other,))
+
+    def test_engineering_gets_the_service_queue(self, client: httpx.Client) -> None:
+        assert "fleet-service-queue" in self._ids(client, ("engineering",))
+        for other in ("finance", "platform", "leadership"):
+            assert "fleet-service-queue" not in self._ids(client, (other,))
+
+    def test_the_shared_screen_survives_every_role(self, client: httpx.Client) -> None:
+        # The point of the change: role sections ADD. Whatever a role holds,
+        # the vehicles table everyone had is still there. A regression here
+        # means someone turned an addition into a replacement.
+        for roles in ((), ("finance",), ("engineering",), ("platform",),
+                      ("finance", "engineering", "platform")):
+            assert "fleet-table" in self._ids(client, roles), f"lost for {roles}"
+
+    def test_holding_every_role_gets_every_section(self, client: httpx.Client) -> None:
+        ids = self._ids(client, ("finance", "engineering", "platform"))
+        assert {"fleet-finance-chart", "fleet-service-queue", "fleet-table"} <= ids
 
 
 def _find(node: dict, type_: str) -> dict | None:

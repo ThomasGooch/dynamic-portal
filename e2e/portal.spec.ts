@@ -3,6 +3,32 @@ import { promisify } from "node:util";
 import { expect, test, type Page } from "@playwright/test";
 
 /**
+ * The screen's own table — the one every role sees.
+ *
+ * A screen may now carry more than one. Role sections are APPENDED to the
+ * shared screen (that is the invariant the satellites are built on: additive,
+ * never subtractive), so the table everybody gets is always the first in
+ * document order, and a role-specific one — engineering's work queue on
+ * /orders, its service queue on /fleet — comes after it.
+ *
+ * Before those existed a bare `table.r-table` was unambiguous. It is not any
+ * more, and left bare it fails as a strict-mode violation rather than as a
+ * wrong answer, which is a confusing way to learn that a screen grew.
+ */
+const sharedTable = (page: Page) => page.locator("table.r-table").first();
+
+/**
+ * The screen's own chart — the one every role sees.
+ *
+ * Same reasoning as `sharedTable`, and the same invariant: role sections are
+ * appended, so the chart everybody gets is first in document order and a
+ * role-specific one (finance's distance-by-depot on /fleet, value-by-status on
+ * /orders) follows it. `/fleet` has carried a chart since long before roles
+ * existed; it simply had no second one to be ambiguous with.
+ */
+const sharedChart = (page: Page) => page.locator(".r-chart svg[role=application]").first();
+
+/**
  * The portal in a browser.
  *
  * This file is PLAN.md's verification list, turned into assertions. Each test
@@ -98,11 +124,22 @@ test.describe("one shell, three solutions", () => {
     await page.goto("/orders");
     // Scoped to the rendered tree, not the page: the shell around it is the
     // hub's own markup and carries the hub's own class names.
-    const foreign = await page.evaluate(() =>
-      [...document.querySelectorAll(".r-page [class]")]
+    // Recharts emits three class names that carry no `recharts-` prefix, so
+    // the prefix filter alone lets them through as if a satellite had authored
+    // them. They are the hub's own charting library and always have been —
+    // /fleet has rendered a chart since before this test existed, and emits
+    // exactly these three. The check simply never looked at a screen with a
+    // chart on it, so the gap sat unnoticed until one appeared on /orders.
+    const RECHARTS_UNPREFIXED = /^(xAxis|yAxis|legend-item-\d+)$/;
+    const foreign = await page.evaluate((pattern: string) => {
+      const rechartsOwn = new RegExp(pattern);
+      return [...document.querySelectorAll(".r-page [class]")]
         .flatMap((element) => [...element.classList])
-        .filter((name) => !name.startsWith("r-") && !name.startsWith("recharts-")),
-    );
+        .filter(
+          (name) =>
+            !name.startsWith("r-") && !name.startsWith("recharts-") && !rechartsOwn.test(name),
+        );
+    }, RECHARTS_UNPREFIXED.source);
     expect(foreign).toEqual([]);
   });
 
@@ -276,7 +313,7 @@ test.describe("filling in a form", () => {
     // that a dialog appeared would pass against a dialog wired to nothing.
     await dialog.getByRole("button", { name: "Confirm" }).click();
     await expect(page).toHaveURL(/\/orders\/orders\.list$/);
-    await expect(page.locator("table.r-table")).not.toContainText("Delete Me Ltd");
+    await expect(sharedTable(page)).not.toContainText("Delete Me Ltd");
   });
 });
 
@@ -611,7 +648,7 @@ test.describe("deep linking", () => {
   test("a row links to a detail screen that survives reload and back", async ({ page }) => {
     await page.goto("/orders");
 
-    const firstRow = page.locator("table.r-table tbody tr").first();
+    const firstRow = sharedTable(page).locator("tbody tr").first();
     const orderId = (await firstRow.locator("td").first().innerText()).trim();
     await firstRow.getByRole("link").click();
 
@@ -624,7 +661,7 @@ test.describe("deep linking", () => {
 
     await page.goBack();
     await expect(page).toHaveURL(/\/orders$/);
-    await expect(page.locator("table.r-table")).toBeVisible();
+    await expect(sharedTable(page)).toBeVisible();
   });
 
   test("a truncated deep link 404s instead of rendering a different screen", async ({ page }) => {
@@ -650,7 +687,7 @@ test.describe("the action envelope", () => {
 
   test("patch replaces one node without navigating or reloading", async ({ page }) => {
     await page.goto("/orders");
-    const table = page.locator("table.r-table");
+    const table = sharedTable(page);
     await expect(table).toBeVisible();
 
     // Marks the live DOM node. A full page load builds a new document and the
@@ -669,8 +706,8 @@ test.describe("the action envelope", () => {
   test("a confirmed write shows the hub's own dialog, then navigates", async ({ page }) => {
     await page.goto("/orders");
 
-    const pendingRow = page
-      .locator("table.r-table tbody tr")
+    const pendingRow = sharedTable(page)
+      .locator("tbody tr")
       .filter({ has: page.locator(".r-badge", { hasText: "pending" }) })
       .first();
     const orderId = (await pendingRow.locator("td").first().innerText()).trim();
@@ -690,8 +727,8 @@ test.describe("the action envelope", () => {
     await expect(page).toHaveURL(/\/orders\/orders\.list$/);
     await expect(page.locator(".r-toast")).toContainText(`Order ${orderId} approved`);
 
-    const status = page
-      .locator("table.r-table tbody tr")
+    const status = sharedTable(page)
+      .locator("tbody tr")
       .filter({ hasText: orderId })
       .locator(".r-badge");
     await expect(status).toHaveText("approved");
@@ -699,10 +736,10 @@ test.describe("the action envelope", () => {
 
   test("cancelling the dialog sends nothing", async ({ page }) => {
     await page.goto("/orders");
-    const before = await page.locator("table.r-table tbody tr").allInnerTexts();
+    const before = await sharedTable(page).locator("tbody tr").allInnerTexts();
 
-    const pendingRow = page
-      .locator("table.r-table tbody tr")
+    const pendingRow = sharedTable(page)
+      .locator("tbody tr")
       .filter({ has: page.locator(".r-badge", { hasText: "pending" }) })
       .first();
     await pendingRow.getByRole("link").click();
@@ -711,7 +748,7 @@ test.describe("the action envelope", () => {
 
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
     await page.goto("/orders");
-    expect(await page.locator("table.r-table tbody tr").allInnerTexts()).toEqual(before);
+    expect(await sharedTable(page).locator("tbody tr").allInnerTexts()).toEqual(before);
   });
 
   test("field errors land on the field that caused them", async ({ page }) => {
@@ -758,7 +795,7 @@ test.describe("blast radius", () => {
     // it is the thing that has to survive a satellite being unreachable.
     await expect(page.locator("header.topbar a.brand")).toBeVisible();
     await page.goto("/orders");
-    await expect(page.locator("table.r-table")).toBeVisible();
+    await expect(sharedTable(page)).toBeVisible();
   });
 });
 
@@ -771,7 +808,7 @@ test.describe("rendering the untrusted", () => {
     await page.goto("/fleet");
     // Recharts measures its container before drawing, so the SVG appears after
     // hydration rather than in the server's HTML. See PLAN.md's known limits.
-    const plot = page.locator(".r-chart svg[role=application]");
+    const plot = sharedChart(page);
     await expect(plot).toBeVisible();
 
     const fills = await page.evaluate(() =>
@@ -810,9 +847,9 @@ test.describe("the agent, switched off", () => {
 
   test("leaves every deterministic screen exactly as it was", async ({ page }) => {
     await page.goto("/orders");
-    await expect(page.locator("table.r-table")).toBeVisible();
+    await expect(sharedTable(page)).toBeVisible();
     await page.goto("/fleet");
-    await expect(page.locator(".r-chart svg[role=application]")).toBeVisible();
+    await expect(sharedChart(page)).toBeVisible();
   });
 
   test("answers the agent endpoint with a plain refusal, not an error", async ({ page }) => {
@@ -1042,7 +1079,7 @@ test.describe("the audit log", () => {
   test("records a screen read that actually happened", async ({ page, request }) => {
     void request;
     await page.goto("/orders");
-    await expect(page.locator("table.r-table")).toBeVisible();
+    await expect(sharedTable(page)).toBeVisible();
 
     const events = await readLog();
     const read = events.filter((event: never) => (event as { action: { kind: string } }).action.kind === "screen.read");

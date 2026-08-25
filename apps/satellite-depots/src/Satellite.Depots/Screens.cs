@@ -24,11 +24,10 @@ public static class Screens
     /// </summary>
     public static readonly IReadOnlyList<Audience> DeclaredAudience = [Audience.Internal];
 
-    /// <summary>
-    /// Org roles this satellite is offered to. Screens inherit it (they declare
-    /// none of their own); the close action narrows to platform below.
-    /// </summary>
-    public static readonly IReadOnlyList<Role> DeclaredRoles = [Role.Leadership, Role.Platform];
+    // No satellite-level roles on purpose: every org role may reach this
+    // satellite and read its screens. Only closing a depot is gated, below.
+    // The SDK rejects an empty role list rather than treating it as "nobody",
+    // so un-gating is expressed by omitting the argument, not by passing [].
 
     /// <summary>Closing a depot is a platform-only operation.</summary>
     public static readonly IReadOnlyList<Role> CloseRoles = [Role.Platform];
@@ -52,7 +51,6 @@ public static class Screens
             displayName: "Depot Operations",
             description: "Capacity, utilisation and status by depot.",
             audience: DeclaredAudience,
-            roles: DeclaredRoles,
             screens:
             [
                 Envelopes.ScreenDescriptor(
@@ -125,16 +123,143 @@ public static class Screens
             emptyMessage: "No depots assigned.")
             .WithId("depots-table");
 
+    /// <summary>
+    /// The role-specific half of the dashboard.
+    /// </summary>
+    /// <remarks>
+    /// Additive, never subtractive: everything the shared screen shows is shown
+    /// to every role, so a principal holding none of these sees exactly the
+    /// dashboard it saw before. The satellite decides this rather than the hub,
+    /// because a hub filter would mean the figures had already crossed the wire
+    /// to be discarded — and a number nobody was entitled to is not made safe
+    /// by not drawing it.
+    /// </remarks>
+    private static List<Node> RoleSections(
+        IReadOnlyList<Depot> depots,
+        IReadOnlyCollection<string> roles)
+    {
+        var sections = new List<Node>();
+
+        if (roles.Contains("finance"))
+        {
+            // Spare pallets by region: capacity paid for and not used, which is
+            // the question finance asks of a depot estate.
+            var spareByRegion = depots
+                .GroupBy(depot => depot.Region)
+                .OrderBy(group => group.Key, StringComparer.Ordinal)
+                .Select(group => new Dictionary<string, object?>
+                {
+                    ["region"] = group.Key,
+                    ["spare"] = group.Sum(depot => depot.CapacityPallets - depot.UsedPallets),
+                })
+                .ToList();
+
+            sections.Add(Ui.Section(
+                    title: "Spare capacity by region",
+                    description: "Pallets paid for and standing empty.")
+                .With(Ui.Chart(
+                        kind: ChartKind.Bar,
+                        xKey: "region",
+                        series:
+                        [
+                            new Dictionary<string, object?> { ["key"] = "spare", ["label"] = "Spare pallets" },
+                        ],
+                        data: spareByRegion)
+                    .WithId("depots-finance-chart")));
+        }
+
+        if (roles.Contains("platform"))
+        {
+            var regions = depots.Select(depot => depot.Region).Distinct().Count();
+            var capacity = depots.Sum(depot => depot.CapacityPallets);
+            // Mean of the per-depot percentages, not total used over total
+            // capacity: a large depot would otherwise drown three small ones,
+            // and "how utilised is a typical site" is the question here.
+            var meanUtilisation = depots.Count == 0
+                ? 0
+                : (int)Math.Round(depots.Average(depot => depot.UtilisationPercent));
+
+            sections.Add(Ui.Section(
+                    title: "Estate metrics",
+                    description: "Spread and headroom across the estate.")
+                // A key/value list rather than stat tiles: the hub headlines
+                // the first four StatTiles on a summary screen, so
+                // role-conditional tiles would make the front page's figures
+                // differ by role. extractData files these as facts, not stats.
+                // Invariant culture like every other formatted figure here.
+                .With(Ui.KeyValueList(
+                    [
+                        new Dictionary<string, object?>
+                        {
+                            ["label"] = "Regions",
+                            ["value"] = regions.ToString(CultureInfo.InvariantCulture),
+                        },
+                        new Dictionary<string, object?>
+                        {
+                            ["label"] = "Total capacity (pallets)",
+                            ["value"] = capacity.ToString("N0", CultureInfo.InvariantCulture),
+                        },
+                        new Dictionary<string, object?>
+                        {
+                            ["label"] = "Mean utilisation",
+                            ["value"] = $"{meanUtilisation}%",
+                            ["tone"] = (meanUtilisation >= 90 ? Tone.Warning : Tone.Success).ToWire(),
+                        },
+                    ])
+                    .WithId("depots-platform-metrics")));
+        }
+
+        if (roles.Contains("engineering"))
+        {
+            // Fullest first: the row that needs a decision is the row at the top.
+            var pressure = depots
+                .OrderByDescending(depot => depot.UtilisationPercent)
+                .Take(5)
+                .Select(depot => new Dictionary<string, object?>
+                {
+                    ["id"] = depot.Id,
+                    ["name"] = depot.Name,
+                    ["region"] = depot.Region,
+                    ["utilisation"] = $"{depot.UtilisationPercent}%",
+                })
+                .ToList();
+
+            sections.Add(Ui.Section(
+                    title: "Capacity pressure",
+                    description: "Fullest depots first — where the next pallet has nowhere to go.")
+                .With(Ui.Table(
+                        columns:
+                        [
+                            new Dictionary<string, object?> { ["key"] = "name", ["label"] = "Depot" },
+                            new Dictionary<string, object?> { ["key"] = "region", ["label"] = "Region" },
+                            new Dictionary<string, object?>
+                            {
+                                ["key"] = "utilisation", ["label"] = "Utilisation", ["align"] = "end",
+                            },
+                        ],
+                        rows: pressure,
+                        rowAction: new Dictionary<string, object?>
+                        {
+                            ["screenId"] = "depots.detail", ["paramKey"] = "id",
+                        },
+                        emptyMessage: "No depots.")
+                    .WithId("depots-capacity-pressure")));
+        }
+
+        return sections;
+    }
+
     public static IReadOnlyDictionary<string, object?> Dashboard(
         IReadOnlyList<Depot> depots,
-        IReadOnlyDictionary<string, int> summary)
+        IReadOnlyDictionary<string, int> summary,
+        IReadOnlyCollection<string>? roles = null)
     {
         var atCapacity = summary.GetValueOrDefault("at-capacity");
 
         return Envelopes.Screen(
             "depots.dashboard",
             "Depots",
-            Ui.Page(title: "Depots").With(
+            Ui.Page(title: "Depots").With([
                 Ui.Grid(columns: 3).With(
                     Ui.StatTile(label: "Depots", value: depots.Count.ToString()),
                     Ui.StatTile(
@@ -162,7 +287,9 @@ public static class Screens
                             ["used"] = depot.UsedPallets,
                         })])
                         .WithId("depots-utilisation")),
-                Ui.Section(title: "All depots").With(DepotsTable(depots))),
+                Ui.Section(title: "All depots").With(DepotsTable(depots)),
+                .. RoleSections(depots, roles ?? []),
+            ]),
             ttlSeconds: 30);
     }
 

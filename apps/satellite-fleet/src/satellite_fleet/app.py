@@ -82,7 +82,9 @@ def create_app(*, repository: VehicleRepository, principal_secret: str) -> FastA
     def dashboard(principal: Authed) -> dict:
         tenant = principal.tenant_id
         return dashboard_screen(
-            repository.list(tenant), repository.status_summary(tenant)
+            repository.list(tenant),
+            repository.status_summary(tenant),
+            principal.roles,
         )
 
     @app.get("/portal/screens/fleet.detail")

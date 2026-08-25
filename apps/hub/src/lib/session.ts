@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { PrincipalSchema, type Principal } from "@portal/identity";
@@ -124,7 +125,7 @@ export async function openTx(token: string | undefined): Promise<OidcTx | undefi
 }
 
 /** The principal from the session cookie, or undefined when absent/invalid. */
-async function readSession(): Promise<Principal | undefined> {
+const readSession = cache(async function readSession(): Promise<Principal | undefined> {
   try {
     const token = (await cookies()).get(SESSION_COOKIE)?.value;
     if (token === undefined) return undefined;
@@ -139,6 +140,22 @@ async function readSession(): Promise<Principal | undefined> {
     // second case.
     return undefined;
   }
+});
+
+/**
+ * Whether the caller is signed in for real, as opposed to riding the dev stub.
+ *
+ * Not the same question as `!isDevSession()`: `NODE_ENV=development` makes that
+ * true even for a developer who has actually logged in through Keycloak, and
+ * such a person has a session to end. This asks the only thing that decides
+ * whether signing out does anything — is there a cookie to clear.
+ *
+ * Shares one decryption with `currentPrincipal`: `readSession` is wrapped in
+ * React's `cache`, which memoises per request. Without it the layout — which
+ * calls both — decrypted the session cookie twice on every page render.
+ */
+export async function hasSession(): Promise<boolean> {
+  return (await readSession()) !== undefined;
 }
 
 export async function currentPrincipal(): Promise<Principal> {

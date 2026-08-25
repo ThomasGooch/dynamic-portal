@@ -48,10 +48,11 @@ export function manifest(): Manifest {
     // external principal is scoped by the same `tenantId` an internal one is,
     // and this satellite checks it on every call rather than trusting the hub.
     audience: ["internal", "external"],
-    // Org roles this satellite is offered to. The registry declares the same
-    // ceiling; the platform narrows within it per-tool (orders.approve → finance
-    // only). Absent here would leave the satellite un-role-gated at this level.
-    roles: ["leadership", "engineering", "finance"],
+    // No satellite-level `roles` on purpose: every org role may reach this
+    // satellite, and what a role may *do* inside it is declared per action
+    // below. A ceiling here would hide the whole solution from anyone outside
+    // it, which is the opposite of what the portal is for — a finance user who
+    // cannot see Orders at all learns nothing about why.
     screens: [
       {
         id: "orders.list",
@@ -73,6 +74,9 @@ export function manifest(): Manifest {
         title: "Edit order",
         params: [{ name: "id", required: true, description: "Order id" }],
         audience: ["internal"],
+        // The form that drives orders.update, gated to match it — otherwise a
+        // role reaches the screen and fails at the submit button.
+        roles: ["engineering"],
       },
     ],
     actions: [
@@ -99,6 +103,13 @@ export function manifest(): Manifest {
         id: "orders.create",
         title: "Create order",
         description: "Place a new order for this tenant.",
+        // Placing an order is engineering's job. Everyone can read orders; only
+        // this role may raise one. Declared here rather than only in the
+        // registry because this is the check a person clicking the button
+        // meets — the registry's `tools` entry governs the agent/MCP path, and
+        // the two have to agree or a model could propose a write the form
+        // refuses.
+        roles: ["engineering"],
         params: [
           { name: "customer", type: "string", required: true, description: "Who the order is for." },
           { name: "contactEmail", type: "string", required: true, description: "Where the confirmation goes." },
@@ -132,6 +143,11 @@ export function manifest(): Manifest {
       {
         id: "orders.update",
         title: "Update order",
+        // Changing an order is engineering's, like placing one. Named
+        // explicitly: with no satellite-level ceiling there is no longer
+        // anything behind an action that declares nothing, so silence here
+        // means "any role", not "the satellite's roles".
+        roles: ["engineering"],
         description: "Change a pending or approved order.",
         params: [
           { name: "id", type: "string", required: true, description: "The order to change." },
@@ -163,6 +179,7 @@ export function manifest(): Manifest {
         // expect multipart and the gateway knows not to offer it to a model.
         id: "orders.attach",
         title: "Attach a document",
+        roles: ["engineering"],
         description: "Attach a purchase order or delivery note to an order.",
         params: [
           { name: "id", type: "string", required: true, description: "The order to attach to." },
@@ -178,6 +195,8 @@ export function manifest(): Manifest {
       {
         id: "orders.delete",
         title: "Delete order",
+        // The one irreversible write, and the narrowest gate on the satellite.
+        roles: ["leadership"],
         description: "Remove a pending order. Only pending orders can be removed.",
         params: [
           { name: "id", type: "string", required: true, description: "The order to remove." },
@@ -230,7 +249,150 @@ export function ordersTable(orders: Order[]): UiNode {
  */
 const canWrite = (audience: Audience): boolean => audience === "internal";
 
-export function listScreen(orders: Order[], audience: Audience = "internal"): ScreenResponse {
+/**
+ * The role-specific half of the list screen.
+ *
+ * Additive, never subtractive: everything above these sections is shown to
+ * every role, so a principal holding none of them sees precisely the screen it
+ * saw before roles existed. The satellite decides this rather than the hub,
+ * because a hub filter would mean the figures had already crossed the wire to
+ * be thrown away — and a number nobody was entitled to is not made safe by not
+ * drawing it.
+ */
+function roleSections(
+  orders: Order[],
+  audience: Audience,
+  roles: readonly string[],
+): UiNode[] {
+  const sections: UiNode[] = [];
+
+  // Org roles describe internal staff only — `authorize` deliberately skips
+  // the role check for an external principal, and this has to agree with it.
+  // A partner carrying a role claim would otherwise be handed the work queue,
+  // whose `priority` and `dueBy` the public façade then projects as a second
+  // collection on the brokered `orders` resource.
+  if (audience !== "internal") return sections;
+
+  if (roles.includes("finance")) {
+    // Money by status, which is the question finance actually asks of a list
+    // of orders: not how many, but how much, and how much is not yet approved.
+    const byStatus = new Map<string, number>();
+    for (const order of orders) {
+      byStatus.set(order.status, (byStatus.get(order.status) ?? 0) + order.total);
+    }
+    sections.push(
+      ui.Section(
+        {
+          title: "Value by status",
+          description: "Order value, not order count — the same rows weighed differently.",
+        },
+        withId(
+          "orders-finance-chart",
+          ui.Chart({
+            kind: "bar",
+            xKey: "status",
+            series: [{ key: "total", label: "Value" }],
+            data: [...byStatus.entries()]
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([status, total]) => ({ status, total })),
+          }),
+        ),
+      ),
+    );
+  }
+
+  if (roles.includes("platform")) {
+    // Shape of the traffic rather than its worth: what the estate has to
+    // carry, which is the thing platform is on the hook for.
+    const currencies = new Set(orders.map((order) => order.currency));
+    const expedited = orders.filter((order) => order.expedited).length;
+    const critical = orders.filter((order) => order.priority === "critical").length;
+    sections.push(
+      ui.Section(
+        { title: "Throughput metrics", description: "Shape of the load, not its value." },
+        withId(
+          "orders-platform-metrics",
+          // A KeyValueList, not StatTiles. The hub's front page headlines the
+          // first four StatTiles it finds on a satellite's summary screen —
+          // its own comment calls those "the figures a team chose to
+          // headline". Role-conditional tiles are not that: with StatTiles
+          // here, a platform principal saw "Currencies" as the fourth headline
+          // on the Orders card while everyone else saw three. `extractData`
+          // files a KeyValueList as facts rather than stats, so this reads the
+          // same and cannot reach the headline.
+          ui.KeyValueList({
+            items: [
+              { label: "Currencies", value: String(currencies.size) },
+              {
+                label: "Expedited",
+                value: String(expedited),
+                tone: expedited > 0 ? "warning" : "muted",
+              },
+              {
+                label: "Critical",
+                value: String(critical),
+                tone: critical > 0 ? "danger" : "success",
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+  }
+
+  if (roles.includes("engineering")) {
+    // The work queue. Critical first, then soonest due — sorted so the row
+    // that needs a decision is the row at the top.
+    const queue = orders
+      .filter((order) => order.status === "pending")
+      // Rank first, then due date. The previous comparator returned 0 for
+      // standard-vs-express — "equal" — which is intransitive: it never
+      // reached the date branch for those pairs, so a standard order due in
+      // 2030 could sort ahead of an express one due next week and survive the
+      // slice while the urgent one was dropped.
+      .sort((a, b) => {
+        const rank = (order: Order): number =>
+          order.priority === "critical" ? 0 : order.priority === "express" ? 1 : 2;
+        return rank(a) - rank(b) || a.dueBy.localeCompare(b.dueBy);
+      })
+      .slice(0, 5);
+    sections.push(
+      ui.Section(
+        {
+          title: "Work queue",
+          description: "Pending orders, most critical and soonest due first.",
+        },
+        withId(
+          "orders-work-queue",
+          ui.Table({
+            columns: [
+              { key: "id", label: "Order" },
+              { key: "customer", label: "Customer" },
+              { key: "priority", label: "Priority" },
+              { key: "dueBy", label: "Due", as: "date" },
+            ],
+            rows: queue.map((order) => ({
+              id: order.id,
+              customer: order.customer,
+              priority: order.priority,
+              dueBy: order.dueBy,
+            })),
+            rowAction: { screenId: "orders.detail", paramKey: "id" },
+            emptyMessage: "Nothing pending.",
+          }),
+        ),
+      ),
+    );
+  }
+
+  return sections;
+}
+
+export function listScreen(
+  orders: Order[],
+  audience: Audience = "internal",
+  roles: readonly string[] = [],
+): ScreenResponse {
   const pending = orders.filter((order) => order.status === "pending").length;
   const blocked = orders.filter((order) => order.blockedByVehicleId).length;
 
@@ -255,7 +417,14 @@ export function listScreen(orders: Order[], audience: Audience = "internal"): Sc
         ordersTable(orders),
         ui.Stack(
           { direction: "row", gap: "sm", align: "end" },
-          ...(canWrite(audience) ? [ui.Link({ label: "New order", screenId: "orders.new" })] : []),
+          // Gated on the role too, not just the audience: orders.create is
+          // engineering's, so offering everyone else the form means nine
+          // fields and then "that action is not available" at the submit
+          // button — the same dead end this change set out to remove, moved
+          // one screen later.
+          ...(canWrite(audience) && roles.includes("engineering")
+            ? [ui.Link({ label: "New order", screenId: "orders.new" })]
+            : []),
           ui.Button({
             label: "Refresh",
             variant: "secondary",
@@ -268,6 +437,7 @@ export function listScreen(orders: Order[], audience: Audience = "internal"): Sc
           }),
         ),
       ),
+      ...roleSections(orders, audience, roles),
     ),
   });
 }
