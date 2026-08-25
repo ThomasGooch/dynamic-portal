@@ -141,8 +141,13 @@ services:
       # Passed through from the root `.env`, which compose loads and git
       # ignores. Absent means the assistant is off, which is a supported way to
       # run this portal rather than a broken one — every deterministic screen
-      # behaves identically either way.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # behaves identically either way. All three are required for the hosted
+      # provider to count as configured; there is no default endpoint or
+      # deployment the way there is a default local-model URL below.
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      PORTAL_AZURE_ENDPOINT: ${PORTAL_AZURE_ENDPOINT:-}
+      PORTAL_AZURE_DEPLOYMENT: ${PORTAL_AZURE_DEPLOYMENT:-}
+      PORTAL_AZURE_API_VERSION: ${PORTAL_AZURE_API_VERSION:-}
       # The kill switches, both off by default. Passed through because a control
       # that cannot be exercised in the stack it governs is a control nobody has
       # tested: `PORTAL_AGENT=off docker compose up` silently did nothing before

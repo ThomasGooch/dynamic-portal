@@ -15,10 +15,10 @@ import type { ContentBlock, Message, ModelClient, ModelReply } from "./loop";
  * the loop, the grounding pass or the route knows which one it is talking to.
  *
  * **What it is not.** Not a production path and not a compliance-reviewed one.
- * PLAN.md chose `claude-opus-5` because it is zero-data-retention eligible and
- * regulated data reaches the model through tool results; a local model is
- * simply a different answer to the same question, and one nobody has reviewed.
- * The committed default stays Anthropic, and this turns on by choice.
+ * Regulated data reaches the model through tool results, and a local model is
+ * a different answer to whatever data-handling terms the hosted deployment is
+ * expected to meet — one nobody has reviewed. The committed default stays the
+ * hosted Azure AI Foundry deployment, and this turns on by choice.
  */
 
 export const OLLAMA_MODEL = "qwen2.5:7b";
@@ -55,7 +55,7 @@ export interface OllamaClientOptions {
 /**
  * Our message shape into Ollama's.
  *
- * The two disagree about where a tool result lives. Anthropic carries it as a
+ * The two disagree about where a tool result lives. Our shape carries it as a
  * block inside a *user* message; Ollama expects a separate message with role
  * `tool`. A translation that kept the user role would hand the model a user
  * turn full of JSON and no indication it came from a tool.
@@ -253,7 +253,7 @@ export function ollamaClient(options: OllamaClientOptions = {}): ModelClient {
       const body = (await response.json()) as { message?: OllamaMessage; done_reason?: string };
       if (body.message === undefined) throw new Error("the local model returned no message");
 
-      // The mirror of `anthropic.ts`'s `max_tokens` throw, and it matters for
+      // The mirror of `azure.ts`'s `length` throw, and it matters for
       // the same reason: a generation cut off at the window can end part way
       // through a `tool_call`, and the loop would go on to make a tool call
       // with half its arguments. Ollama reports this only here — the HTTP call

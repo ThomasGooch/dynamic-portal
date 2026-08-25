@@ -828,8 +828,8 @@ test.describe("the agent, switched off", () => {
   // with the agent disabled.
   //
   // Gated on the stack actually being configured that way. It is the default —
-  // compose passes `ANTHROPIC_API_KEY` through from `.env`, and CI has none —
-  // but a developer with a key in `.env` is running the other configuration,
+  // compose passes the Azure AI Foundry vars through from `.env`, and CI has
+  // none — but a developer with them in `.env` is running the other configuration,
   // and these assertions describe this one. The deterministic screens are
   // covered either way by every test above.
   let disabled = false;
@@ -1182,10 +1182,10 @@ test.describe("the audit log", () => {
 });
 
 test.describe("the assistant, switched on", () => {
-  // Skipped unless the running stack actually has a key. CI has none, and a
-  // suite that failed there would train everyone to ignore it — but a local run
-  // with `ANTHROPIC_API_KEY` in `.env` exercises the one path no scripted test
-  // can, which is a real model deciding what to do.
+  // Skipped unless the running stack actually has Azure AI Foundry configured.
+  // CI has none, and a suite that failed there would train everyone to ignore
+  // it — but a local run with the Azure vars in `.env` exercises the one path
+  // no scripted test can, which is a real model deciding what to do.
   //
   // Deliberately few and shape-based. Asserting a model's wording is asserting
   // something nobody can fix.
@@ -1203,7 +1203,7 @@ test.describe("the assistant, switched on", () => {
   });
 
   test("answers a question from a satellite's real data", async ({ request }) => {
-    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+    test.skip(!enabled, "no Azure AI Foundry config in the running stack");
 
     const response = await request.post("/api/agent", {
       data: { ask: "How many orders are pending? One sentence." },
@@ -1248,7 +1248,7 @@ test.describe("the assistant, switched on", () => {
       "screen composition needs the hosted model; the local one answers in prose",
     );
 
-    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+    test.skip(!enabled, "no Azure AI Foundry config in the running stack");
 
     const response = await request.post("/api/agent", {
       data: { ask: "Show me the orders as a screen with a table." },
@@ -1269,7 +1269,7 @@ test.describe("the assistant, switched on", () => {
   });
 
   test("refuses a conversation too large to read", async ({ request }) => {
-    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+    test.skip(!enabled, "no Azure AI Foundry config in the running stack");
 
     // Every other route that accepts a body counts it before buffering it. This
     // one did not, so a client could hand the hub an arbitrarily large history
@@ -1292,7 +1292,7 @@ test.describe("the assistant, switched on", () => {
   });
 
   test("refuses a conversation it did not sign", async ({ request }) => {
-    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+    test.skip(!enabled, "no Azure AI Foundry config in the running stack");
 
     // The attack this defends against: the hub is stateless between turns, so
     // the conversation returns as client input, and grounding rebuilds its
@@ -1338,7 +1338,7 @@ test.describe("the assistant, switched on", () => {
   });
 
   test("refuses a history with one character changed", async ({ request }) => {
-    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+    test.skip(!enabled, "no Azure AI Foundry config in the running stack");
 
     const first = await (
       await request.post("/api/agent", { data: { ask: "How many orders are pending?" } })
@@ -1369,7 +1369,7 @@ test.describe("the assistant, switched on", () => {
   });
 
   test("carries a signature the next turn is accepted with", async ({ request }) => {
-    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+    test.skip(!enabled, "no Azure AI Foundry config in the running stack");
 
     const first = await (
       await request.post("/api/agent", { data: { ask: "How many orders are pending?" } })
@@ -1386,7 +1386,7 @@ test.describe("the assistant, switched on", () => {
   });
 
   test("pauses at a write instead of making it", async ({ request }) => {
-    test.skip(!enabled, "no ANTHROPIC_API_KEY in the running stack");
+    test.skip(!enabled, "no Azure AI Foundry config in the running stack");
 
     const response = await request.post("/api/agent", {
       data: { ask: "Approve order ord-1003." },
